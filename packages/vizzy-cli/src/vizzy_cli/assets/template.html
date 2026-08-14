@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>__TITLE__</title>
+<style>
+  :root {
+    --bg: #f6f8fa;
+    --panel: #ffffff;
+    --ink: #1f2328;
+    --muted: #656d76;
+    --box-fill: #ececff;
+    --box-stroke: #9370db;
+    --added-fill: #e6ffec;   --added-stroke: #1a7f37;
+    --removed-fill: #ffebe9; --removed-stroke: #cf222e;
+    --modified-fill: #fff8c5; --modified-stroke: #9a6700;
+    --edge: #57606a;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { height: 100%; }
+  body { font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--ink); display: flex; flex-direction: column; }
+  header { display: flex; align-items: center; gap: 16px; padding: 10px 16px; background: var(--panel); border-bottom: 1px solid #d0d7de; flex-wrap: wrap; }
+  header h1 { font-size: 15px; font-weight: 600; }
+  header .stats { color: var(--muted); font-size: 12.5px; }
+  header input { padding: 5px 10px; border: 1px solid #d0d7de; border-radius: 6px; font-size: 13px; width: 220px; }
+  header button { padding: 5px 12px; border: 1px solid #d0d7de; border-radius: 6px; background: var(--panel); font-size: 13px; cursor: pointer; }
+  header button:hover { background: var(--bg); }
+  .legend { display: flex; gap: 12px; font-size: 12px; color: var(--muted); align-items: center; }
+  .legend[hidden] { display: none; }
+  .legend .chip { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 4px; vertical-align: -2px; border: 1.5px solid; }
+  #canvas { flex: 1; min-height: 0; cursor: grab; }
+  #canvas:active { cursor: grabbing; }
+  .hint { position: fixed; right: 14px; bottom: 10px; font-size: 11.5px; color: var(--muted); background: color-mix(in srgb, var(--panel) 85%, transparent); padding: 3px 8px; border-radius: 6px; }
+  text { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; user-select: none; }
+</style>
+</head>
+<body>
+<header>
+  <h1>__TITLE__</h1>
+  <span class="stats" id="stats"></span>
+  <input id="search" type="search" placeholder="filter classes / modules…">
+  <button id="fit">Fit</button>
+  <span class="legend" id="legend" hidden>
+    <span><span class="chip" style="background:var(--added-fill);border-color:var(--added-stroke)"></span>added</span>
+    <span><span class="chip" style="background:var(--removed-fill);border-color:var(--removed-stroke)"></span>removed</span>
+    <span><span class="chip" style="background:var(--modified-fill);border-color:var(--modified-stroke)"></span>modified</span>
+  </span>
+</header>
+<svg id="canvas"></svg>
+<div class="hint">scroll to zoom · drag background to pan · drag classes to arrange</div>
+
+<script>__D3_JS__</script>
+<script id="graph-data" type="application/json">__GRAPH_JSON__</script>
+<script id="config-data" type="application/json">__CONFIG_JSON__</script>
+<script>
+"use strict";
+const graph = JSON.parse(document.getElementById("graph-data").textContent);
+const config = JSON.parse(document.getElementById("config-data").textContent);
+
+// ---- geometry ---------------------------------------------------------
+const CHAR_W = 7.25, ROW_H = 16, PAD_X = 10, HEADER_H = 34, SEP = 6;
+const FONT = "12px ui-monospace, SFMono-Regular, Menlo, monospace";
+
+const MARK = { added: " ✚", removed: " ✖", modified: " ✱", unchanged: "" };
+const PALETTE = {
+  added:    { fill: "var(--added-fill)",    stroke: "var(--added-stroke)" },
+  removed:  { fill: "var(--removed-fill)",  stroke: "var(--removed-stroke)" },
+  modified: { fill: "var(--modified-fill)", stroke: "var(--modified-stroke)" },
+  unchanged:{ fill: "var(--box-fill)",      stroke: "var(--box-stroke)" },
+  external: { fill: "var(--panel)",         stroke: "var(--muted)" },
+};
+
+function memberText(m) {
+  const sig = m.isMethod ? `${m.name}(${m.detail})` : m.detail ? `${m.name}: ${m.detail}` : m.name;
+  const ret = m.isMethod && m.returns ? ` ${m.returns}` : "";
+  const cls = m.isAbstract ? "*" : m.isStatic ? "$" : "";
+  return `${m.visibility}${sig}${cls}${ret}${MARK[m.change] || ""}`;
+}
+
+function buildNode(c) {
+  const fields = config.showMembers ? c.members.filter((m) => !m.isMethod) : [];
+  const methods = config.showMembers ? c.members.filter((m) => m.isMethod) : [];
+  const rows = [...fields, ...methods];
+  const header = c.name + (MARK[c.change] || "");
+  const widest = Math.max(
+    header.length + 4,
+    c.module.length,
+    ...rows.map((m) => memberText(m).length),
+    12
+  );
+  const w = Math.min(460, widest * CHAR_W + PAD_X * 2);
+  const h = HEADER_H + (c.annotation ? 14 : 0)
+    + (fields.length ? SEP + fields.length * ROW_H : 0)
+    + (methods.length ? SEP + methods.length * ROW_H : 0)
+    + (rows.length ? 6 : 2);
+  return { id: c.qualified, cls: c, fields, methods, w, h, external: false };
+}
+
+const nodes = graph.classes.map(buildNode);
+const byId = new Map(nodes.map((n) => [n.id, n]));
+
+// External bases become small stub nodes (deduped by name).
+if (config.includeExternals) {
+  const seen = new Map();
+  for (const r of graph.relations) {
+    if (!r.external) continue;
+    if (!seen.has(r.to)) {
+      const w = Math.max(r.to.length + 4, 10) * CHAR_W + PAD_X * 2;
+      const stub = { id: `ext:${r.to}`, cls: { name: r.to, module: "", members: [], change: "unchanged" },
+                     fields: [], methods: [], w, h: HEADER_H, external: true };
+      seen.set(r.to, stub);
+      nodes.push(stub);
+      byId.set(stub.id, stub);
+    }
+  }
+}
+
+const links = graph.relations
+  .filter((r) => (r.external ? config.includeExternals : true))
+  .map((r) => ({ source: r.from, target: r.external ? `ext:${r.to}` : r.to, kind: r.kind }))
+  .filter((l) => byId.has(l.source) && byId.has(l.target));
+
+// ---- layout: force simulation, ticked synchronously -------------------
+// Weak per-module gravity keeps each module's classes near a grid cell.
+const modules = [...new Set(nodes.map((n) => n.cls.module))].sort();
+const grid = Math.ceil(Math.sqrt(modules.length));
+const CELL = 640;
+const cellOf = new Map(modules.map((m, i) => [m, {
+  x: (i % grid - (grid - 1) / 2) * CELL,
+  y: (Math.floor(i / grid) - (grid - 1) / 2) * CELL,
+}]));
+
+nodes.forEach((n, i) => {
+  const c = cellOf.get(n.cls.module) || { x: 0, y: 0 };
+  n.x = c.x + (i % 7) * 30 - 90;
+  n.y = c.y + (Math.floor(i / 7) % 7) * 30 - 90;
+});
+
+const sim = d3.forceSimulation(nodes)
+  .force("link", d3.forceLink(links).id((d) => d.id).distance((l) => (l.source.h + l.target.h) / 2 + 90).strength(0.6))
+  .force("charge", d3.forceManyBody().strength(-900).distanceMax(1200))
+  .force("collide", d3.forceCollide().radius((d) => Math.hypot(d.w, d.h) / 2 + 26).strength(0.95))
+  .force("x", d3.forceX((d) => (cellOf.get(d.cls.module) || { x: 0 }).x).strength(0.06))
+  .force("y", d3.forceY((d) => (cellOf.get(d.cls.module) || { y: 0 }).y).strength(0.06))
+  .stop();
+for (let i = 0; i < 300; i++) sim.tick();
+
+// ---- render ------------------------------------------------------------
+const svg = d3.select("#canvas");
+const view = svg.append("g");
+
+svg.append("defs").html(`
+  <marker id="arrow-inherits" viewBox="0 0 14 12" refX="13" refY="6" markerWidth="14" markerHeight="12" orient="auto-start-reverse">
+    <path d="M1,1 L13,6 L1,11 Z" fill="var(--bg)" stroke="var(--edge)" stroke-width="1.4"/>
+  </marker>`);
+
+// Edge endpoint on the boundary of a node's rectangle, toward `other`.
+function edgePoint(node, other) {
+  const dx = other.x - node.x, dy = other.y - node.y;
+  if (dx === 0 && dy === 0) return { x: node.x, y: node.y };
+  const sx = (node.w / 2) / Math.abs(dx || 1e-9), sy = (node.h / 2) / Math.abs(dy || 1e-9);
+  const s = Math.min(sx, sy);
+  return { x: node.x + dx * s, y: node.y + dy * s };
+}
+
+const edge = view.append("g")
+  .selectAll("path")
+  .data(links)
+  .join("path")
+  .attr("fill", "none")
+  .attr("stroke", "var(--edge)")
+  .attr("stroke-width", 1.4)
+  .attr("stroke-dasharray", (d) => (d.kind === "implements" ? "6 4" : null))
+  .attr("marker-end", "url(#arrow-inherits)");
+
+const node = view.append("g")
+  .selectAll("g")
+  .data(nodes)
+  .join("g")
+  .call(drawClass)
+  .call(d3.drag()
+    .on("drag", function (event, d) {
+      d.x += event.dx; d.y += event.dy;
+      d3.select(this).attr("transform", `translate(${d.x - d.w / 2},${d.y - d.h / 2})`);
+      updateEdges();
+    }));
+
+function drawClass(sel) {
+  sel.attr("transform", (d) => `translate(${d.x - d.w / 2},${d.y - d.h / 2})`);
+  sel.append("title").text((d) => d.cls.qualified);
+
+  sel.append("rect")
+    .attr("width", (d) => d.w).attr("height", (d) => d.h)
+    .attr("rx", 6)
+    .attr("fill", (d) => (d.external ? PALETTE.external.fill : PALETTE[d.cls.change].fill))
+    .attr("stroke", (d) => (d.external ? PALETTE.external.stroke : PALETTE[d.cls.change].stroke))
+    .attr("stroke-width", (d) => (d.cls.change === "unchanged" && !d.external ? 1.2 : 2))
+    .attr("stroke-dasharray", (d) => (d.cls.change === "removed" || d.external ? "6 4" : null));
+
+  sel.each(function (d) {
+    const g = d3.select(this);
+    let y = 15;
+    if (d.external || d.cls.annotation) {
+      g.append("text").attr("x", d.w / 2).attr("y", y).attr("text-anchor", "middle")
+        .attr("font-size", 10.5).attr("fill", "var(--muted)")
+        .text(`«${d.external ? "external" : d.cls.annotation}»`);
+      y += 14;
+    }
+    g.append("text").attr("x", d.w / 2).attr("y", y).attr("text-anchor", "middle")
+      .attr("font-size", 12.5).attr("font-weight", 700)
+      .attr("fill", d.external ? "var(--muted)" : PALETTE[d.cls.change].stroke)
+      .text(d.cls.name + (MARK[d.cls.change] || ""));
+    y += 13;
+    if (d.cls.module) {
+      g.append("text").attr("x", d.w / 2).attr("y", y).attr("text-anchor", "middle")
+        .attr("font-size", 9.5).attr("fill", "var(--muted)")
+        .text(d.cls.module);
+      y += 6;
+    }
+    for (const section of [d.fields, d.methods]) {
+      if (!section.length) continue;
+      y += 3;
+      g.append("line").attr("x1", 0).attr("x2", d.w).attr("y1", y).attr("y2", y)
+        .attr("stroke", d.external ? PALETTE.external.stroke : PALETTE[d.cls.change].stroke)
+        .attr("stroke-width", 0.8);
+      y += 3;
+      for (const m of section) {
+        y += ROW_H - 3;
+        g.append("text").attr("x", PAD_X).attr("y", y)
+          .attr("font-size", 11.5)
+          .attr("fill", m.change !== "unchanged" ? PALETTE[m.change].stroke : "var(--ink)")
+          .attr("font-style", m.isAbstract ? "italic" : null)
+          .attr("text-decoration", m.change === "removed" ? "line-through" : null)
+          .text(truncate(memberText(m), (d.w - PAD_X * 2) / CHAR_W));
+        y += 3;
+      }
+    }
+  });
+}
+
+function truncate(s, chars) {
+  return s.length > chars ? s.slice(0, Math.max(1, Math.floor(chars) - 1)) + "…" : s;
+}
+
+function updateEdges() {
+  edge.attr("d", (d) => {
+    const a = edgePoint(d.source, d.target);
+    const b = edgePoint(d.target, d.source);
+    return `M${a.x},${a.y}L${b.x},${b.y}`;
+  });
+}
+updateEdges();
+
+// ---- zoom / pan / fit ----------------------------------------------------
+const zoom = d3.zoom().scaleExtent([0.04, 5]).on("zoom", (e) => view.attr("transform", e.transform));
+svg.call(zoom);
+
+function fit() {
+  const b = view.node().getBBox();
+  const { width, height } = svg.node().getBoundingClientRect();
+  if (!b.width || !b.height) return;
+  const k = Math.min(width / (b.width + 80), height / (b.height + 80), 1.5);
+  const tx = width / 2 - k * (b.x + b.width / 2);
+  const ty = height / 2 - k * (b.y + b.height / 2);
+  svg.transition().duration(300).call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(k));
+}
+document.getElementById("fit").addEventListener("click", fit);
+requestAnimationFrame(fit);
+
+// ---- search ----------------------------------------------------------------
+document.getElementById("search").addEventListener("input", (e) => {
+  const q = e.target.value.trim().toLowerCase();
+  node.attr("opacity", (d) => (!q || d.cls.qualified.toLowerCase().includes(q) ? 1 : 0.12));
+  edge.attr("opacity", (d) =>
+    !q || d.source.cls.qualified.toLowerCase().includes(q) || d.target.cls.qualified.toLowerCase().includes(q) ? 1 : 0.06);
+});
+
+// ---- header -----------------------------------------------------------------
+document.getElementById("stats").textContent =
+  `${graph.stats.classes} classes · ${graph.stats.relations} relations`;
+if (graph.stats.diff) document.getElementById("legend").hidden = false;
+</script>
+</body>
+</html>

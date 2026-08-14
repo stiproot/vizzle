@@ -1,0 +1,20 @@
+[package]
+name = "vizzy-core"
+description = "Parse source code into a class graph and render Mermaid class diagrams, with git-diff awareness"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+anyhow = { workspace = true }
+globset = "0.4"
+ignore = "0.4"
+rayon = "1"
+serde_json = "1"
+tree-sitter = "0.25"
+tree-sitter-python = "0.25"
+tree-sitter-typescript = "0.23"
+
+[dev-dependencies]
+pretty_assertions = "1"

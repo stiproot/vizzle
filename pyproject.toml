@@ -1,0 +1,26 @@
+[tool.uv.workspace]
+members = ["crates/vizzy-py", "packages/vizzy-cli"]
+
+[tool.uv.sources]
+vizzy-core = { workspace = true }
+
+[dependency-groups]
+dev = [
+    "pre-commit>=4",
+    "ruff>=0.9",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+    "SIM", # flake8-simplify
+]

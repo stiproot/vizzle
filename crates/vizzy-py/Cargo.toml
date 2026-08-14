@@ -1,0 +1,16 @@
+[package]
+name = "vizzy-py"
+description = "Python bindings for vizzy-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+name = "vizzy_core"
+crate-type = ["cdylib"]
+
+[dependencies]
+anyhow = { workspace = true }
+pyo3 = { version = "0.26", features = ["abi3-py310"] }
+vizzy-core = { path = "../vizzy-core" }

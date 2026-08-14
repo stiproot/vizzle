@@ -1,0 +1,955 @@
+---
+title: h — class diagram
+---
+classDiagram
+    class apps_claude_managed_agent_src_domain_models_AgentRequest["apps.claude-managed-agent.src.domain.models.AgentRequest"] {
+        <<dataclass>>
+        +input : str
+        +system_prompt : str | None
+        +session_id : str | None
+        +workflow_instance_id : str | None
+    }
+    class apps_claude_managed_agent_src_domain_models_AgentResponse["apps.claude-managed-agent.src.domain.models.AgentResponse"] {
+        <<dataclass>>
+        +output : str
+        +session_id : str
+        +model : str
+        +turns : int
+        +usage : dict
+    }
+    class apps_claude_managed_agent_src_domain_ports_agent_runner_IAgentRunner["apps.claude-managed-agent.src.domain.ports.agent_runner.IAgentRunner"] {
+        <<interface>>
+        +run(request) AgentResponse
+    }
+    class apps_claude_managed_agent_src_infrastructure_claude_managed_runner_ClaudeManagedRunner["apps.claude-managed-agent.src.infrastructure.claude_managed_runner.ClaudeManagedRunner"] {
+        #_model
+        #_runner
+        +start() None
+        +shutdown() None
+        +run(request) AgentResponse
+    }
+    class apps_claude_managed_agent_src_presentation_http_run_router_RunRequest["apps.claude-managed-agent.src.presentation.http.run_router.RunRequest"] {
+        +input : str
+        +systemPrompt : str | None
+        +sessionId : str | None
+        +workflowInstanceId : str | None
+    }
+    class apps_codex_agent_src_infrastructure_codex_mcp_config_CodexMcpResult["apps.codex-agent.src.infrastructure.codex-mcp-config.CodexMcpResult"] {
+        <<interface>>
+        +toml : string
+        +included : string[]
+        +skipped : string[]
+    }
+    class apps_codex_agent_src_infrastructure_codex_runner_CodexRunError["apps.codex-agent.src.infrastructure.codex-runner.CodexRunError"] {
+        +message() string
+    }
+    class apps_dapr_agent_src_infrastructure_dapr_agent_runner_DaprAgentRunner["apps.dapr-agent.src.infrastructure.dapr_agent_runner.DaprAgentRunner"] {
+        #_model
+        #_base_url
+        #_api_key
+        #_system_prompt
+        #_max_turns
+        #_workflows_mcp_url
+        +run(request, workspace) AgentResponse
+        #_loop(adapter, messages, tool_fns, wt) tuple~str, int~
+    }
+    class apps_dapr_claude_loop_agent_src_infrastructure_claude_loop_runner_ClaudeLoopRunner["apps.dapr-claude-loop-agent.src.infrastructure.claude_loop_runner.ClaudeLoopRunner"] {
+        #_model
+        #_system_prompt
+        #_max_iterations
+        #_client : anthropic.AsyncAnthropic | None
+        +start() None
+        +shutdown() None
+        +run(request, workspace) AgentResponse
+        #_run_loop(task, system, workspace) tuple~str, int~
+    }
+    class apps_dapr_mcp_src_domain_ports_IActorStore_ActorStore["apps.dapr-mcp.src.domain.ports.IActorStore.ActorStore"]
+    class apps_dapr_mcp_src_domain_ports_IPubSub_PubSub["apps.dapr-mcp.src.domain.ports.IPubSub.PubSub"]
+    class apps_dapr_mcp_src_domain_ports_IStateStore_BulkStateItem["apps.dapr-mcp.src.domain.ports.IStateStore.BulkStateItem"] {
+        <<interface>>
+        +key : string
+        +data : unknown
+    }
+    class apps_dapr_mcp_src_domain_ports_IStateStore_DaprStateError["apps.dapr-mcp.src.domain.ports.IStateStore.DaprStateError"]
+    class apps_dapr_mcp_src_domain_ports_IStateStore_StateStore["apps.dapr-mcp.src.domain.ports.IStateStore.StateStore"]
+    class apps_dapr_mcp_src_infrastructure_dapr_state_store_test_Seen["apps.dapr-mcp.src.infrastructure.dapr-state-store.test.Seen"] {
+        <<interface>>
+        +url : string
+        +method : string
+        +body : string
+    }
+    class apps_langgraph_agent_src_domain_models_AgentRequest["apps.langgraph-agent.src.domain.models.AgentRequest"] {
+        <<dataclass>>
+        +graph : GraphConfig | None
+    }
+    class apps_langgraph_agent_src_domain_models_GraphConfig["apps.langgraph-agent.src.domain.models.GraphConfig"] {
+        <<dataclass>>
+        +tools : list~str~ | None
+        +system_prompt : str | None
+        +model : str | None
+        +max_iterations : int | None
+    }
+    class apps_langgraph_agent_src_domain_ports_IPresetStore["apps.langgraph-agent.src.domain.ports.IPresetStore"] {
+        <<interface>>
+        +get(key) GraphConfig | None
+        +save(key, graph) None
+    }
+    class apps_langgraph_agent_src_infrastructure_langgraph_runner_LangGraphRunner["apps.langgraph-agent.src.infrastructure.langgraph_runner.LangGraphRunner"] {
+        #_model
+        #_system_prompt
+        #_max_iterations
+        +start() None
+        +shutdown() None
+        +run(request, workspace) AgentResponse
+    }
+    class apps_langgraph_agent_src_infrastructure_preset_store_PresetStore["apps.langgraph-agent.src.infrastructure.preset_store.PresetStore"] {
+        #_dir
+        #_path(key) Path
+        +save(key, graph) None
+        +get(key) GraphConfig | None
+    }
+    class apps_langgraph_agent_src_presentation_http_run_router_GraphConfigModel["apps.langgraph-agent.src.presentation.http.run_router.GraphConfigModel"] {
+        +tools : list~str~ | None
+        +systemPrompt : str | None
+        +model : str | None
+        +maxIterations : int | None
+        +to_domain() GraphConfig
+    }
+    class apps_langgraph_agent_src_presentation_http_run_router_RunRequest["apps.langgraph-agent.src.presentation.http.run_router.RunRequest"] {
+        +input : str
+        +systemPrompt : str | None
+        +sessionId : str | None
+        +workflowInstanceId : str | None
+        +graph : GraphConfigModel | None
+        +preset : str | None
+    }
+    class apps_langgraph_agent_src_presentation_http_run_router_SaveRequest["apps.langgraph-agent.src.presentation.http.run_router.SaveRequest"] {
+        +key : str
+        +graph : GraphConfigModel
+    }
+    class apps_obs_mcp_src_domain_ports_IObservabilityService_ObservabilityError["apps.obs-mcp.src.domain.ports.IObservabilityService.ObservabilityError"]
+    class apps_obs_mcp_src_domain_ports_IObservabilityService_ObservabilityService["apps.obs-mcp.src.domain.ports.IObservabilityService.ObservabilityService"]
+    class apps_obs_mcp_src_domain_ports_IObservabilityService_ObservabilityServiceShape["apps.obs-mcp.src.domain.ports.IObservabilityService.ObservabilityServiceShape"] {
+        <<interface>>
+        +traceSearch :  params: TraceSearchParams,  => Effect.…
+        +traceGet : traceId: string => Effect.Effect<Option…
+        +logsQuery : params: LogsQueryParams => Effect.Effec…
+        +runsList : params: RunsListParams => Effect.Effect…
+        +runGet : runId: string => Effect.Effect<RunDetai…
+        +systemOverview :  => Effect.Effect<SystemOverview, Obser…
+    }
+    class apps_openhands_agent_src_infrastructure_openhands_runner_OpenhandsRunError["apps.openhands-agent.src.infrastructure.openhands-runner.OpenhandsRunError"] {
+        +message() string
+    }
+    class apps_pi_agent_src_infrastructure_pi_runner_PiRunError["apps.pi-agent.src.infrastructure.pi-runner.PiRunError"] {
+        +message() string
+    }
+    class apps_workflow_agent_src_domain_models_AgentResult["apps.workflow-agent.src.domain.models.AgentResult"] {
+        <<dataclass>>
+        +output : str
+        +turns : int
+    }
+    class apps_workflow_agent_src_domain_models_Task["apps.workflow-agent.src.domain.models.Task"] {
+        <<dataclass>>
+        +id : str
+        +problem : str
+        +status : str
+        +issue_id : str | None
+        +result : str | None
+        +from_state(data)$ Task
+        +to_state() dict
+    }
+    class apps_workflow_agent_src_domain_models_TaskStatus["apps.workflow-agent.src.domain.models.TaskStatus"] {
+        <<enumeration>>
+        +PENDING
+        +PROCESSING
+        +DONE
+        +FAILED
+    }
+    class apps_workflow_agent_src_domain_ports_ITaskRunner["apps.workflow-agent.src.domain.ports.ITaskRunner"] {
+        <<interface>>
+        +run(problem) AgentResult
+    }
+    class apps_workflow_agent_src_domain_ports_ITaskStore["apps.workflow-agent.src.domain.ports.ITaskStore"] {
+        <<interface>>
+        +list_task_ids() list~str~
+        +get_task(task_id) dict | None
+        +save_task(task) None
+    }
+    class apps_workflow_agent_src_infrastructure_statestore_StateStore["apps.workflow-agent.src.infrastructure.statestore.StateStore"] {
+        #_base
+        #_get(client, key)
+        #_save(client, key, value) None
+        +list_task_ids() list~str~
+        +get_task(task_id) dict | None
+        +save_task(task) None
+        +seed_task(task) None
+    }
+    class apps_workflow_agent_src_infrastructure_workflow_agent_runner_WorkflowAgentRunner["apps.workflow-agent.src.infrastructure.workflow_agent_runner.WorkflowAgentRunner"] {
+        #_model
+        #_base_url
+        #_api_key
+        #_system
+        #_max_iterations
+        #_mcp_url
+        +run(problem) AgentResult
+    }
+    class apps_workflow_agent_src_presentation_http_cron_router_RunRequest["apps.workflow-agent.src.presentation.http.cron_router.RunRequest"] {
+        +taskId : str
+    }
+    class apps_workflow_agent_tests_test_cron_router_FakeRunner["apps.workflow-agent.tests.test_cron_router.FakeRunner"] {
+        +run(problem) AgentResult
+    }
+    class apps_workflow_agent_tests_test_cron_router_FakeStore["apps.workflow-agent.tests.test_cron_router.FakeStore"] {
+        +list_task_ids() list~str~
+        +get_task(task_id) dict | None
+        +save_task(task) None
+    }
+    class apps_workflow_mcp_src_domain_ports_IWorkflowService_WorkflowService["apps.workflow-mcp.src.domain.ports.IWorkflowService.WorkflowService"]
+    class apps_workflow_svc_src_domain_chain_members_ChainThreadError["apps.workflow-svc.src.domain.chain-members.ChainThreadError"]
+    class apps_workflow_svc_src_domain_chain_members_WorkflowContract["apps.workflow-svc.src.domain.chain-members.WorkflowContract"] {
+        <<interface>>
+        +buildParams : data: ChainData => Record<string, unkno…
+        +capture : output: string | undefined, data: Chain…
+    }
+    class apps_workflow_svc_src_domain_models_watch_model_RunMirrorMeta["apps.workflow-svc.src.domain.models.watch.model.RunMirrorMeta"] {
+        <<interface>>
+        +costUsd : number | null
+        +costPartial : boolean
+        +stopReason : string | null
+        +agentId : string | null
+        +kind : string | null
+    }
+    class apps_workflow_svc_src_domain_ports_IChainStore_ChainStore["apps.workflow-svc.src.domain.ports.IChainStore.ChainStore"]
+    class apps_workflow_svc_src_domain_ports_IChainStore_ChainStoreService["apps.workflow-svc.src.domain.ports.IChainStore.ChainStoreService"] {
+        <<interface>>
+        +getRow : chainId: string => Effect.Effect<Option…
+        +listRows :  => Effect.Effect<readonly ChainRow[], …
+        +saveRow : row: ChainRow => Effect.Effect<void, Wo…
+        +deleteRow : chainId: string => Effect.Effect<void, …
+        +getConfig :  => Effect.Effect<Option.Option<ChainCo…
+        +getHeartbeat :  => Effect.Effect<Option.Option<ChainHe…
+        +heartbeat : beat: ChainHeartbeat => Effect.Effect<v…
+        +getLedger : date: string => Effect.Effect<ChainLedg…
+        +bumpLedger :  date: string, delta: Partial<ChainLedg…
+        +listRunKeys :  => Effect.Effect<readonly string[], Wo…
+        +getRunMeta : key: string => Effect.Effect<RunMirrorM…
+    }
+    class apps_workflow_svc_src_domain_ports_ICronStore_CronStore["apps.workflow-svc.src.domain.ports.ICronStore.CronStore"]
+    class apps_workflow_svc_src_domain_ports_ICronStore_CronStoreService["apps.workflow-svc.src.domain.ports.ICronStore.CronStoreService"] {
+        <<interface>>
+        +getRow : cronId: string => Effect.Effect<Option.…
+        +listRows :  => Effect.Effect<readonly CronRow[], W…
+        +saveRow : row: CronRow => Effect.Effect<void, Wor…
+        +deleteRow : cronId: string => Effect.Effect<void, W…
+        +getDiscoverRow : id: string => Effect.Effect<Option.Opti…
+        +listDiscoverRows :  => Effect.Effect<readonly DiscoverRow[…
+        +saveDiscoverRow : row: DiscoverRow => Effect.Effect<void,…
+        +deleteDiscoverRow : id: string => Effect.Effect<void, Workf…
+        +getSchedRow : id: string => Effect.Effect<Option.Opti…
+        +listSchedRows :  => Effect.Effect<readonly SchedRow[], …
+        +saveSchedRow : row: SchedRow => Effect.Effect<void, Wo…
+        +deleteSchedRow : id: string => Effect.Effect<void, Workf…
+        +getConfig :  => Effect.Effect<Option.Option<CronCon…
+        +getHeartbeat :  => Effect.Effect<Option.Option<CronHea…
+        +heartbeat : beat: CronHeartbeat => Effect.Effect<vo…
+        +getLedger : date: string => Effect.Effect<CronLedge…
+        +bumpLedger :  date: string, delta: Partial<CronLedge…
+    }
+    class apps_workflow_svc_src_domain_ports_IExecPolicyStore_ExecPolicyStore["apps.workflow-svc.src.domain.ports.IExecPolicyStore.ExecPolicyStore"]
+    class apps_workflow_svc_src_domain_ports_IExecPolicyStore_ExecPolicyStoreService["apps.workflow-svc.src.domain.ports.IExecPolicyStore.ExecPolicyStoreService"] {
+        <<interface>>
+        +get :  => Effect.Effect<Option.Option<ExecPol…
+        +save : policy: ExecPolicy => Effect.Effect<voi…
+    }
+    class apps_workflow_svc_src_domain_ports_ISourceReader_SourceReader["apps.workflow-svc.src.domain.ports.ISourceReader.SourceReader"]
+    class apps_workflow_svc_src_domain_ports_ISourceReader_SourceReaderService["apps.workflow-svc.src.domain.ports.ISourceReader.SourceReaderService"] {
+        <<interface>>
+        +listOpenIssues : opts:  repo: string label: string  => E…
+    }
+    class apps_workflow_svc_src_domain_ports_IWatchStore_WatchStore["apps.workflow-svc.src.domain.ports.IWatchStore.WatchStore"]
+    class apps_workflow_svc_src_domain_ports_IWatchStore_WatchStoreService["apps.workflow-svc.src.domain.ports.IWatchStore.WatchStoreService"] {
+        <<interface>>
+        +getRow : instanceId: string => Effect.Effect<Opt…
+        +listRows :  => Effect.Effect<readonly WatchRow[], …
+        +saveRow : row: WatchRow => Effect.Effect<void, Wo…
+        +deleteRow : instanceId: string => Effect.Effect<voi…
+        +getConfig :  => Effect.Effect<Option.Option<WatchCo…
+        +getHeartbeat :  => Effect.Effect<Option.Option<WatchHe…
+        +heartbeat : beat: WatchHeartbeat => Effect.Effect<v…
+        +getLedger : date: string => Effect.Effect<WatchLedg…
+        +bumpLedger :  date: string, delta: Partial<WatchLedg…
+        +listRunKeys :  => Effect.Effect<readonly string[], Wo…
+        +getRunMeta : key: string => Effect.Effect<RunMirrorM…
+    }
+    class apps_workflow_svc_src_domain_ports_IWfStore_WfStore["apps.workflow-svc.src.domain.ports.IWfStore.WfStore"]
+    class apps_workflow_svc_src_domain_ports_IWfStore_WfStoreService["apps.workflow-svc.src.domain.ports.IWfStore.WfStoreService"] {
+        <<interface>>
+        +getRow : id: WfIdentity => Effect.Effect<Option.…
+        +saveRow : row: WfRow => Effect.Effect<void, Workf…
+    }
+    class apps_workflow_svc_src_domain_ports_IWorkflowInvoker_WorkflowInvoker["apps.workflow-svc.src.domain.ports.IWorkflowInvoker.WorkflowInvoker"]
+    class apps_workflow_svc_src_domain_ports_IWorkflowInvoker_WorkflowInvokerService["apps.workflow-svc.src.domain.ports.IWorkflowInvoker.WorkflowInvokerService"] {
+        <<interface>>
+        +invoke : input: WorkflowRequest => Effect.Effect…
+        +getStatus : instanceId: string => Effect.Effect<Wor…
+        +terminate : instanceId: string => Effect.Effect<voi…
+    }
+    class apps_workflow_svc_src_domain_ports_IWorkflowStore_WorkflowStore["apps.workflow-svc.src.domain.ports.IWorkflowStore.WorkflowStore"]
+    class apps_workflow_svc_src_domain_ports_IWorkflowStore_WorkflowStoreService["apps.workflow-svc.src.domain.ports.IWorkflowStore.WorkflowStoreService"] {
+        <<interface>>
+        +save : key: string, workflow: StoredWorkflow =…
+        +get : key: string => Effect.Effect<Option.Opt…
+        +list :  => Effect.Effect<readonly string[], Wo…
+        +listScheduled :  => Effect.Effect< ReadonlyArray< key: …
+        +markRun : key: string, lastRunAt: string => Effec…
+    }
+    class apps_workflow_svc_src_domain_structured_output_StructuredOutputError["apps.workflow-svc.src.domain.structured-output.StructuredOutputError"] {
+        +name
+    }
+    class apps_workflow_svc_src_domain_watch_scan_CostTally["apps.workflow-svc.src.domain.watch-scan.CostTally"] {
+        <<interface>>
+        +costUsd : number
+        +costGap : boolean
+        +gapRuns : number
+        +costByAgent : Record<string, number>
+    }
+    class apps_workflow_svc_src_presentation_http_workflow_router_CronNeedsIdentityError["apps.workflow-svc.src.presentation.http.workflow.router.CronNeedsIdentityError"]
+    class apps_workflow_svc_src_presentation_http_workflow_router_InvalidCronError["apps.workflow-svc.src.presentation.http.workflow.router.InvalidCronError"]
+    class apps_workflow_svc_src_presentation_http_workflow_router_InvalidScheduleError["apps.workflow-svc.src.presentation.http.workflow.router.InvalidScheduleError"]
+    class apps_workflow_svc_src_presentation_http_workflow_router_NotFoundError["apps.workflow-svc.src.presentation.http.workflow.router.NotFoundError"]
+    class apps_workflow_svc_src_presentation_http_workflow_router_ScheduleConflictsCronError["apps.workflow-svc.src.presentation.http.workflow.router.ScheduleConflictsCronError"]
+    class apps_workflow_svc_src_presentation_http_workflow_router_WorkflowNotFoundError["apps.workflow-svc.src.presentation.http.workflow.router.WorkflowNotFoundError"]
+    class cli_h_src_h_cli_infrastructure_chain_expr_ChainExpr["cli.h.src.h_cli.infrastructure.chain_expr.ChainExpr"] {
+        <<dataclass>>
+        +defaults : WorkflowConfig
+        +stages : tuple~tuple~MemberRef, ...~, ...~
+        +members : tuple~MemberRef, ...~
+    }
+    class cli_h_src_h_cli_infrastructure_chain_expr_ExprError["cli.h.src.h_cli.infrastructure.chain_expr.ExprError"]
+    class cli_h_src_h_cli_infrastructure_chain_expr_MemberRef["cli.h.src.h_cli.infrastructure.chain_expr.MemberRef"] {
+        <<dataclass>>
+        +key : str | None
+        +templates : tuple~str, ...~
+        +config : WorkflowConfig
+        +label : str
+    }
+    class cli_h_src_h_cli_infrastructure_chain_expr_WorkflowConfig["cli.h.src.h_cli.infrastructure.chain_expr.WorkflowConfig"] {
+        <<dataclass>>
+        +agents : tuple~str, ...~
+        +model : str | None
+        +budget : str | None
+        +fresh : bool
+        +kind : str | None
+        +stage : str | None
+        +cron : str | None
+        +max_fires : str | None
+        +id : str | None
+        +inline : bool
+        +captures : tuple~tuple~str, str~, ...~
+        +inputs : tuple~tuple~str, str~, ...~
+        +until : str | None
+    }
+    class cli_h_src_h_cli_infrastructure_helm_HelmError["cli.h.src.h_cli.infrastructure.helm.HelmError"]
+    class cli_h_src_h_cli_infrastructure_panelize_PanelizeError["cli.h.src.h_cli.infrastructure.panelize.PanelizeError"]
+    class packages_js_agent_cli_src_agents_classify_stop_ClassifyStopInput["packages.js.agent-cli.src.agents.classify-stop.ClassifyStopInput"] {
+        <<interface>>
+        +exitCode : number | null
+        +signal : NodeJS.Signals | null
+        +stderr : string
+        +resultEventText : string
+        +rateLimitRetries : number
+    }
+    class packages_js_agent_cli_src_agents_codex_CodexEventBase["packages.js.agent-cli.src.agents.codex.CodexEventBase"] {
+        <<interface>>
+        +type : string
+    }
+    class packages_js_agent_cli_src_agents_codex_CodexItemCompletedEvent["packages.js.agent-cli.src.agents.codex.CodexItemCompletedEvent"] {
+        <<interface>>
+        +type : item.completed
+        +item :  type?: string role?: string text?: str…
+    }
+    class packages_js_agent_cli_src_agents_codex_CodexThreadStartedEvent["packages.js.agent-cli.src.agents.codex.CodexThreadStartedEvent"] {
+        <<interface>>
+        +type : thread.started
+        +thread_id : string
+    }
+    class packages_js_agent_cli_src_agents_codex_CodexTurnCompletedEvent["packages.js.agent-cli.src.agents.codex.CodexTurnCompletedEvent"] {
+        <<interface>>
+        +type : turn.completed
+        +usage :  prompt_tokens?: number cached_tokens?:…
+    }
+    class packages_js_agent_cli_src_agents_event_shape_EventShape["packages.js.agent-cli.src.agents.event-shape.EventShape"] {
+        <<interface>>
+        +total : number
+        +byType : Record<string, number>
+        +byKeys : Record<string, number>
+    }
+    class packages_js_agent_cli_src_agents_openhands_OpenhandsActionEvent["packages.js.agent-cli.src.agents.openhands.OpenhandsActionEvent"] {
+        <<interface>>
+        +tool_name : string
+        +tool_call_id : string
+    }
+    class packages_js_agent_cli_src_agents_openhands_OpenhandsConversationErrorEvent["packages.js.agent-cli.src.agents.openhands.OpenhandsConversationErrorEvent"] {
+        <<interface>>
+        +kind : ConversationErrorEvent
+        +code : string
+        +detail : string
+    }
+    class packages_js_agent_cli_src_agents_openhands_OpenhandsEventBase["packages.js.agent-cli.src.agents.openhands.OpenhandsEventBase"] {
+        <<interface>>
+        +kind : string
+        +source : string
+        +id : string
+        +timestamp : string
+    }
+    class packages_js_agent_cli_src_agents_openhands_OpenhandsMessageEvent["packages.js.agent-cli.src.agents.openhands.OpenhandsMessageEvent"] {
+        <<interface>>
+        +kind : MessageEvent
+        +llm_message :  content?:  type?: string text?: string…
+    }
+    class packages_js_agent_cli_src_agents_parse_stream_BuildInvocationResultOptions["packages.js.agent-cli.src.agents.parse-stream.BuildInvocationResultOptions"] {
+        <<interface>>
+        +events : StreamEvent[]
+        +stderr : string
+        +exitCode : number | null
+        +signal : NodeJS.Signals | null
+        +sessionId : string
+        +metrics : Partial<InvocationResult>
+        +timedOutAfterMs : number
+    }
+    class packages_js_agent_cli_src_agents_pi_PiEventBase["packages.js.agent-cli.src.agents.pi.PiEventBase"] {
+        <<interface>>
+        +type : string
+    }
+    class packages_js_agent_cli_src_agents_pi_PiSessionEvent["packages.js.agent-cli.src.agents.pi.PiSessionEvent"] {
+        <<interface>>
+        +type : session
+        +id : string
+    }
+    class packages_js_agent_cli_src_agents_reaper_LiveRun["packages.js.agent-cli.src.agents.reaper.LiveRun"] {
+        <<interface>>
+        +pid : number
+        +subAgentUid : string | undefined
+    }
+    class packages_js_agent_cli_src_agents_shared_BuildCliInvocationOptions["packages.js.agent-cli.src.agents.shared.BuildCliInvocationOptions"] {
+        <<interface>>
+        +command : string
+        +flags : string[]
+        +effectiveModel : string
+        +stdinSupport : boolean
+        +supportsResume : boolean
+        +expectPromptLast : boolean
+    }
+    class packages_js_agent_cli_src_agents_types_AgentInvocationRequest["packages.js.agent-cli.src.agents.types.AgentInvocationRequest"] {
+        <<interface>>
+        +systemPrompt : string
+        +taskPrompt : string
+        +cwd : string
+        +env : Record<string, string>
+        +effectiveEnv : AgentEnv
+        +timeout : number
+        +model : string
+        +resumeSessionId : string
+        +onEvent : AgentEventCallback
+        +verbose : boolean
+        +llmConfig : LlmConfig
+        +permissionMode : plan
+    }
+    class packages_js_agent_cli_src_agents_types_AgentSpawnError["packages.js.agent-cli.src.agents.types.AgentSpawnError"]
+    class packages_js_agent_cli_src_agents_types_AgentStrategy["packages.js.agent-cli.src.agents.types.AgentStrategy"] {
+        <<interface>>
+        +type : AgentType
+        +name : string
+        +validateEnvironment(effectiveEnv, processEnv) InvocationResult | null
+        +prepareEnvironment(request) Record<string, string>
+        +buildInvocation(request) Effect.Effect<PreparedAgentInvocation, …
+        +extractSessionId(events) string | undefined
+        +extractMetrics(events, request) Partial<InvocationResult>
+        +tallyToolCalls(current, event) number
+    }
+    class packages_js_agent_cli_src_agents_types_AgentStreamParser["packages.js.agent-cli.src.agents.types.AgentStreamParser"] {
+        <<interface>>
+        +parseLine(line, events, onEvent) void
+    }
+    class packages_js_agent_cli_src_agents_types_AgentTimeoutError["packages.js.agent-cli.src.agents.types.AgentTimeoutError"]
+    class packages_js_agent_cli_src_agents_types_InvocationResult["packages.js.agent-cli.src.agents.types.InvocationResult"] {
+        <<interface>>
+        +success : boolean
+        +stdout : string
+        +stderr : string
+        +exitCode : number
+        +stopReason : StopReason
+        +tokenUsage :  input: number output: number 
+        +model : string
+        +modelUsage : Record<string, ModelUsage>
+        +costUsd : number
+        +numTurns : number
+        +sessionId : string
+        +costPartial : boolean
+    }
+    class packages_js_agent_cli_src_agents_types_LiteLlmCheckError["packages.js.agent-cli.src.agents.types.LiteLlmCheckError"]
+    class packages_js_agent_cli_src_agents_types_LiteLlmModelUnavailableError["packages.js.agent-cli.src.agents.types.LiteLlmModelUnavailableError"]
+    class packages_js_agent_cli_src_agents_types_LiteLlmTimeoutError["packages.js.agent-cli.src.agents.types.LiteLlmTimeoutError"]
+    class packages_js_agent_cli_src_agents_types_LlmConfig["packages.js.agent-cli.src.agents.types.LlmConfig"] {
+        <<interface>>
+        +apiKey : string
+        +baseUrl : string
+        +llmEnv : string
+    }
+    class packages_js_agent_cli_src_agents_types_ModelUsage["packages.js.agent-cli.src.agents.types.ModelUsage"] {
+        <<interface>>
+        +inputTokens : number
+        +outputTokens : number
+        +cacheReadInputTokens : number
+        +cacheCreationInputTokens : number
+        +costUsd : number
+    }
+    class packages_js_agent_cli_src_agents_types_PreparedAgentInvocation["packages.js.agent-cli.src.agents.types.PreparedAgentInvocation"] {
+        <<interface>>
+        +command : string
+        +args : string[]
+        +stdinInput : string
+        +shouldFilterEvent : event: StreamEvent => boolean
+        +streamParser : AgentStreamParser
+        +cleanup :  => void | Promise<void>
+    }
+    class packages_js_agent_cli_src_agents_types_RawLineEvent["packages.js.agent-cli.src.agents.types.RawLineEvent"] {
+        <<interface>>
+        +type : raw
+        +text : string
+    }
+    class packages_js_agent_cli_src_agents_types_StreamEvent["packages.js.agent-cli.src.agents.types.StreamEvent"] {
+        <<interface>>
+        +type : string
+        +subtype : string
+        +thread_id : string
+        +model : string
+        +num_turns : number
+        +is_error : boolean
+        +result : string
+        +message :  /** The API message id — several strea…
+        +usage :  input_tokens?: number output_tokens?: …
+        +stats :  total_tokens?: number input_tokens?: n…
+        +modelUsage : Record<string, StreamEventModelUsage>
+        +total_cost_usd : number
+        +session_id : string
+    }
+    class packages_js_agent_cli_src_agents_types_StreamEventModelUsage["packages.js.agent-cli.src.agents.types.StreamEventModelUsage"] {
+        <<interface>>
+        +inputTokens : number
+        +outputTokens : number
+        +cacheReadInputTokens : number
+        +cacheCreationInputTokens : number
+        +costUSD : number
+    }
+    class packages_js_agent_cli_src_agents_types_StreamEventStatsModel["packages.js.agent-cli.src.agents.types.StreamEventStatsModel"] {
+        <<interface>>
+        +total_tokens : number
+        +input_tokens : number
+        +output_tokens : number
+        +cached : number
+        +input : number
+    }
+    class packages_js_agent_cli_src_invoker_AgentInvokeParams["packages.js.agent-cli.src.invoker.AgentInvokeParams"] {
+        <<interface>>
+        +systemPrompt : string
+        +taskPrompt : string
+        +cwd : string
+        +env : Record<string, string>
+        +timeout : number
+        +model : string
+        +resumeSessionId : string
+        +onEvent : AgentEventCallback
+        +verbose : boolean
+        +llmConfig : LlmConfig
+        +permissionMode : plan
+    }
+    class packages_js_agent_cli_src_invoker_AgentInvoker["packages.js.agent-cli.src.invoker.AgentInvoker"]
+    class packages_js_agent_cli_src_invoker_AgentInvokerService["packages.js.agent-cli.src.invoker.AgentInvokerService"] {
+        <<interface>>
+        +invoke : params: AgentInvokeParams => Effect.Eff…
+    }
+    class packages_js_agent_server_src_agent_routes_AgentRoutesEffectConfig["packages.js.agent-server.src.agent-routes.AgentRoutesEffectConfig"] {
+        <<interface>>
+        +runtime : ManagedRuntime.ManagedRuntime<AgentRout…
+        +resolveWorkspaceDir : workspaceKey: string => string
+        +ledger : ActivityLedgerConfig
+    }
+    class packages_js_agent_server_src_agent_routes_SetupError["packages.js.agent-server.src.agent-routes.SetupError"] {
+        +message() string
+    }
+    class packages_js_agent_server_src_clone_route_CloneRouteEffectConfig["packages.js.agent-server.src.clone-route.CloneRouteEffectConfig"] {
+        <<interface>>
+        +runtime : ManagedRuntime.ManagedRuntime<CloneRout…
+        +resolveWorkspaceDir : workspaceKey: string => string
+        +ledger : ActivityLedgerConfig
+    }
+    class packages_js_agent_server_src_run_handler_HandlerReply["packages.js.agent-server.src.run-handler.HandlerReply"] {
+        <<interface>>
+        +status(statusCode) unknown
+        +send(payload) unknown
+    }
+    class packages_js_agent_server_src_run_handler_RunHandlerOptions["packages.js.agent-server.src.run-handler.RunHandlerOptions"] {
+        <<interface>>
+        +successStatus : number
+    }
+    class packages_js_agent_server_src_run_ledger_RunLedger["packages.js.agent-server.src.run-ledger.RunLedger"]
+    class packages_js_agent_server_src_run_ledger_RunLedgerError["packages.js.agent-server.src.run-ledger.RunLedgerError"]
+    class packages_js_agent_server_src_runner_AgentRunner["packages.js.agent-server.src.runner.AgentRunner"]
+    class packages_js_agent_server_src_workflow_babysitter_BabysitPolicy["packages.js.agent-server.src.workflow-babysitter.BabysitPolicy"] {
+        <<interface>>
+        +maxDurationMs : number
+        +pollIntervalMs : number
+    }
+    class packages_js_agent_server_src_workflow_babysitter_BabysitterConfig["packages.js.agent-server.src.workflow-babysitter.BabysitterConfig"] {
+        <<interface>>
+        +agentId : string
+        +daprHttpPort : string
+        +workflowAppId : string
+        +defaultPolicy : BabysitPolicy
+        +fetchImpl : typeof fetch
+        +onLog : msg: string => void
+    }
+    class packages_js_agent_server_src_workflow_babysitter_Trigger["packages.js.agent-server.src.workflow-babysitter.Trigger"] {
+        <<interface>>
+        +key : string
+        +steps : unknown[]
+        +params : Record<string, unknown>
+        +instanceId : string
+        +workspaceId : string
+        +watch : WatchPolicy
+    }
+    class packages_js_agent_server_src_workflow_babysitter_WatchPolicy["packages.js.agent-server.src.workflow-babysitter.WatchPolicy"] {
+        <<interface>>
+        +maxDurationMs : number
+        +unknownStreakLimit : number
+        +retry :  maxAttempts: number fresh?: boolean on…
+        +escalate :  onOutcome: string[] key: string params…
+    }
+    class packages_js_agent_server_src_workflow_babysitter_WorkflowBabysitter["packages.js.agent-server.src.workflow-babysitter.WorkflowBabysitter"] {
+        -cfg : Required<Omit<BabysitterConfig, fetchIm…
+        -fetchImpl : typeof fetch
+        -onLog : msg: string => void
+        -invokeUrl(method) string
+        +submit(submit) Promise< instanceId: string watching: b…
+        +list() Promise<unknown>
+        -post(method, body) Promise<unknown>
+    }
+    class packages_js_agent_server_src_workflow_babysitter_WorkflowSubmit["packages.js.agent-server.src.workflow-babysitter.WorkflowSubmit"] {
+        <<interface>>
+        +fresh : boolean
+        +policy : BabysitPolicy
+        +watchMeta : Record<string, unknown>
+    }
+    class packages_js_agent_server_src_worktree_route_WorktreeRouteEffectConfig["packages.js.agent-server.src.worktree-route.WorktreeRouteEffectConfig"] {
+        <<interface>>
+        +runtime : ManagedRuntime.ManagedRuntime<WorktreeR…
+        +sharedRoot : string
+        +ledger : ActivityLedgerConfig
+    }
+    class packages_js_core_dapr_src_actors_actor_client_DaprActorError["packages.js.core-dapr.src.actors.actor-client.DaprActorError"]
+    class packages_js_core_dapr_src_actors_actor_client_GenericActorClient["packages.js.core-dapr.src.actors.actor-client.GenericActorClient"] {
+        -builder : ActorProxyBuilder<IGenericActor>
+        -proxy(actorId) IGenericActor
+        -manager()
+        +invoke(actorId, method, payload) Promise<unknown>
+        +getState(actorId, key) Promise<ActorStateResult>
+        +setState(actorId, key, value) Promise< key: string >
+        +removeState(actorId, key) Promise< key: string removed: boolean >
+        +listStateKeys(actorId) Promise<string[]>
+        +registerReminder(actorId, name, dueTime, period, data) Promise<void>
+        +unregisterReminder(actorId, name) Promise<void>
+        +registerTimer(actorId, name, dueTime, period, data) Promise<void>
+        +unregisterTimer(actorId, name) Promise<void>
+        +listActiveActors() Promise<object>
+    }
+    class packages_js_core_dapr_src_actors_actor_client_GenericActorClientOptions["packages.js.core-dapr.src.actors.actor-client.GenericActorClientOptions"] {
+        <<interface>>
+        +daprHost : string
+        +daprPort : string
+    }
+    class packages_js_core_dapr_src_actors_actor_client_GenericActorClientService["packages.js.core-dapr.src.actors.actor-client.GenericActorClientService"] {
+        <<interface>>
+        +invoke :  actorId: string, method: string, paylo…
+        +getState :  actorId: string, key: string,  => Effe…
+        +setState :  actorId: string, key: string, value: u…
+        +removeState :  actorId: string, key: string,  => Effe…
+        +listStateKeys : actorId: string => Effect.Effect<string…
+        +registerReminder :  actorId: string, name: string, dueTime…
+        +unregisterReminder :  actorId: string, name: string,  => Eff…
+        +registerTimer :  actorId: string, name: string, dueTime…
+        +unregisterTimer : actorId: string, name: string => Effect…
+        +listActiveActors :  => Effect.Effect<object, DaprActorErro…
+    }
+    class packages_js_core_dapr_src_actors_actor_client_GenericActorClientTag["packages.js.core-dapr.src.actors.actor-client.GenericActorClientTag"]
+    class packages_js_core_dapr_src_actors_actor_host_ActorHostOptions["packages.js.core-dapr.src.actors.actor-host.ActorHostOptions"] {
+        <<interface>>
+        +actorPort : string
+        +daprHttpPort : string
+        +serverHost : string
+    }
+    class packages_js_core_dapr_src_actors_actor_host_ActorHostService["packages.js.core-dapr.src.actors.actor-host.ActorHostService"] {
+        <<interface>>
+        +actorPort : string
+    }
+    class packages_js_core_dapr_src_actors_actor_host_ActorHostTag["packages.js.core-dapr.src.actors.actor-host.ActorHostTag"]
+    class packages_js_core_dapr_src_actors_generic_actor_ActorStateResult["packages.js.core-dapr.src.actors.generic-actor.ActorStateResult"] {
+        <<interface>>
+        +key : string
+        +value : unknown
+        +exists : boolean
+    }
+    class packages_js_core_dapr_src_actors_generic_actor_GenericActor["packages.js.core-dapr.src.actors.generic-actor.GenericActor"] {
+        -stateOf()
+        -appendLog(entry) Promise<number>
+        +setState(key, value) Promise< key: string >
+        +getState(key) Promise<ActorStateResult>
+        +removeState(key) Promise< key: string removed: boolean >
+        +listStateKeys() Promise<string[]>
+        +invokeCommand(method, payload) Promise<unknown>
+        +onTimerFire(data) Promise<void>
+        +receiveReminder(data) Promise<void>
+    }
+    class packages_js_core_dapr_src_actors_generic_actor_IGenericActor["packages.js.core-dapr.src.actors.generic-actor.IGenericActor"] {
+        <<interface>>
+        +setState(key, value) Promise< key: string >
+        +getState(key) Promise<ActorStateResult>
+        +removeState(key) Promise< key: string removed: boolean >
+        +listStateKeys() Promise<string[]>
+        +invokeCommand(method, payload) Promise<unknown>
+        +onTimerFire(data) Promise<void>
+    }
+    class packages_js_core_dapr_src_actors_generic_actor_IncrementPayload["packages.js.core-dapr.src.actors.generic-actor.IncrementPayload"] {
+        <<interface>>
+        +name : string
+        +by : number
+    }
+    class packages_js_core_dapr_src_actors_wait_for_sidecar_DaprSidecarError["packages.js.core-dapr.src.actors.wait-for-sidecar.DaprSidecarError"]
+    class packages_js_core_dapr_src_invoker_DaprInvokerService["packages.js.core-dapr.src.invoker.DaprInvokerService"] {
+        <<interface>>
+        +invoke :  appId: string, method: string, body: A…
+    }
+    class packages_js_core_dapr_src_invoker_DaprInvokerTag["packages.js.core-dapr.src.invoker.DaprInvokerTag"]
+    class packages_js_core_dapr_src_publisher_DaprPubSubError["packages.js.core-dapr.src.publisher.DaprPubSubError"]
+    class packages_js_core_dapr_src_publisher_DaprPublisherService["packages.js.core-dapr.src.publisher.DaprPublisherService"] {
+        <<interface>>
+        +publish :  pubsubName: string, topic: string, dat…
+    }
+    class packages_js_core_dapr_src_publisher_DaprPublisherTag["packages.js.core-dapr.src.publisher.DaprPublisherTag"]
+    class packages_js_core_vercel_src_llm_client_LlmClient["packages.js.core-vercel.src.llm-client.LlmClient"]
+    class packages_js_core_vercel_src_llm_client_LlmError["packages.js.core-vercel.src.llm-client.LlmError"]
+    class packages_js_core_vercel_src_llm_client_LlmGeneration["packages.js.core-vercel.src.llm-client.LlmGeneration"] {
+        <<interface>>
+        +text : string
+        +usage :  readonly input: number readonly output…
+        +model : string
+    }
+    class packages_js_core_vercel_src_llm_client_LlmService["packages.js.core-vercel.src.llm-client.LlmService"] {
+        <<interface>>
+        +generate :  input: string, systemPrompt?: string, …
+    }
+    class packages_js_core_vercel_src_llm_client_LlmTimeoutError["packages.js.core-vercel.src.llm-client.LlmTimeoutError"]
+    class packages_js_core_vercel_src_vercel_ai_LlmConfigError["packages.js.core-vercel.src.vercel-ai.LlmConfigError"]
+    class packages_js_core_vercel_src_vercel_ai_VercelAiConfig["packages.js.core-vercel.src.vercel-ai.VercelAiConfig"] {
+        <<interface>>
+        +secretsPath : string
+        +baseUrl : string
+        +modelName : string
+        +timeout : Duration.DurationInput
+        +retrySchedule : Schedule.Schedule<unknown, LlmError | L…
+    }
+    class packages_js_core_src_errors_AgentRunError["packages.js.core.src.errors.AgentRunError"]
+    class packages_js_core_src_errors_CloneError["packages.js.core.src.errors.CloneError"]
+    class packages_js_core_src_errors_DaprInvokeError["packages.js.core.src.errors.DaprInvokeError"]
+    class packages_js_core_src_errors_WorkflowError["packages.js.core.src.errors.WorkflowError"]
+    class packages_js_git_core_src_git_client_GitClient["packages.js.git-core.src.git-client.GitClient"]
+    class packages_js_git_core_src_git_client_GitCloneError["packages.js.git-core.src.git-client.GitCloneError"] {
+        +message() string
+    }
+    class packages_js_git_core_src_git_client_GitExitError["packages.js.git-core.src.git-client.GitExitError"]
+    class packages_js_git_core_src_git_client_GitWorktreeError["packages.js.git-core.src.git-client.GitWorktreeError"] {
+        +message() string
+    }
+    class packages_js_git_core_src_github_client_GitHubApiError["packages.js.git-core.src.github-client.GitHubApiError"] {
+        +message() string
+    }
+    class packages_js_git_core_src_github_client_GitHubClient["packages.js.git-core.src.github-client.GitHubClient"]
+    class packages_js_logger_src_index_Logger["packages.js.logger.src.index.Logger"] {
+        <<interface>>
+        +trace(context, message) void
+        +debug(context, message) void
+        +info(context, message) void
+        +warn(context, message) void
+        +error(context, message) void
+        +child(context) Logger
+    }
+    class packages_js_logger_src_layer_LoggerInitError["packages.js.logger.src.layer.LoggerInitError"]
+    class packages_js_logger_src_layer_LoggerService["packages.js.logger.src.layer.LoggerService"] {
+        <<interface>>
+        +trace : context: LogContext, message: string =>…
+        +debug : context: LogContext, message: string =>…
+        +info : context: LogContext, message: string =>…
+        +warn : context: LogContext, message: string =>…
+        +error : context: LogContext, message: string =>…
+        +child : context: LogContext => Effect.Effect<Lo…
+    }
+    class packages_js_logger_src_layer_LoggerTag["packages.js.logger.src.layer.LoggerTag"]
+    class packages_py_agent_core_src_agent_core_llm_openai_OpenAIChatAdapter["packages.py.agent-core.src.agent_core.llm.openai.OpenAIChatAdapter"] {
+        #_client
+        +generate(messages, tools) LLMTurn
+        +append_assistant(messages, turn) None
+        +append_tool_result(messages, call, result) None
+    }
+    class packages_py_agent_core_src_agent_core_react_loop_LLMClient["packages.py.agent-core.src.agent_core.react_loop.LLMClient"] {
+        <<interface>>
+        +generate(messages, tools) LLMTurn
+        +append_assistant(messages, turn) None
+        +append_tool_result(messages, call, result) None
+    }
+    class packages_py_agent_core_src_agent_core_react_loop_LLMTurn["packages.py.agent-core.src.agent_core.react_loop.LLMTurn"] {
+        <<dataclass>>
+        +content : str | None
+        +tool_calls : list~ToolCall~
+        +raw : Any
+    }
+    class packages_py_agent_core_src_agent_core_react_loop_ToolCall["packages.py.agent-core.src.agent_core.react_loop.ToolCall"] {
+        <<dataclass>>
+        +id : str
+        +name : str
+        +arguments : dict~str, Any~
+    }
+    class packages_py_agent_core_src_agent_core_workflows_mcp_tools_WorkflowTools["packages.py.agent-core.src.agent_core.workflows.mcp_tools.WorkflowTools"] {
+        #_client
+        +tools
+        #_by_name
+        +handles(name) bool
+        +run(name, args) str
+        +aclose() None
+    }
+    class packages_py_agent_core_tests_test_openai_adapter_FakeClient["packages.py.agent-core.tests.test_openai_adapter.FakeClient"] {
+        #_response
+        +calls : list~tuple~
+        +generate(messages, tools) FakeResponse
+    }
+    class packages_py_agent_core_tests_test_openai_adapter_FakeMsg["packages.py.agent-core.tests.test_openai_adapter.FakeMsg"] {
+        +content
+        #_tool_calls
+        +get_tool_calls() list
+    }
+    class packages_py_agent_core_tests_test_openai_adapter_FakeResponse["packages.py.agent-core.tests.test_openai_adapter.FakeResponse"] {
+        #_msg
+        +get_message() Any
+    }
+    class packages_py_agent_core_tests_test_react_loop_FakeClient["packages.py.agent-core.tests.test_react_loop.FakeClient"] {
+        #_turns
+        +assistant_appends
+        +tool_results : list~str~
+        +generate(messages, tools) LLMTurn
+        +append_assistant(messages, turn) None
+        +append_tool_result(messages, call, result) None
+    }
+    class packages_py_agent_core_tests_test_workflow_tools_FakeClient["packages.py.agent-core.tests.test_workflow_tools.FakeClient"] {
+        +closed
+        +close() None
+    }
+    class packages_py_agent_core_tests_test_workflow_tools_FakeTool["packages.py.agent-core.tests.test_workflow_tools.FakeTool"] {
+        +name
+        #_ret
+        +calls : list~dict~
+        +arun() Any
+    }
+    class packages_py_agent_server_src_agent_server_models_AgentRequest["packages.py.agent-server.src.agent_server.models.AgentRequest"] {
+        <<dataclass>>
+        +input : str
+        +system_prompt : str | None
+        +session_id : str | None
+        +workflow_instance_id : str | None
+        +workspace_id : str | None
+        +cwd : str | None
+        +model : str | None
+        +permission_mode : str | None
+    }
+    class packages_py_agent_server_src_agent_server_models_AgentResponse["packages.py.agent-server.src.agent_server.models.AgentResponse"] {
+        <<dataclass>>
+        +output : str
+        +session_id : str
+        +model : str
+        +turns : int
+        +usage : dict
+        +cost_usd : float | None
+        +tool_calls : int | None
+        +run_id : str | None
+        +stop_reason : str | None
+    }
+    class packages_py_agent_server_src_agent_server_routes_RunRequest["packages.py.agent-server.src.agent_server.routes.RunRequest"] {
+        +input : str
+        +systemPrompt : str | None
+        +sessionId : str | None
+        +workflowInstanceId : str | None
+        +workspaceId : str | None
+        +cwd : str | None
+        +model : str | None
+        +permissionMode : str | None
+    }
+    class packages_py_agent_server_src_agent_server_routes_SetupItem["packages.py.agent-server.src.agent_server.routes.SetupItem"] {
+        +cmd : str
+        +validateCmd : str | None
+    }
+    class packages_py_agent_server_src_agent_server_routes_SetupRequest["packages.py.agent-server.src.agent_server.routes.SetupRequest"] {
+        +workflowInstanceId : str
+        +workspaceId : str | None
+        +setup : list~SetupItem~
+    }
+    class packages_py_agent_server_src_agent_server_runner_IAgentRunner["packages.py.agent-server.src.agent_server.runner.IAgentRunner"] {
+        <<interface>>
+        +run(request, workspace) AgentResponse
+    }
+    class packages_py_agent_server_src_agent_server_workflow_route_BabysitPolicy["packages.py.agent-server.src.agent_server.workflow_route.BabysitPolicy"] {
+        +maxDurationMs : int | None
+    }
+    class packages_py_agent_server_src_agent_server_workflow_route_Trigger["packages.py.agent-server.src.agent_server.workflow_route.Trigger"] {
+        +key : str | None
+        +steps : list~dict~str, Any~~ | None
+        +params : dict~str, Any~ | None
+        +instanceId : str | None
+        +workspaceId : str | None
+        +watch : dict~str, Any~ | None
+    }
+    class packages_py_agent_server_src_agent_server_workflow_route_WorkflowBabysitter["packages.py.agent-server.src.agent_server.workflow_route.WorkflowBabysitter"] {
+        +agent_id
+        +dapr_http_port
+        +workflow_app_id
+        +default_max_duration_ms
+        #_invoke_url(method) str
+        #_post(url, body) dict
+        #_get(url) Any
+        +submit(submit) dict
+        +watch_list() Any
+    }
+    class packages_py_agent_server_src_agent_server_workflow_route_WorkflowSubmit["packages.py.agent-server.src.agent_server.workflow_route.WorkflowSubmit"] {
+        +fresh : bool | None
+        +policy : BabysitPolicy | None
+        +watchMeta : dict~str, Any~ | None
+    }
+    class packages_py_agent_server_tests_test_workflow_route_FakeBabysitter["packages.py.agent-server.tests.test_workflow_route.FakeBabysitter"] {
+        +post_reply
+        +get_reply
+        +post_error
+        +get_error
+        +posts : list~tuple~str, dict~~
+        +gets : list~str~
+        #_post(url, body) dict
+        #_get(url) Any
+    }
+    packages_js_agent_cli_src_agents_codex_CodexItemCompletedEvent --|> packages_js_agent_cli_src_agents_codex_CodexEventBase
+    packages_js_agent_cli_src_agents_codex_CodexThreadStartedEvent --|> packages_js_agent_cli_src_agents_codex_CodexEventBase
+    packages_js_agent_cli_src_agents_codex_CodexTurnCompletedEvent --|> packages_js_agent_cli_src_agents_codex_CodexEventBase
+    packages_js_agent_cli_src_agents_openhands_OpenhandsActionEvent --|> packages_js_agent_cli_src_agents_openhands_OpenhandsEventBase
+    packages_js_agent_cli_src_agents_openhands_OpenhandsConversationErrorEvent --|> packages_js_agent_cli_src_agents_openhands_OpenhandsEventBase
+    packages_js_agent_cli_src_agents_openhands_OpenhandsMessageEvent --|> packages_js_agent_cli_src_agents_openhands_OpenhandsEventBase
+    packages_js_agent_cli_src_agents_pi_PiSessionEvent --|> packages_js_agent_cli_src_agents_pi_PiEventBase
+    packages_js_agent_server_src_workflow_babysitter_WorkflowSubmit --|> packages_js_agent_server_src_workflow_babysitter_Trigger
+    packages_js_core_dapr_src_actors_generic_actor_GenericActor ..|> packages_js_core_dapr_src_actors_generic_actor_IGenericActor
+    packages_py_agent_server_src_agent_server_workflow_route_WorkflowSubmit --|> packages_py_agent_server_src_agent_server_workflow_route_Trigger
+%% vizzy: 182 classes, 85 relations

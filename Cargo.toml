@@ -1,0 +1,17 @@
+[workspace]
+resolver = "2"
+members = ["crates/vizzy-core", "crates/vizzy-py"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/stiproot/vizzy"
+
+[workspace.dependencies]
+anyhow = "1"
+thiserror = "2"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1

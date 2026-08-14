@@ -1,0 +1,30 @@
+# Rust
+/target
+**/*.rs.bk
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.ruff_cache/
+
+# uv
+.python-version
+
+# Node (only used for ad-hoc mermaid rendering)
+node_modules/
+
+# Editors / OS
+.DS_Store
+.idea/
+.vscode/
+
+# Ad-hoc generated diagrams anywhere outside examples/
+*.mmd
+*.mmd.svg
+*.mmd.png
+!examples/*.mmd
