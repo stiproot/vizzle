@@ -130,6 +130,38 @@ def class_diagram(
     _emit_mermaid(diagram, output)
 
 
+def _collect_diff_files(path: Path, base: str, head: str | None) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
+    """Base- and head-revision contents of every changed source file."""
+    try:
+        root = git.repo_root(path)
+    except git.GitError as err:
+        raise click.ClickException(f"not a git repository: {err}") from err
+
+    pathspec = None
+    resolved = path.resolve()
+    if resolved != root:
+        pathspec = str(resolved.relative_to(root))
+
+    try:
+        changes = git.changed_files(root, base, head, pathspec)
+    except git.GitError as err:
+        raise click.ClickException(str(err)) from err
+
+    base_files: list[tuple[str, str]] = []
+    head_files: list[tuple[str, str]] = []
+    for change in changes:
+        base_path = change.old_path or change.path
+        if change.status != "A":
+            contents = git.file_at_ref(root, base, base_path)
+            if contents is not None:
+                base_files.append((base_path, contents))
+        if change.status != "D":
+            contents = git.file_at_ref(root, head, change.path) if head else git.file_in_worktree(root, change.path)
+            if contents is not None:
+                head_files.append((change.path, contents))
+    return base_files, head_files
+
+
 @main.command("diff")
 @click.argument("path", type=click.Path(exists=True, path_type=Path), default=".")
 @click.option("--base", default="HEAD", show_default=True, help="Base git revision to compare against.")
@@ -152,38 +184,11 @@ def diff_diagram(
     Added classes are green, removed red, modified yellow; member rows carry
     ✚ / ✖ / ✱ markers. Unchanged classes in touched files appear as context.
     """
-    try:
-        root = git.repo_root(path)
-    except git.GitError as err:
-        raise click.ClickException(f"not a git repository: {err}") from err
-
-    pathspec = None
-    resolved = path.resolve()
-    if resolved != root:
-        pathspec = str(resolved.relative_to(root))
-
-    try:
-        changes = git.changed_files(root, base, head, pathspec)
-    except git.GitError as err:
-        raise click.ClickException(str(err)) from err
-
-    if not changes:
+    base_files, head_files = _collect_diff_files(path, base, head)
+    if not base_files and not head_files:
         raise click.ClickException(
             f"no changed Python/TypeScript files between {base} and {head or 'the working tree'}"
         )
-
-    base_files: list[tuple[str, str]] = []
-    head_files: list[tuple[str, str]] = []
-    for change in changes:
-        base_path = change.old_path or change.path
-        if change.status != "A":
-            contents = git.file_at_ref(root, base, base_path)
-            if contents is not None:
-                base_files.append((base_path, contents))
-        if change.status != "D":
-            contents = git.file_at_ref(root, head, change.path) if head else git.file_in_worktree(root, change.path)
-            if contents is not None:
-                head_files.append((change.path, contents))
 
     resolved_title = title or f"changes vs {base}"
     if _resolve_format(fmt, output) == "html":
@@ -203,6 +208,72 @@ def diff_diagram(
         **_render_kwargs(members, group, externals, direction, resolved_title),
     )
     _emit_mermaid(diagram, output)
+
+
+@main.command("serve")
+@click.argument("path", type=click.Path(exists=True, path_type=Path), default=".")
+@click.option("--diff", "diff_mode", is_flag=True, help="Serve a live diff of the working tree against --base.")
+@click.option("--base", default="HEAD", show_default=True, help="Base git revision (diff mode).")
+@click.option("--head", default=None, help="Head git revision (diff mode; defaults to the working tree).")
+@click.option("-I", "--include", multiple=True, help="Glob of relative paths to include (class mode, repeatable).")
+@click.option("-E", "--exclude", multiple=True, help="Glob of relative paths to exclude (class mode, repeatable).")
+@click.option("-l", "--lang", multiple=True, type=click.Choice(["python", "typescript"]), help="Restrict languages.")
+@click.option("--members/--no-members", default=True, show_default=True, help="Render fields and methods.")
+@click.option("--externals", is_flag=True, help="Show inheritance edges to types outside the parsed set.")
+@click.option("--title", default=None, help="Diagram title.")
+@click.option("--host", default="127.0.0.1", show_default=True)
+@click.option("--port", default=8499, show_default=True, help="Port to bind (0 picks a free port).")
+@click.option("--open", "open_browser", is_flag=True, help="Open the page in your browser.")
+def serve_command(
+    path: Path,
+    diff_mode: bool,
+    base: str,
+    head: str | None,
+    include: tuple[str, ...],
+    exclude: tuple[str, ...],
+    lang: tuple[str, ...],
+    members: bool,
+    externals: bool,
+    title: str | None,
+    host: str,
+    port: int,
+    open_browser: bool,
+) -> None:
+    """Serve the diagram for PATH with live reload.
+
+    The page regenerates on every load, and connected browsers reload
+    automatically whenever a watched source file under PATH changes.
+    With --diff, you watch the working tree's changes against --base
+    reshape the diagram as you edit.
+    """
+    from . import server
+
+    if head:
+        diff_mode = True
+
+    def build_page() -> str:
+        if diff_mode:
+            base_files, head_files = _collect_diff_files(path, base, head)
+            graph_json = vizzy_core.graph_json_diff(base_files, head_files)
+            page_title = title or f"changes vs {base} (live)"
+        else:
+            graph_json = vizzy_core.graph_json_from_dir(
+                str(path), include=list(include), exclude=list(exclude), langs=list(lang)
+            )
+            page_title = title or f"{path.resolve().name} — class diagram (live)"
+        return build_html(graph_json, title=page_title, show_members=members, include_externals=externals)
+
+    build_page()  # fail fast (bad path, not a git repo, ...) before binding the port
+
+    def on_ready(url: str) -> None:
+        mode = f"diff vs {base}" if diff_mode else "class diagram"
+        click.echo(f"serving {mode} of {path.resolve()} at {url}  (ctrl-c to stop)", err=True)
+        if open_browser:
+            import webbrowser
+
+            webbrowser.open(url)
+
+    server.serve(build_page, path.resolve(), host, port, on_ready)
 
 
 if __name__ == "__main__":

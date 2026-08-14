@@ -59,6 +59,22 @@ Layout is a d3 force simulation (link + charge + rectangle collision) with a
 weak per-module gravity, ticked synchronously before first paint so the page
 opens settled.
 
+### Live server with hot reload
+
+`vizzy serve` hosts the diagram and watches the source tree; every save
+re-parses and pushes a reload to connected browsers (stdlib http.server +
+server-sent events + watchfiles — no web framework). Your zoom/pan position
+survives reloads.
+
+```sh
+uv run vizzy serve ~/code/repo/h                  # live class diagram
+uv run vizzy serve ~/code/repo/h --diff --open    # watch your working-tree
+                                                  # changes vs HEAD reshape
+                                                  # the UML as you edit
+```
+
+Defaults to http://127.0.0.1:8499/; see `--port`, `--host`, `--base`.
+
 Useful flags (both commands): `--no-members`, `--group` (mermaid namespace
 blocks per module), `--externals` (edges to types outside the parsed set),
 `--direction LR` (mermaid), `-I/-E` include/exclude globs (`vizzy class`),

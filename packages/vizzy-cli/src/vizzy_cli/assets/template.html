@@ -253,7 +253,16 @@ function updateEdges() {
 updateEdges();
 
 // ---- zoom / pan / fit ----------------------------------------------------
-const zoom = d3.zoom().scaleExtent([0.04, 5]).on("zoom", (e) => view.attr("transform", e.transform));
+// The viewport survives reloads (sessionStorage), so live-reload edits and
+// F5 don't lose your place; "Fit" always recomputes.
+const VIEW_KEY = `vizzy-view:${location.pathname}:${document.title}`;
+const zoom = d3.zoom()
+  .scaleExtent([0.04, 5])
+  .on("zoom", (e) => view.attr("transform", e.transform))
+  .on("end", (e) => {
+    const { k, x, y } = e.transform;
+    try { sessionStorage.setItem(VIEW_KEY, JSON.stringify({ k, x, y })); } catch {}
+  });
 svg.call(zoom);
 
 function fit() {
@@ -266,7 +275,15 @@ function fit() {
   svg.transition().duration(300).call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(k));
 }
 document.getElementById("fit").addEventListener("click", fit);
-requestAnimationFrame(fit);
+
+const savedView = (() => {
+  try { return JSON.parse(sessionStorage.getItem(VIEW_KEY)); } catch { return null; }
+})();
+if (savedView && [savedView.k, savedView.x, savedView.y].every(Number.isFinite)) {
+  svg.call(zoom.transform, d3.zoomIdentity.translate(savedView.x, savedView.y).scale(savedView.k));
+} else {
+  requestAnimationFrame(fit);
+}
 
 // ---- search ----------------------------------------------------------------
 document.getElementById("search").addEventListener("input", (e) => {
