@@ -100,4 +100,18 @@ plus whitespace/YAML/TOML hygiene checks. Run everything manually with
 `uv run pre-commit run --all-files`. Vendored (`assets/d3.*`) and generated
 (`examples/`) files are excluded.
 
+### JS dependencies (bun)
+
+The d3 bundle inlined into HTML output is a real dependency managed with
+[bun](https://bun.sh) in `web/`, then vendored into the Python package so
+wheels stay self-contained:
+
+```sh
+cd web
+bun install            # or: bun update d3
+bun run sync-assets    # copies node_modules/d3/dist/d3.min.js into assets/
+```
+
+The vendored copy is committed; re-run `sync-assets` after bumping d3.
+
 Example outputs generated from the `h` codebase live in `examples/`.
