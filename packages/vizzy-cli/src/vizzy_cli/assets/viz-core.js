@@ -78,7 +78,10 @@
   }
 
   /* Zoom, pan, and fit-to-view. The viewport is remembered per page so a
-   * live-reload edit (or F5) does not throw away where you were looking. */
+   * live-reload edit (or F5) does not throw away where you were looking.
+   *
+   * Returns `{ zoom, fit, focus }`; `focus(box)` frames one region — used when
+   * opening a detail view, so the thing you just opened is the thing you see. */
   function attachViewport(svg, view, { fitButton } = {}) {
     const key = `vizzy-view:${location.pathname}:${document.title}`;
     const zoom = d3
@@ -103,6 +106,20 @@
       svg.transition().duration(300).call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(k));
     }
 
+    /* Frame `{x, y, w, h}` in graph coordinates, never zooming further out
+     * than the caller already is — opening a detail should not shrink the view. */
+    function focus(box, { maxScale = 1.1, padding = 90, duration = 400 } = {}) {
+      const { width, height } = svg.node().getBoundingClientRect();
+      if (!box.w || !box.h) return;
+      const current = d3.zoomTransform(svg.node()).k;
+      const k = Math.min(width / (box.w + padding), height / (box.h + padding), maxScale);
+      const scale = Math.max(k, Math.min(current, maxScale));
+      const tx = width / 2 - scale * box.x;
+      const ty = height / 2 - scale * box.y;
+      svg.transition().duration(duration)
+        .call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(scale));
+    }
+
     if (fitButton) document.getElementById(fitButton).addEventListener("click", fit);
 
     const saved = (() => {
@@ -117,7 +134,7 @@
     } else {
       requestAnimationFrame(fit);
     }
-    return { zoom, fit };
+    return { zoom, fit, focus };
   }
 
   /* Dim whatever does not match the filter, rather than removing it, so the

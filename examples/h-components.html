@@ -199,7 +199,10 @@ text { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; user-select:
   }
 
   /* Zoom, pan, and fit-to-view. The viewport is remembered per page so a
-   * live-reload edit (or F5) does not throw away where you were looking. */
+   * live-reload edit (or F5) does not throw away where you were looking.
+   *
+   * Returns `{ zoom, fit, focus }`; `focus(box)` frames one region — used when
+   * opening a detail view, so the thing you just opened is the thing you see. */
   function attachViewport(svg, view, { fitButton } = {}) {
     const key = `vizzy-view:${location.pathname}:${document.title}`;
     const zoom = d3
@@ -224,6 +227,20 @@ text { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; user-select:
       svg.transition().duration(300).call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(k));
     }
 
+    /* Frame `{x, y, w, h}` in graph coordinates, never zooming further out
+     * than the caller already is — opening a detail should not shrink the view. */
+    function focus(box, { maxScale = 1.1, padding = 90, duration = 400 } = {}) {
+      const { width, height } = svg.node().getBoundingClientRect();
+      if (!box.w || !box.h) return;
+      const current = d3.zoomTransform(svg.node()).k;
+      const k = Math.min(width / (box.w + padding), height / (box.h + padding), maxScale);
+      const scale = Math.max(k, Math.min(current, maxScale));
+      const tx = width / 2 - scale * box.x;
+      const ty = height / 2 - scale * box.y;
+      svg.transition().duration(duration)
+        .call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(scale));
+    }
+
     if (fitButton) document.getElementById(fitButton).addEventListener("click", fit);
 
     const saved = (() => {
@@ -238,7 +255,7 @@ text { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; user-select:
     } else {
       requestAnimationFrame(fit);
     }
-    return { zoom, fit };
+    return { zoom, fit, focus };
   }
 
   /* Dim whatever does not match the filter, rather than removing it, so the
@@ -610,7 +627,10 @@ function drawNode(sel) {
     if (d.classes.length) {
       const toggle = g.append("g").attr("class", "comp-toggle")
         .attr("transform", `translate(14,${HEAD_H / 2 - 2})`)
-        .on("click", (event) => { event.stopPropagation(); setExpanded(d, !d.expanded); });
+        .on("click", (event) => {
+          event.stopPropagation();
+          setExpanded(d, !d.expanded, { reveal: true });
+        });
       toggle.append("title").text(d.expanded ? "hide classes" : `show ${d.classes.length} classes`);
       toggle.append("circle").attr("r", 8).attr("fill", "var(--panel)").attr("stroke", colors.stroke);
       toggle.append("text").attr("text-anchor", "middle").attr("y", 4)
@@ -644,10 +664,13 @@ function refresh(selection) {
   syncToggleButton();
 }
 
-function setExpanded(d, expanded) {
+function setExpanded(d, expanded, { reveal = false } = {}) {
   d.expanded = expanded && d.classes.length > 0;
   layoutClasses(d);
   refresh(node.filter((n) => n === d));
+  // Opening a component should put it in front of you: relaxation may have
+  // shifted it, and its classes are unreadable from a zoomed-out view.
+  if (reveal && d.expanded) viewport.focus({ x: d.x, y: d.y, w: d.w, h: d.h });
 }
 
 function updateEdges() {
@@ -688,7 +711,8 @@ if (!expandable.length) {
 }
 syncToggleButton();
 
-vizzy.attachViewport(svg, view, { fitButton: "fit" });
+// Handlers registered above only run after load, so binding here is safe.
+const viewport = vizzy.attachViewport(svg, view, { fitButton: "fit" });
 
 const matches = (n, query) =>
   n.comp.name.toLowerCase().includes(query) ||
