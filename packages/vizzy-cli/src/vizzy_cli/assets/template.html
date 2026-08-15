@@ -16,11 +16,7 @@ __VIZ_CORE_CSS__
   <span class="stats" id="stats"></span>
   <input id="search" type="search" placeholder="filter classes / modules…">
   <button id="fit">Fit</button>
-  <span class="legend" id="legend" hidden>
-    <span><span class="chip" style="background:var(--added-fill);border-color:var(--added-stroke)"></span>added</span>
-    <span><span class="chip" style="background:var(--removed-fill);border-color:var(--removed-stroke)"></span>removed</span>
-    <span><span class="chip" style="background:var(--modified-fill);border-color:var(--modified-stroke)"></span>modified</span>
-  </span>
+  <span class="legend" id="legend" hidden></span>
 </header>
 <svg id="canvas"></svg>
 <div class="hint">scroll to zoom · drag background to pan · drag classes to arrange</div>
@@ -33,7 +29,8 @@ __VIZ_CORE_CSS__
 "use strict";
 const graph = JSON.parse(document.getElementById("graph-data").textContent);
 const config = JSON.parse(document.getElementById("config-data").textContent);
-const { MARK, PALETTE, colorsFor, inkFor, mark, truncate, edgePoint, gridCells, arrowMarker } = vizzy;
+const { PALETTE, colorsFor, inkFor, mark, truncate, edgePoint, nodeTransform, linkPath } = vizzy;
+const { draggableNodes, externalStub, buildLinks, gridCells, arrowMarker } = vizzy;
 
 const DIFF = graph.stats.diff;
 
@@ -44,14 +41,14 @@ function memberText(m) {
   const sig = m.isMethod ? `${m.name}(${m.detail})` : m.detail ? `${m.name}: ${m.detail}` : m.name;
   const ret = m.isMethod && m.returns ? ` ${m.returns}` : "";
   const cls = m.isAbstract ? "*" : m.isStatic ? "$" : "";
-  return `${m.visibility}${sig}${cls}${ret}${MARK[m.change] || ""}`;
+  return `${m.visibility}${sig}${cls}${ret}${mark(m.change)}`;
 }
 
 function buildNode(c) {
   const fields = config.showMembers ? c.members.filter((m) => !m.isMethod) : [];
   const methods = config.showMembers ? c.members.filter((m) => m.isMethod) : [];
   const rows = [...fields, ...methods];
-  const header = c.name + (MARK[c.change] || "");
+  const header = c.name + mark(c.change);
   const widest = Math.max(
     header.length + 4,
     c.module.length,
@@ -71,24 +68,17 @@ const byId = new Map(nodes.map((n) => [n.id, n]));
 
 // External bases become small stub nodes (deduped by name).
 if (config.includeExternals) {
-  const seen = new Map();
   for (const r of graph.relations) {
-    if (!r.external) continue;
-    if (!seen.has(r.to)) {
-      const w = Math.max(r.to.length + 4, 10) * CHAR_W + PAD_X * 2;
-      const stub = { id: `ext:${r.to}`, cls: { name: r.to, module: "", members: [], change: "unchanged" },
-                     fields: [], methods: [], w, h: HEADER_H, external: true };
-      seen.set(r.to, stub);
-      nodes.push(stub);
-      byId.set(stub.id, stub);
-    }
+    if (!r.external || byId.has(`ext:${r.to}`)) continue;
+    const stub = externalStub(r.to, { charWidth: CHAR_W, padX: PAD_X, payloadKey: "cls", height: HEADER_H });
+    stub.fields = [];
+    stub.methods = [];
+    nodes.push(stub);
+    byId.set(stub.id, stub);
   }
 }
 
-const links = graph.relations
-  .filter((r) => (r.external ? config.includeExternals : true))
-  .map((r) => ({ source: r.from, target: r.external ? `ext:${r.to}` : r.to, kind: r.kind }))
-  .filter((l) => byId.has(l.source) && byId.has(l.target));
+const links = buildLinks(graph.relations, byId, config.includeExternals, (r) => ({ kind: r.kind }));
 
 // ---- layout: force simulation, ticked synchronously -------------------
 // Weak per-module gravity keeps each module's classes near a grid cell.
@@ -132,15 +122,10 @@ const node = view.append("g")
   .data(nodes)
   .join("g")
   .call(drawClass)
-  .call(d3.drag()
-    .on("drag", function (event, d) {
-      d.x += event.dx; d.y += event.dy;
-      d3.select(this).attr("transform", `translate(${d.x - d.w / 2},${d.y - d.h / 2})`);
-      updateEdges();
-    }));
+  .call((sel) => draggableNodes(sel, { onMove: updateEdges }));
 
 function drawClass(sel) {
-  sel.attr("transform", (d) => `translate(${d.x - d.w / 2},${d.y - d.h / 2})`);
+  sel.attr("transform", nodeTransform);
   sel.append("title").text((d) => d.cls.qualified);
 
   const boxColors = (d) => (d.external ? PALETTE.external : colorsFor(d.cls.change, DIFF));
@@ -195,11 +180,7 @@ function drawClass(sel) {
 }
 
 function updateEdges() {
-  edge.attr("d", (d) => {
-    const a = edgePoint(d.source, d.target);
-    const b = edgePoint(d.target, d.source);
-    return `M${a.x},${a.y}L${b.x},${b.y}`;
-  });
+  edge.attr("d", linkPath);
 }
 updateEdges();
 

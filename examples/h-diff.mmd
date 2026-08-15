@@ -1,109 +1,58 @@
 ---
-title: changes vs HEAD~20
+title: changes vs HEAD~3
 ---
 classDiagram
-    class apps_workflow_svc_src_domain_watch_scan_CostTally["apps.workflow-svc.src.domain.watch-scan.CostTally"] {
-        <<interface>>
-        +costUsd : number
-        +costGap : boolean
-        +gapRuns : number
-        +costByAgent : Record<string, number>
+    class cli_h_hatch_build_BundleSubstrate["cli.h.hatch_build.BundleSubstrate ✚"] {
+        +PLUGIN_NAME ✚
+        +initialize(version, build_data) None ✚
     }
-    class apps_workflow_svc_src_presentation_http_workflow_router_CronNeedsIdentityError["apps.workflow-svc.src.presentation.http.workflow.router.CronNeedsIdentityError"]
-    class apps_workflow_svc_src_presentation_http_workflow_router_InvalidCronError["apps.workflow-svc.src.presentation.http.workflow.router.InvalidCronError"]
-    class apps_workflow_svc_src_presentation_http_workflow_router_InvalidScheduleError["apps.workflow-svc.src.presentation.http.workflow.router.InvalidScheduleError"]
-    class apps_workflow_svc_src_presentation_http_workflow_router_NotFoundError["apps.workflow-svc.src.presentation.http.workflow.router.NotFoundError"]
-    class apps_workflow_svc_src_presentation_http_workflow_router_ScheduleConflictsCronError["apps.workflow-svc.src.presentation.http.workflow.router.ScheduleConflictsCronError"]
-    class apps_workflow_svc_src_presentation_http_workflow_router_WorkflowNotFoundError["apps.workflow-svc.src.presentation.http.workflow.router.WorkflowNotFoundError"]
-    class packages_js_agent_server_src_workflow_babysitter_BabysitPolicy["packages.js.agent-server.src.workflow-babysitter.BabysitPolicy"] {
-        <<interface>>
-        +maxDurationMs : number
-        +pollIntervalMs : number
+    class cli_h_src_h_cli_commands_events_RelayStepError["cli.h.src.h_cli.commands.events.RelayStepError"]
+    class cli_h_src_h_cli_infrastructure_chain_expr_ChainExpr["cli.h.src.h_cli.infrastructure.chain_expr.ChainExpr"] {
+        <<dataclass>>
+        +defaults : WorkflowConfig
+        +stages : tuple~tuple~MemberRef, ...~, ...~
+        +members : tuple~MemberRef, ...~
     }
-    class packages_js_agent_server_src_workflow_babysitter_BabysitterConfig["packages.js.agent-server.src.workflow-babysitter.BabysitterConfig"] {
-        <<interface>>
-        +agentId : string
-        +daprHttpPort : string
-        +workflowAppId : string
-        +defaultPolicy : BabysitPolicy
-        +fetchImpl : typeof fetch
-        +onLog : msg: string => void
+    class cli_h_src_h_cli_infrastructure_chain_expr_ExprError["cli.h.src.h_cli.infrastructure.chain_expr.ExprError"]
+    class cli_h_src_h_cli_infrastructure_chain_expr_MemberRef["cli.h.src.h_cli.infrastructure.chain_expr.MemberRef"] {
+        <<dataclass>>
+        +key : str | None
+        +templates : tuple~str, ...~
+        +config : WorkflowConfig
+        +label : str
     }
-    class packages_js_agent_server_src_workflow_babysitter_Trigger["packages.js.agent-server.src.workflow-babysitter.Trigger ✚"] {
-        <<interface>>
-        +key : string ✚
-        +steps : unknown[] ✚
-        +params : Record<string, unknown> ✚
-        +instanceId : string ✚
-        +workspaceId : string ✚
-        +watch : WatchPolicy ✚
+    class cli_h_src_h_cli_infrastructure_chain_expr_WorkflowConfig["cli.h.src.h_cli.infrastructure.chain_expr.WorkflowConfig"] {
+        <<dataclass>>
+        +agents : tuple~str, ...~
+        +model : str | None
+        +budget : str | None
+        +fresh : bool
+        +kind : str | None
+        +stage : str | None
+        +cron : str | None
+        +max_fires : str | None
+        +id : str | None
+        +inline : bool
+        +captures : tuple~tuple~str, str~, ...~
+        +inputs : tuple~tuple~str, str~, ...~
+        +until : str | None
     }
-    class packages_js_agent_server_src_workflow_babysitter_WatchPolicy["packages.js.agent-server.src.workflow-babysitter.WatchPolicy"] {
-        <<interface>>
-        +maxDurationMs : number
-        +unknownStreakLimit : number
-        +retry :  maxAttempts: number fresh?: boolean on…
-        +escalate :  onOutcome: string[] key: string params…
+    class cli_h_src_h_cli_infrastructure_events_fabric_FabricError["cli.h.src.h_cli.infrastructure.events_fabric.FabricError"]
+    class cli_h_src_h_cli_infrastructure_local_runtime_LocalRunError["cli.h.src.h_cli.infrastructure.local_runtime.LocalRunError"]
+    class cli_h_src_h_cli_infrastructure_workspace_ExternalWorkspaceError["cli.h.src.h_cli.infrastructure.workspace.ExternalWorkspaceError"]
+    class packages_js_local_runtime_src_domain_execute_StepError["packages.js.local-runtime.src.domain.execute.StepError"]
+    class packages_js_local_runtime_src_domain_ports_AgentPort["packages.js.local-runtime.src.domain.ports.AgentPort"]
+    class packages_js_local_runtime_src_domain_ports_JournalError["packages.js.local-runtime.src.domain.ports.JournalError ✚"] {
+        +message() string ✚
     }
-    class packages_js_agent_server_src_workflow_babysitter_WorkflowBabysitter["packages.js.agent-server.src.workflow-babysitter.WorkflowBabysitter"] {
-        -cfg : Required<Omit<BabysitterConfig, fetchIm…
-        -fetchImpl : typeof fetch
-        -onLog : msg: string => void
-        -invokeUrl(method) string
-        +submit(submit) Promise< instanceId: string watching: b…
-        +list() Promise<unknown>
-        -post(method, body) Promise<unknown>
+    class packages_js_local_runtime_src_domain_ports_JournalPort["packages.js.local-runtime.src.domain.ports.JournalPort ✚"]
+    class packages_js_local_runtime_src_domain_ports_ProgressPort["packages.js.local-runtime.src.domain.ports.ProgressPort"]
+    class packages_js_local_runtime_src_domain_ports_WorkspaceError["packages.js.local-runtime.src.domain.ports.WorkspaceError"] {
+        +message() string
     }
-    class packages_js_agent_server_src_workflow_babysitter_WorkflowSubmit["packages.js.agent-server.src.workflow-babysitter.WorkflowSubmit ✱"] {
-        <<interface>>
-        +fresh : boolean
-        +policy : BabysitPolicy
-        +watchMeta : Record<string, unknown>
-        +key : string ✖
-        +steps : unknown[] ✖
-        +params : Record<string, unknown> ✖
-        +instanceId : string ✖
-        +workspaceId : string ✖
-        +watch : WatchPolicy ✖
-    }
-    class packages_py_agent_server_src_agent_server_workflow_route_BabysitPolicy["packages.py.agent-server.src.agent_server.workflow_route.BabysitPolicy"] {
-        +maxDurationMs : int | None
-    }
-    class packages_py_agent_server_src_agent_server_workflow_route_Trigger["packages.py.agent-server.src.agent_server.workflow_route.Trigger ✚"] {
-        +key : str | None ✚
-        +steps : list~dict~str, Any~~ | None ✚
-        +params : dict~str, Any~ | None ✚
-        +instanceId : str | None ✚
-        +workspaceId : str | None ✚
-        +watch : dict~str, Any~ | None ✚
-    }
-    class packages_py_agent_server_src_agent_server_workflow_route_WorkflowBabysitter["packages.py.agent-server.src.agent_server.workflow_route.WorkflowBabysitter"] {
-        +agent_id
-        +dapr_http_port
-        +workflow_app_id
-        +default_max_duration_ms
-        #_invoke_url(method) str
-        #_post(url, body) dict
-        #_get(url) Any
-        +submit(submit) dict
-        +watch_list() Any
-    }
-    class packages_py_agent_server_src_agent_server_workflow_route_WorkflowSubmit["packages.py.agent-server.src.agent_server.workflow_route.WorkflowSubmit ✱"] {
-        +fresh : bool | None
-        +policy : BabysitPolicy | None
-        +watchMeta : dict~str, Any~ | None
-        +key : str | None ✖
-        +steps : list~dict~str, Any~~ | None ✖
-        +params : dict~str, Any~ | None ✖
-        +instanceId : str | None ✖
-        +workspaceId : str | None ✖
-        +watch : dict~str, Any~ | None ✖
-    }
-    packages_js_agent_server_src_workflow_babysitter_WorkflowSubmit --|> packages_js_agent_server_src_workflow_babysitter_Trigger
-    packages_py_agent_server_src_agent_server_workflow_route_WorkflowSubmit --|> packages_py_agent_server_src_agent_server_workflow_route_Trigger
-    cssClass "packages_js_agent_server_src_workflow_babysitter_Trigger,packages_py_agent_server_src_agent_server_workflow_route_Trigger" vizzyAdded
-    cssClass "packages_js_agent_server_src_workflow_babysitter_WorkflowSubmit,packages_py_agent_server_src_agent_server_workflow_route_WorkflowSubmit" vizzyModified
-    classDef vizzyAdded fill:#e6ffec,stroke:#1a7f37,stroke-width:2px,color:#1a7f37
-    classDef vizzyRemoved fill:#ffebe9,stroke:#cf222e,stroke-width:2px,stroke-dasharray:6 4,color:#cf222e
-    classDef vizzyModified fill:#fff8c5,stroke:#9a6700,stroke-width:2px,color:#9a6700
-%% vizzy: 17 classes, 10 relations
+    class packages_js_local_runtime_src_domain_ports_WorkspacePort["packages.js.local-runtime.src.domain.ports.WorkspacePort"]
+    cssClass "cli_h_hatch_build_BundleSubstrate,packages_js_local_runtime_src_domain_ports_JournalError,packages_js_local_runtime_src_domain_ports_JournalPort" vizzyAdded
+    classDef vizzyAdded fill:#dafbe1,stroke:#1a7f37,stroke-width:2px,color:#1a7f37
+    classDef vizzyRemoved fill:#ffebe9,stroke:#cf222e,stroke-width:2px,color:#cf222e,stroke-dasharray:6 4
+    classDef vizzyModified fill:#fff1c2,stroke:#bf8700,stroke-width:2px,color:#bf8700
+%% vizzy: 16 classes, 13 relations

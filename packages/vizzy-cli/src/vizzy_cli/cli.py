@@ -55,39 +55,69 @@ def _emit_mermaid(diagram: str, output: Path | None) -> None:
     _emit(diagram, output, marker.removeprefix("%% vizzy: "))
 
 
-def render_options(fn):
-    fn = click.option("--members/--no-members", default=True, show_default=True, help="Render fields and methods.")(fn)
-    fn = click.option(
-        "--group/--no-group",
-        "group",
-        default=False,
-        show_default=True,
-        help="Group classes into namespace blocks per module (mermaid only).",
-    )(fn)
-    fn = click.option("--externals", is_flag=True, help="Show inheritance edges to types outside the parsed set.")(fn)
-    fn = click.option(
+def _compose(*options):
+    """Apply a set of click options as one decorator, declared in one place."""
+
+    def decorate(fn):
+        for option in reversed(options):
+            fn = option(fn)
+        return fn
+
+    return decorate
+
+
+# Which files to read. Shared by every command that walks a tree.
+select_options = _compose(
+    click.option("-I", "--include", multiple=True, help="Glob of relative paths to include (repeatable)."),
+    click.option("-E", "--exclude", multiple=True, help="Glob of relative paths to exclude (repeatable)."),
+    click.option(
+        "-l",
+        "--lang",
+        multiple=True,
+        type=click.Choice(["python", "typescript"]),
+        help="Restrict languages (repeatable).",
+    ),
+)
+
+# Where the diagram goes and what it is called. Shared by every command that emits one.
+output_options = _compose(
+    click.option(
         "--direction",
         type=click.Choice(["TB", "BT", "LR", "RL"]),
         default=None,
         help="Layout direction (mermaid only).",
-    )(fn)
-    fn = click.option("--title", default=None, help="Diagram title.")(fn)
-    fn = click.option(
+    ),
+    click.option("--title", default=None, help="Diagram title."),
+    click.option(
         "-f",
         "--format",
         "fmt",
         type=click.Choice(["mermaid", "html"]),
         default=None,
         help="Output format. Defaults to html when the output file ends in .html, else mermaid.",
-    )(fn)
-    fn = click.option(
+    ),
+    click.option(
         "-o",
         "--output",
         type=click.Path(dir_okay=False, path_type=Path),
         default=None,
         help="Write the diagram to a file instead of stdout.",
-    )(fn)
-    return fn
+    ),
+)
+
+# Class-diagram rendering choices, plus the shared output set.
+render_options = _compose(
+    click.option("--members/--no-members", default=True, show_default=True, help="Render fields and methods."),
+    click.option(
+        "--group/--no-group",
+        "group",
+        default=False,
+        show_default=True,
+        help="Group classes into namespace blocks per module (mermaid only).",
+    ),
+    click.option("--externals", is_flag=True, help="Show inheritance edges to types outside the parsed set."),
+    output_options,
+)
 
 
 @click.group()
@@ -98,11 +128,7 @@ def main() -> None:
 
 @main.command("class")
 @click.argument("path", type=click.Path(exists=True, path_type=Path), default=".")
-@click.option("-I", "--include", multiple=True, help="Glob of relative paths to include (repeatable).")
-@click.option("-E", "--exclude", multiple=True, help="Glob of relative paths to exclude (repeatable).")
-@click.option(
-    "-l", "--lang", multiple=True, type=click.Choice(["python", "typescript"]), help="Restrict languages (repeatable)."
-)
+@select_options
 @render_options
 def class_diagram(
     path: Path,
@@ -144,11 +170,7 @@ def class_diagram(
 
 @main.command("component")
 @click.argument("path", type=click.Path(exists=True, path_type=Path), default=".")
-@click.option("-I", "--include", multiple=True, help="Glob of relative paths to include (repeatable).")
-@click.option("-E", "--exclude", multiple=True, help="Glob of relative paths to exclude (repeatable).")
-@click.option(
-    "-l", "--lang", multiple=True, type=click.Choice(["python", "typescript"]), help="Restrict languages (repeatable)."
-)
+@select_options
 @click.option(
     "--group/--no-group",
     "group",
@@ -165,25 +187,7 @@ def class_diagram(
     help="Embed each component's classes so they can be opened in the page (html only).",
 )
 @click.option("--externals", is_flag=True, help="Show one node per external package (npm/PyPI).")
-@click.option(
-    "--direction", type=click.Choice(["TB", "BT", "LR", "RL"]), default=None, help="Layout direction (mermaid only)."
-)
-@click.option("--title", default=None, help="Diagram title.")
-@click.option(
-    "-f",
-    "--format",
-    "fmt",
-    type=click.Choice(["mermaid", "html"]),
-    default=None,
-    help="Output format. Defaults to html when the output file ends in .html, else mermaid.",
-)
-@click.option(
-    "-o",
-    "--output",
-    type=click.Path(dir_okay=False, path_type=Path),
-    default=None,
-    help="Write the diagram to a file instead of stdout.",
-)
+@output_options
 def component_diagram(
     path: Path,
     include: tuple[str, ...],
@@ -227,12 +231,17 @@ def component_diagram(
     _emit_mermaid(diagram, output)
 
 
-def _collect_diff_files(path: Path, base: str, head: str | None) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
-    """Base- and head-revision contents of every changed source file."""
+def _repo_root(path: Path) -> Path:
+    """The repository `path` lives in, as a CLI error if there isn't one."""
     try:
-        root = git.repo_root(path)
+        return git.repo_root(path)
     except git.GitError as err:
         raise click.ClickException(f"not a git repository: {err}") from err
+
+
+def _collect_diff_files(path: Path, base: str, head: str | None) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
+    """Base- and head-revision contents of every changed source file."""
+    root = _repo_root(path)
 
     pathspec = None
     resolved = path.resolve()
@@ -274,10 +283,7 @@ def _collect_component_revision(root: Path, ref: str | None) -> tuple[list[tuple
 
 
 def _collect_component_diff(path: Path, base: str, head: str | None) -> tuple[list, list, list, list]:
-    try:
-        root = git.repo_root(path)
-    except git.GitError as err:
-        raise click.ClickException(f"not a git repository: {err}") from err
+    root = _repo_root(path)
     try:
         base_files, base_manifests = _collect_component_revision(root, base)
         head_files, head_manifests = _collect_component_revision(root, head)

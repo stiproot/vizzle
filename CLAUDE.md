@@ -39,12 +39,19 @@ Facts that must live in exactly one place:
 
 - **Change-status strings** (`added`/`removed`/`modified`/`unchanged`):
   `export::change_str`. Every renderer keys its palette on these.
+- **Change glyphs** (`✚ ✖ ✱`): `ChangeKind::glyph`.
+- **The diff palette**: `palette.rs`. It generates the Mermaid `classDef`
+  block *and* the CSS custom properties the HTML views read, because when
+  those were maintained separately they drifted and the same diagram rendered
+  in two different greens. Colors only one renderer cares about (the HTML
+  context grey) stay in `viz-core.css`.
 - **How a class becomes JSON**: `export::class_json`, shared by the class and
   component exports so both describe a class identically.
 - **How two revisions are compared**: `diff::diff_graphs`. The component diff
   reuses it rather than implementing a second class-comparison.
-- **Palette, box/edge geometry, arrow markers, viewport, filter, header**:
-  `assets/viz-core.{css,js}`. Templates describe only their own nodes.
+- **Box/edge geometry, node transforms, drag, arrow markers, viewport, filter,
+  header and legend**: `assets/viz-core.{css,js}`. Templates describe only
+  their own nodes.
 - **Geometry used for both layout and drawing** (e.g. group-box margins): one
   function, called by both. When the layout's idea of a box differs from the
   renderer's, you get overlaps that look like layout bugs and are not.

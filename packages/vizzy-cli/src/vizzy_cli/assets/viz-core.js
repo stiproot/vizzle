@@ -41,6 +41,59 @@
     return text.length > chars ? text.slice(0, Math.max(1, Math.floor(chars) - 1)) + "…" : text;
   }
 
+  /* Nodes carry a centre (x, y) and a size (w, h); SVG groups are positioned
+   * by their top-left corner. One conversion, used everywhere. */
+  function nodeTransform(d) {
+    return `translate(${d.x - d.w / 2},${d.y - d.h / 2})`;
+  }
+
+  /* Straight edge between two boxes, clipped to both boundaries. */
+  function linkPath(d) {
+    const a = edgePoint(d.source, d.target);
+    const b = edgePoint(d.target, d.source);
+    return `M${a.x},${a.y}L${b.x},${b.y}`;
+  }
+
+  /* Drag a node by moving its centre. `onMove` lets a view update whatever
+   * else depends on the position (edges, group boxes). */
+  function draggableNodes(selection, { onMove } = {}) {
+    return selection.call(
+      d3.drag().on("drag", function (event, d) {
+        d.x += event.dx;
+        d.y += event.dy;
+        d3.select(this).attr("transform", nodeTransform(d));
+        if (onMove) onMove(d);
+      })
+    );
+  }
+
+  /* A stub node for something outside the parsed set (an npm/PyPI package, an
+   * unresolved base type). `payloadKey` is what the view calls its datum. */
+  function externalStub(name, { charWidth, padX, payloadKey, height = 30 }) {
+    const w = Math.max(name.length + 4, 10) * charWidth + padX * 2;
+    return {
+      id: `ext:${name}`,
+      [payloadKey]: { name, path: "", group: "", module: "", members: [], change: "unchanged" },
+      w,
+      h: height,
+      baseW: w,
+      external: true,
+    };
+  }
+
+  /* Resolve `{from, to, external}` records into d3 links, dropping any whose
+   * endpoints are not on the canvas. `extra` copies through per-view fields. */
+  function buildLinks(records, byId, includeExternals, extra = () => ({})) {
+    return records
+      .filter((r) => (r.external ? includeExternals : true))
+      .map((r) => ({
+        source: r.from,
+        target: r.external ? `ext:${r.to}` : r.to,
+        ...extra(r),
+      }))
+      .filter((l) => byId.has(l.source) && byId.has(l.target));
+  }
+
   /* Where an edge between two boxes meets the boundary of `node`. */
   function edgePoint(node, other) {
     const dx = other.x - node.x;
@@ -153,21 +206,35 @@
     });
   }
 
+  /* Stats readout, plus the diff legend — built here so every view labels the
+   * change colors identically, and only when there is a diff to explain. */
   function setHeader(statsText, diffMode) {
     const stats = document.getElementById("stats");
     if (stats) stats.textContent = statsText;
     const legend = document.getElementById("legend");
-    if (legend && diffMode) legend.hidden = false;
+    if (!legend || !diffMode) return;
+    legend.innerHTML = ["added", "removed", "modified"]
+      .map(
+        (change) =>
+          `<span><span class="chip" style="background:var(--${change}-fill);` +
+          `border-color:var(--${change}-stroke)"></span>${change}</span>`
+      )
+      .join("");
+    legend.hidden = false;
   }
 
   window.vizzy = {
-    MARK,
     PALETTE,
     colorsFor,
     inkFor,
     mark,
     truncate,
     edgePoint,
+    nodeTransform,
+    linkPath,
+    draggableNodes,
+    externalStub,
+    buildLinks,
     gridCells,
     arrowMarker,
     attachViewport,

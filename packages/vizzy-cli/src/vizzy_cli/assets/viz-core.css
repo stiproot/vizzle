@@ -17,9 +17,9 @@
   --context-stroke: #b6bec8;
   --context-ink: #8b949e;
 
-  --added-fill: #dafbe1;    --added-stroke: #1a7f37;
-  --removed-fill: #ffebe9;  --removed-stroke: #cf222e;
-  --modified-fill: #fff1c2; --modified-stroke: #bf8700;
+  /* Change colors come from vizzy-core's palette, so the HTML and Mermaid
+     renderings of the same diagram cannot drift apart. */
+__PALETTE_CSS__
 }
 * { box-sizing: border-box; margin: 0; }
 html, body { height: 100%; }

@@ -9,27 +9,32 @@ from click.testing import CliRunner
 from vizzy_cli.cli import main
 
 
+def git(cwd: Path, *args: str) -> None:
+    """Run git in a throwaway repo with a fixed identity and no user config."""
+    subprocess.run(
+        ["git", *args],
+        cwd=cwd,
+        check=True,
+        capture_output=True,
+        env={
+            "GIT_AUTHOR_NAME": "t",
+            "GIT_AUTHOR_EMAIL": "t@t",
+            "GIT_COMMITTER_NAME": "t",
+            "GIT_COMMITTER_EMAIL": "t@t",
+            "PATH": "/usr/bin:/bin",
+        },
+    )
+
+
 @pytest.fixture()
 def repo(tmp_path: Path) -> Path:
-    def git(*args: str) -> None:
-        subprocess.run(
-            ["git", *args],
-            cwd=tmp_path,
-            check=True,
-            capture_output=True,
-            env={
-                "GIT_AUTHOR_NAME": "t",
-                "GIT_AUTHOR_EMAIL": "t@t",
-                "GIT_COMMITTER_NAME": "t",
-                "GIT_COMMITTER_EMAIL": "t@t",
-                "PATH": "/usr/bin:/bin",
-            },
-        )
+    def git_(*args: str) -> None:
+        git(tmp_path, *args)
 
-    git("init")
+    git_("init")
     (tmp_path / "app.py").write_text("class Base:\n    def run(self) -> int: ...\n\nclass Old:\n    pass\n")
-    git("add", ".")
-    git("commit", "-m", "base")
+    git_("add", ".")
+    git_("commit", "-m", "base")
     (tmp_path / "app.py").write_text(
         "class Base:\n    def run(self) -> int: ...\n\nclass Fresh(Base):\n    name: str\n"
     )
@@ -82,27 +87,12 @@ def test_diff_outside_git_repo(tmp_path: Path) -> None:
 def workspace(tmp_path: Path) -> Path:
     """A committed mini-workspace: two packages, one app depending on core."""
 
-    def git(*args: str) -> None:
-        subprocess.run(
-            ["git", *args],
-            cwd=tmp_path,
-            check=True,
-            capture_output=True,
-            env={
-                "GIT_AUTHOR_NAME": "t",
-                "GIT_AUTHOR_EMAIL": "t@t",
-                "GIT_COMMITTER_NAME": "t",
-                "GIT_COMMITTER_EMAIL": "t@t",
-                "PATH": "/usr/bin:/bin",
-            },
-        )
-
     def write(rel: str, contents: str) -> None:
         path = tmp_path / rel
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(contents)
 
-    git("init")
+    git(tmp_path, "init")
     write("package.json", '{"name": "root", "workspaces": ["packages/*", "apps/*"]}')
     write("packages/core/package.json", '{"name": "@w/core"}')
     write("packages/core/src/index.ts", "export class Core {}\n")
@@ -110,8 +100,8 @@ def workspace(tmp_path: Path) -> Path:
     write("packages/util/src/index.ts", "export const u = 1;\n")
     write("apps/svc/package.json", '{"name": "svc"}')
     write("apps/svc/src/main.ts", 'import { Core } from "@w/core";\nexport class Svc {}\n')
-    git("add", ".")
-    git("commit", "-m", "base")
+    git(tmp_path, "add", ".")
+    git(tmp_path, "commit", "-m", "base")
     return tmp_path
 
 
@@ -150,6 +140,7 @@ def test_pages_inline_the_shared_core(workspace: Path, tmp_path: Path, command: 
     page = out.read_text()
     assert "window.vizzy" in page  # shared JS
     assert "--context-fill" in page  # shared palette
+    assert "attachViewport" in page and "focus" in page  # shared viewport API
     assert not re.search(r"__[A-Z0-9_]+__", page)
 
 

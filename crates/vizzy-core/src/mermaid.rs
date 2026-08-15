@@ -4,6 +4,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::fmt::Write;
 
 use crate::model::{ChangeKind, Class, CodeGraph, Member, RelationKind};
+use crate::palette;
 use crate::resolve::{resolve_relations, Target};
 
 #[derive(Debug, Clone)]
@@ -29,16 +30,6 @@ impl Default for RenderOptions {
             direction: None,
             title: None,
         }
-    }
-}
-
-/// Marker appended to member rows in diff mode.
-fn change_marker(change: ChangeKind) -> &'static str {
-    match change {
-        ChangeKind::Added => " ✚",
-        ChangeKind::Removed => " ✖",
-        ChangeKind::Modified => " ✱",
-        ChangeKind::Unchanged => "",
     }
 }
 
@@ -91,10 +82,7 @@ pub fn render(graph: &CodeGraph, opts: &RenderOptions) -> String {
         groups.entry(key).or_default().push(class);
     }
 
-    let diff_mode = graph
-        .classes
-        .iter()
-        .any(|c| c.change != ChangeKind::Unchanged);
+    let diff_mode = graph.diff_mode();
 
     for (module, classes) in &groups {
         let (indent, in_namespace) = if opts.group_by_module {
@@ -142,26 +130,18 @@ pub fn render(graph: &CodeGraph, opts: &RenderOptions) -> String {
     // classDef styles in classDiagrams when the classDef statements appear
     // AFTER the cssClass attachments, so these are emitted last.
     if diff_mode {
-        for (change, css) in [
-            (ChangeKind::Added, "vizzyAdded"),
-            (ChangeKind::Removed, "vizzyRemoved"),
-            (ChangeKind::Modified, "vizzyModified"),
-        ] {
+        for change in [ChangeKind::Added, ChangeKind::Removed, ChangeKind::Modified] {
             let members: Vec<&str> = graph
                 .classes
                 .iter()
                 .filter(|c| c.change == change)
                 .map(|c| ids[c.qualified.as_str()].as_str())
                 .collect();
-            if !members.is_empty() {
+            if let (false, Some(css)) = (members.is_empty(), palette::mermaid_class(change)) {
                 let _ = writeln!(out, "    cssClass \"{}\" {css}", members.join(","));
             }
         }
-        out.push_str(concat!(
-            "    classDef vizzyAdded fill:#e6ffec,stroke:#1a7f37,stroke-width:2px,color:#1a7f37\n",
-            "    classDef vizzyRemoved fill:#ffebe9,stroke:#cf222e,stroke-width:2px,stroke-dasharray:6 4,color:#cf222e\n",
-            "    classDef vizzyModified fill:#fff8c5,stroke:#9a6700,stroke-width:2px,color:#9a6700\n",
-        ));
+        out.push_str(&palette::mermaid_classdefs());
     }
 
     let relation_count = graph.classes.iter().map(|c| c.bases.len()).sum::<usize>();
@@ -190,12 +170,7 @@ fn write_class(
     };
     let mut label = escape_label(&label);
     if diff_mode {
-        match class.change {
-            ChangeKind::Added => label.push_str(" ✚"),
-            ChangeKind::Removed => label.push_str(" ✖"),
-            ChangeKind::Modified => label.push_str(" ✱"),
-            ChangeKind::Unchanged => {}
-        }
+        label.push_str(class.change.glyph());
     }
 
     let has_body = class.annotation.is_some() || (opts.show_members && !class.members.is_empty());
@@ -225,11 +200,7 @@ fn member_row(member: &Member, diff_mode: bool) -> String {
     } else {
         ""
     };
-    let marker = if diff_mode {
-        change_marker(member.change)
-    } else {
-        ""
-    };
+    let marker = if diff_mode { member.change.glyph() } else { "" };
     let row = if member.is_method {
         let returns = member
             .returns

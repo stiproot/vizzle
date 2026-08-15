@@ -55,15 +55,12 @@ def changed_files(root: Path, base: str, head: str | None, pathspec: str | None)
         else:
             changes.append(ChangedFile(status=status[0], path=fields[i + 1]))
             i += 2
-    return [c for c in changes if _supported(c.path) or (c.old_path and _supported(c.old_path))]
-
-
-def _supported(path: str) -> bool:
-    return path.endswith(SUPPORTED_SUFFIXES) and not path.endswith(".d.ts")
+    return [c for c in changes if is_source(c.path) or (c.old_path and is_source(c.old_path))]
 
 
 def is_source(path: str) -> bool:
-    return _supported(path)
+    """Whether vizzy parses this file. The single definition of "source file"."""
+    return path.endswith(SUPPORTED_SUFFIXES) and not path.endswith(".d.ts")
 
 
 def is_manifest(path: str) -> bool:

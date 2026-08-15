@@ -12,6 +12,7 @@ pub mod diff;
 pub mod export;
 pub mod mermaid;
 pub mod model;
+pub mod palette;
 pub mod parse;
 pub mod resolve;
 pub mod walk;

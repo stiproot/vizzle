@@ -211,6 +211,11 @@ the header carries a **Show classes** button that opens or closes every
 component at once. Expanding re-runs the relaxation, so growing boxes push
 their neighbours aside instead of overlapping them.
 
+Opening a component also **frames it**: the viewport zooms to the box it just
+grew (never further out than you already are), because relaxation may have
+shifted it and chips are unreadable from a whole-repo view. That is the
+"zoom in, then turn on detail" flow, with the zoom handled for you.
+
 The class detail rides along in the page payload (`classes[]`, each tagged with
 its owning `component`), so drill-down is instant and needs no regeneration.
 `--no-classes` omits it for a leaner page.

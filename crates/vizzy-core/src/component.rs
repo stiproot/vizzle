@@ -16,6 +16,7 @@ use serde_json::{json, Value};
 use crate::export::change_str;
 use crate::mermaid::{escape_label, sanitize_id};
 use crate::model::{ChangeKind, Class, CodeGraph, Import, Language};
+use crate::palette;
 use crate::parse;
 
 /// Manifest file names that mark a directory as a component, in priority
@@ -651,15 +652,6 @@ fn node_id(path: &str) -> String {
     }
 }
 
-fn change_glyph(change: ChangeKind) -> &'static str {
-    match change {
-        ChangeKind::Added => " ✚",
-        ChangeKind::Removed => " ✖",
-        ChangeKind::Modified => " ✱",
-        ChangeKind::Unchanged => "",
-    }
-}
-
 /// Render the component graph as a Mermaid `flowchart` styled to read as a
 /// UML component diagram (mermaid has no native component-diagram syntax).
 pub fn render_mermaid(graph: &ComponentGraph, opts: &ComponentRenderOptions) -> String {
@@ -695,7 +687,7 @@ pub fn render_mermaid(graph: &ComponentGraph, opts: &ComponentRenderOptions) -> 
         };
         for component in components {
             let glyph = if diff_mode {
-                change_glyph(component.change)
+                component.change.glyph()
             } else {
                 ""
             };
@@ -732,7 +724,7 @@ pub fn render_mermaid(graph: &ComponentGraph, opts: &ComponentRenderOptions) -> 
             label_parts.push(edge.weight.to_string());
         }
         if diff_mode && edge.change != ChangeKind::Unchanged {
-            label_parts.push(change_glyph(edge.change).trim().to_owned());
+            label_parts.push(edge.change.glyph().trim().to_owned());
         }
         let from_id = node_id(&edge.from);
         if label_parts.is_empty() {
@@ -765,26 +757,18 @@ pub fn render_mermaid(graph: &ComponentGraph, opts: &ComponentRenderOptions) -> 
     }
 
     if diff_mode {
-        for (change, css) in [
-            (ChangeKind::Added, "vizzyAdded"),
-            (ChangeKind::Removed, "vizzyRemoved"),
-            (ChangeKind::Modified, "vizzyModified"),
-        ] {
+        for change in [ChangeKind::Added, ChangeKind::Removed, ChangeKind::Modified] {
             let members: Vec<String> = graph
                 .components
                 .iter()
                 .filter(|c| c.change == change)
                 .map(|c| node_id(&c.path))
                 .collect();
-            if !members.is_empty() {
+            if let (false, Some(css)) = (members.is_empty(), palette::mermaid_class(change)) {
                 let _ = writeln!(out, "    class {} {css}", members.join(","));
             }
         }
-        out.push_str(concat!(
-            "    classDef vizzyAdded fill:#e6ffec,stroke:#1a7f37,stroke-width:2px,color:#1a7f37\n",
-            "    classDef vizzyRemoved fill:#ffebe9,stroke:#cf222e,stroke-width:2px,stroke-dasharray:6 4,color:#cf222e\n",
-            "    classDef vizzyModified fill:#fff8c5,stroke:#9a6700,stroke-width:2px,color:#9a6700\n",
-        ));
+        out.push_str(&palette::mermaid_classdefs());
         if !added_links.is_empty() {
             let indices: Vec<String> = added_links.iter().map(usize::to_string).collect();
             let _ = writeln!(

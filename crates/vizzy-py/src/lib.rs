@@ -256,6 +256,13 @@ fn component_json_diff(
     .map_err(to_py_err)
 }
 
+/// The diff palette as CSS custom properties, for inlining into an HTML page.
+/// Keeps the HTML views on the same colors as the Mermaid renderer.
+#[pyfunction]
+fn diff_palette_css() -> String {
+    vc::palette::css_variables()
+}
+
 /// Export the class graph under `root` as JSON (for external renderers).
 #[pyfunction]
 #[pyo3(signature = (root, *, include = vec![], exclude = vec![], langs = vec![]))]
@@ -292,6 +299,7 @@ fn vizzy_core_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(component_json_from_dir, m)?)?;
     m.add_function(wrap_pyfunction!(component_diagram_diff, m)?)?;
     m.add_function(wrap_pyfunction!(component_json_diff, m)?)?;
+    m.add_function(wrap_pyfunction!(diff_palette_css, m)?)?;
     m.add_function(wrap_pyfunction!(graph_json_from_dir, m)?)?;
     m.add_function(wrap_pyfunction!(graph_json_diff, m)?)?;
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;

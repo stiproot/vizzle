@@ -51,6 +51,19 @@ pub enum ChangeKind {
     Modified,
 }
 
+impl ChangeKind {
+    /// Marker appended to a label in diff mode. Every renderer uses these, so
+    /// a class, a member, and a component all read the same way.
+    pub fn glyph(&self) -> &'static str {
+        match self {
+            ChangeKind::Added => " ✚",
+            ChangeKind::Removed => " ✖",
+            ChangeKind::Modified => " ✱",
+            ChangeKind::Unchanged => "",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Member {
     pub name: String,
@@ -147,6 +160,13 @@ pub struct CodeGraph {
 }
 
 impl CodeGraph {
+    /// Whether anything in the graph carries a change — i.e. render the diff lens.
+    pub fn diff_mode(&self) -> bool {
+        self.classes
+            .iter()
+            .any(|c| c.change != ChangeKind::Unchanged)
+    }
+
     pub fn merge(&mut self, other: CodeGraph) {
         self.classes.extend(other.classes);
         self.imports.extend(other.imports);

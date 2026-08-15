@@ -6,6 +6,8 @@ import html as html_escape
 import json
 from importlib import resources
 
+import vizzy_core
+
 
 def _fill(template_name: str, graph_json: str, title: str, config: dict) -> str:
     """Inline every asset into one self-contained page.
@@ -14,13 +16,18 @@ def _fill(template_name: str, graph_json: str, title: str, config: dict) -> str:
     plumbing they share live in viz-core.{css,js} and are inlined into both.
     """
     assets = resources.files("vizzy_cli") / "assets"
-    read = lambda name: (assets / name).read_text(encoding="utf-8")  # noqa: E731
+
+    def read(name: str) -> str:
+        return (assets / name).read_text(encoding="utf-8")
+
     # A literal "</script>" inside embedded JSON would end the script block early.
     safe_json = graph_json.replace("</", "<\\/")
+    # The change palette is owned by vizzy-core so HTML and Mermaid agree.
+    core_css = read("viz-core.css").replace("__PALETTE_CSS__", vizzy_core.diff_palette_css())
     return (
         read(template_name)
         .replace("__TITLE__", html_escape.escape(title))
-        .replace("__VIZ_CORE_CSS__", read("viz-core.css"))
+        .replace("__VIZ_CORE_CSS__", core_css)
         .replace("__D3_JS__", read("d3.v7.min.js"))
         .replace("__VIZ_CORE_JS__", read("viz-core.js"))
         .replace("__GRAPH_JSON__", safe_json)

@@ -12,7 +12,7 @@ from collections.abc import Callable
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from .git import SUPPORTED_SUFFIXES
+from .git import is_source
 
 # Vendored and generated trees hold no source vizzy parses, but dominate the
 # directory count (on a mid-size monorepo: ~10k dirs vs ~400 without them).
@@ -116,7 +116,8 @@ def make_server(
 
 
 def is_watched_source(path: str) -> bool:
-    return path.endswith(SUPPORTED_SUFFIXES) and not path.endswith(".d.ts")
+    """A change is worth a reload exactly when vizzy would parse the file."""
+    return is_source(path)
 
 
 def source_watch_dirs(root: Path, limit: int = MAX_WATCH_DIRS) -> list[Path]:
