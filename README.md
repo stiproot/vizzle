@@ -4,8 +4,11 @@ UML visualization for git: parse a codebase (or a git diff) and render UML
 diagrams — as Mermaid text or as an interactive d3-powered HTML page — with
 changes highlighted so a reader immediately sees what a change did to the
 shape of the code. Two diagram types so far: **class** (the shape of the
-code) and **component** (the shape of the application); each type's spec
-lives in `docs/diagram-types/`.
+code) and **component** (the shape of the application). Each type has a spec
+in `docs/diagram-types/` — what an element is, how it is detected, what its
+diff means, and the modelling decisions behind it (e.g. why aggregation and
+composition diamonds are a convention rather than an inference:
+`docs/diagram-types/class.md` §5.4).
 
 - **Rust core** (`crates/vizzy-core`): tree-sitter parsing (Python +
   TypeScript), a language-neutral class graph + import graph, a component

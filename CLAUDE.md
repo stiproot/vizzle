@@ -24,6 +24,9 @@ is wrong, not the layer.
 1. **Write the spec first** (`docs/diagram-types/<type>.md`): what an element
    is, how it is detected, how it renders, what its diff means, its CLI surface,
    and acceptance criteria against a real repo. Agree on the model before code.
+   **Modelling decisions go in the spec, with their evidence** — what was
+   measured, what was chosen, what would change it. A decision recorded only in
+   a commit message is a decision the next reader will silently reverse.
 2. Model + detection + render + JSON export in `vizzy-core`, as its own module.
 3. Bindings, then CLI command, then a template.
 4. A new diagram type means **a new template, never a copied page**. If you are

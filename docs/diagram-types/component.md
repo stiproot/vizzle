@@ -3,8 +3,8 @@
 **Status:** v1 implemented (§8 provided-interfaces and the §9 items remain future work).
 **Command:** `vizzy component <repo>` (+ `vizzy diff --type component`, `vizzy serve --type component`)
 
-The spec for vizzy's second diagram type. The class diagram answers *"what is
-the shape of the code?"*; the component diagram answers *"what is the shape of
+The spec for vizzy's second diagram type (the first is [class.md](class.md)).
+The class diagram answers *"what is the shape of the code?"*; the component diagram answers *"what is the shape of
 the application?"* — one box per module, one arrow per dependency, changes
 highlighted.
 
@@ -291,8 +291,9 @@ class graph vizzy already extracts.
 - Runtime/infra edges (Dapr pub/sub, HTTP calls between h services) — imports
   only. A future `--infra` source could read declared bindings, but that is a
   different truth source and must not silently mix with import edges.
-- Association *multiplicity* and aggregation/composition distinctions — vizzy
-  draws association and dependency, not the diamond notations.
+- Association multiplicity, and the aggregation/composition diamonds — the
+  relation model, and the decision on ownership notation, live in the class
+  diagram's spec ([class.md §5.4](class.md#54-decision-aggregation-and-composition-diamonds)).
 - Relations crossing a component boundary drawn between the class boxes
   themselves (they render as component-level dependency edges instead).
 - Rust/Go **parsing** (detection already recognizes their manifests, so a
