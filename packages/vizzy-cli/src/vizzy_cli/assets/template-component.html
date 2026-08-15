@@ -33,13 +33,15 @@ __VIZ_CORE_CSS__
 "use strict";
 const graph = JSON.parse(document.getElementById("graph-data").textContent);
 const config = JSON.parse(document.getElementById("config-data").textContent);
-const { colorsFor, inkFor, mark, truncate, nodeTransform, linkPath } = vizzy;
+const { colorsFor, inkFor, mark, nodeTransform, linkPath, edgePoint } = vizzy;
+const { classBoxLayout, drawClassBox, relationStyle } = vizzy;
 const { draggableNodes, externalStub, buildLinks, gridCells, arrowMarker } = vizzy;
 
 const DIFF = graph.stats.diff;
 const CHAR_W = 7.25, PAD_X = 14;
 const HEAD_H = 58;                       // collapsed component height
-const CHIP_H = 22, CHIP_GAP = 6, CHIP_PAD = 12, CHIP_MAX_W = 190;
+const INNER_PAD = 14;                    // gap between the class diagram and its component box
+const INNER_SCALE = 1;                   // class boxes render at full size; zoom does the rest
 
 // ---- model ------------------------------------------------------------
 // Classes arrive flat, tagged with their component; group them once.
@@ -47,6 +49,17 @@ const classesByComponent = new Map();
 for (const cls of graph.classes || []) {
   if (!classesByComponent.has(cls.component)) classesByComponent.set(cls.component, []);
   classesByComponent.get(cls.component).push(cls);
+}
+
+// Relations between classes, kept per component so an exploded box can draw
+// its own class diagram.
+const relationsByComponent = new Map();
+const componentOfClass = new Map(graph.classes.map((c) => [c.qualified, c.component]));
+for (const relation of graph.classRelations || []) {
+  const from = componentOfClass.get(relation.from);
+  if (!from || from !== componentOfClass.get(relation.to)) continue;   // cross-component: drawn at component level
+  if (!relationsByComponent.has(from)) relationsByComponent.set(from, []);
+  relationsByComponent.get(from).push(relation);
 }
 
 function statsLine(c) {
@@ -85,29 +98,107 @@ const links = buildLinks(graph.edges, byId, config.includeExternals, (e) => ({
   change: e.change,
 }));
 
-// Expanding a component grows its box to hold a grid of class chips; the
-// chips are children of the component group, so they drag along with it.
+// A component's "explosion": the class diagram that lives inside it. Laid out
+// once at load — a small force pass over its own classes and relations — then
+// only shown or hidden, never rebuilt.
+function buildExplosion(node) {
+  if (!node.classes.length) return null;
+  const boxes = node.classes.map((cls) => {
+    const box = classBoxLayout(cls, { showMembers: true, showModule: false, scale: INNER_SCALE });
+    return { id: cls.qualified, cls, box, w: box.w, h: box.h };
+  });
+  const byId = new Map(boxes.map((b) => [b.id, b]));
+  const links = (relationsByComponent.get(node.comp.path) || [])
+    .filter((r) => byId.has(r.from) && byId.has(r.to))
+    .map((r) => ({ source: r.from, target: r.to, kind: r.kind }));
+
+  packBoxes(boxes, links);
+  return {
+    boxes,
+    links,
+    w: d3.max(boxes, (b) => b.x + b.w / 2),
+    h: d3.max(boxes, (b) => b.y + b.h / 2),
+  };
+}
+
+/* Place class boxes in rows, related ones adjacent.
+ *
+ * A force layout is the wrong tool here: most classes in a package have no
+ * relations at all, so repulsion just blows the box up with whitespace. Rows
+ * stay compact and readable; ordering by connectivity keeps a class next to
+ * the ones it points at, so the edges stay short. */
+function packBoxes(boxes, links, gap = 18) {
+  const index = new Map(boxes.map((b, i) => [b.id, i]));
+  const parent = boxes.map((_, i) => i);
+  const find = (i) => (parent[i] === i ? i : (parent[i] = find(parent[i])));
+  for (const link of links) {
+    const a = index.get(link.source), b = index.get(link.target);
+    if (a !== undefined && b !== undefined) parent[find(a)] = find(b);
+  }
+  const clusters = new Map();
+  boxes.forEach((b, i) => {
+    const key = find(i);
+    if (!clusters.has(key)) clusters.set(key, []);
+    clusters.get(key).push(b);
+  });
+  // Biggest clusters first; isolated classes fall to the end.
+  const ordered = [...clusters.values()]
+    .sort((a, b) => b.length - a.length || b[0].w - a[0].w)
+    .flat();
+
+  // Row width chosen for a roughly landscape block.
+  const area = d3.sum(ordered, (b) => (b.w + gap) * (b.h + gap));
+  const rowWidth = Math.max(d3.max(ordered, (b) => b.w), Math.sqrt(area * 1.7));
+
+  let x = 0, y = 0, rowHeight = 0;
+  for (const box of ordered) {
+    if (x > 0 && x + box.w > rowWidth) {
+      x = 0;
+      y += rowHeight + gap;
+      rowHeight = 0;
+    }
+    box.x = x + box.w / 2;
+    box.y = y + box.h / 2;
+    x += box.w + gap;
+    rowHeight = Math.max(rowHeight, box.h);
+  }
+}
+
+// Generic rectangular separation, used for class boxes inside a component and
+// for the components themselves.
+function separateRects(items, iterations, padding) {
+  for (let pass = 0; pass < iterations; pass++) {
+    let moved = false;
+    for (let i = 0; i < items.length; i++) {
+      for (let j = i + 1; j < items.length; j++) {
+        const a = items[i], b = items[j];
+        const dx = b.x - a.x, dy = b.y - a.y;
+        const overlapX = (a.w + b.w) / 2 + padding - Math.abs(dx);
+        const overlapY = (a.h + b.h) / 2 + padding - Math.abs(dy);
+        if (overlapX <= 0 || overlapY <= 0) continue;
+        if (overlapX < overlapY) {
+          const shift = ((dx < 0 ? -1 : 1) * overlapX) / 2;
+          a.x -= shift; b.x += shift;
+        } else {
+          const shift = ((dy < 0 ? -1 : 1) * overlapY) / 2;
+          a.y -= shift; b.y += shift;
+        }
+        moved = true;
+      }
+    }
+    if (!moved) return;
+  }
+}
+
+// Expanded, a component is sized to hold its class diagram.
 function layoutClasses(node) {
-  if (!node.expanded || !node.classes.length) {
+  if (node.expanded && node.explosion) {
+    node.w = Math.max(node.baseW, node.explosion.w + INNER_PAD * 2);
+    node.h = HEAD_H + node.explosion.h + INNER_PAD;
+  } else {
     node.w = node.baseW;
     node.h = HEAD_H;
-    node.chips = [];
-    return;
   }
-  const chipW = Math.min(
-    CHIP_MAX_W,
-    Math.max(node.baseW - CHIP_PAD * 2, ...node.classes.map((c) => (c.name.length + 3) * CHAR_W))
-  );
-  const cols = Math.max(1, Math.min(4, Math.ceil(Math.sqrt(node.classes.length))));
-  const rows = Math.ceil(node.classes.length / cols);
-  node.w = Math.max(node.baseW, cols * chipW + (cols + 1) * CHIP_PAD);
-  node.h = HEAD_H + rows * (CHIP_H + CHIP_GAP) + CHIP_PAD;
-  node.chips = node.classes.map((cls, i) => ({
-    cls,
-    w: chipW,
-    x: CHIP_PAD + (i % cols) * (chipW + CHIP_PAD),
-    y: HEAD_H + Math.floor(i / cols) * (CHIP_H + CHIP_GAP),
-  }));
 }
 
 // ---- layout ------------------------------------------------------------
@@ -118,6 +209,7 @@ nodes.forEach((n, i) => {
   const cell = cellOf.get(n.comp.group) || { x: 0, y: 0 };
   n.x = cell.x + (i % 5) * 40 - 80;
   n.y = cell.y + (Math.floor(i / 5) % 5) * 40 - 80;
+  n.explosion = buildExplosion(n);
   layoutClasses(n);
 });
 
@@ -135,29 +227,7 @@ for (let i = 0; i < 300; i++) sim.tick();
 // arrangement in two passes: separate overlapping components, then separate
 // whole groups as blocks. Rectangular separation packs far tighter than the
 // circular collision force, and keeps each group's box from swallowing another.
-function separateComponents(iterations, padding) {
-  for (let pass = 0; pass < iterations; pass++) {
-    let moved = false;
-    for (let i = 0; i < nodes.length; i++) {
-      for (let j = i + 1; j < nodes.length; j++) {
-        const a = nodes[i], b = nodes[j];
-        const dx = b.x - a.x, dy = b.y - a.y;
-        const overlapX = (a.w + b.w) / 2 + padding - Math.abs(dx);
-        const overlapY = (a.h + b.h) / 2 + padding - Math.abs(dy);
-        if (overlapX <= 0 || overlapY <= 0) continue;
-        if (overlapX < overlapY) {           // push apart along the shallower axis
-          const shift = ((dx < 0 ? -1 : 1) * overlapX) / 2;
-          a.x -= shift; b.x += shift;
-        } else {
-          const shift = ((dy < 0 ? -1 : 1) * overlapY) / 2;
-          a.y -= shift; b.y += shift;
-        }
-        moved = true;
-      }
-    }
-    if (!moved) return;
-  }
-}
+const separateComponents = (iterations, padding) => separateRects(nodes, iterations, padding);
 
 // The group box drawn around a set of components. Separation and rendering
 // share this geometry, so the gap the layout leaves is the gap you see.
@@ -229,7 +299,9 @@ const view = svg.append("g");
 svg.append("defs").html(
   arrowMarker("arrow-dep", "var(--edge)") +
   arrowMarker("arrow-dep-added", "var(--added-stroke)", 7) +
-  arrowMarker("arrow-dep-removed", "var(--removed-stroke)", 7)
+  arrowMarker("arrow-dep-removed", "var(--removed-stroke)", 7) +
+  arrowMarker("arrow-hollow", "var(--edge)", 8, "hollow") +
+  arrowMarker("arrow-open", "var(--edge)", 7)
 );
 
 // Group boxes are draggable: moving one moves every component inside it.
@@ -306,78 +378,120 @@ function classTitle(cls) {
   return `${stereotype}${cls.qualified}${members ? "\n" + members + more : ""}`;
 }
 
+// Each node's DOM is built once: chrome (box, title, toggle) plus a hidden
+// explosion holding its class diagram. Expanding flips visibility and resizes
+// the box — it never rebuilds, so toggling stays instant however big the
+// component is.
 function drawNode(sel) {
   sel.each(function (d) {
     const g = d3.select(this);
-    g.selectAll("*").remove();               // full redraw: expand/collapse is rare
+    g.selectAll("*").remove();
     const colors = d.external ? vizzy.PALETTE.external : colorsFor(d.comp.change, DIFF);
     const ink = d.external ? "var(--muted)" : inkFor(d.comp.change, DIFF);
 
     g.append("title").text(d.external ? d.comp.name : d.comp.path || "(repo root)");
     g.append("rect")
-      .attr("width", d.w).attr("height", d.h).attr("rx", 8)
+      .attr("class", "comp-box")
+      .attr("rx", 8)
       .attr("fill", colors.fill)
       .attr("stroke", colors.stroke)
       .attr("stroke-width", d.comp.change === "unchanged" && !d.external ? 1.3 : 2)
       .attr("stroke-dasharray", d.comp.change === "removed" || d.external ? "6 4" : null);
 
-    // UML component tabs.
     if (!d.external) {
-      for (const dy of [6, 13]) {
-        g.append("rect").attr("x", d.w - 22).attr("y", dy).attr("width", 14).attr("height", 5)
+      for (const dy of [6, 13]) {                       // UML component tabs
+        g.append("rect").attr("class", "comp-tab")
+          .attr("y", dy).attr("width", 14).attr("height", 5)
           .attr("fill", "var(--panel)").attr("stroke", colors.stroke).attr("stroke-width", 1);
       }
     }
 
     let y = d.external ? 19 : 15;
     if (!d.external) {
-      g.append("text").attr("x", d.w / 2).attr("y", y).attr("text-anchor", "middle")
-        .attr("font-size", 10).attr("fill", "var(--muted)").text("«component»");
+      g.append("text").attr("class", "comp-centered").attr("y", y)
+        .attr("text-anchor", "middle").attr("font-size", 10)
+        .attr("fill", "var(--muted)").text("«component»");
       y += 16;
     }
-    g.append("text").attr("x", d.w / 2).attr("y", y).attr("text-anchor", "middle")
-      .attr("font-size", 12.5).attr("font-weight", 700).attr("fill", ink)
+    g.append("text").attr("class", "comp-centered").attr("y", y)
+      .attr("text-anchor", "middle").attr("font-size", 12.5)
+      .attr("font-weight", 700).attr("fill", ink)
       .text(d.comp.name + mark(d.comp.change));
     if (d.sub) {
       y += 15;
-      g.append("text").attr("x", d.w / 2).attr("y", y).attr("text-anchor", "middle")
-        .attr("font-size", 10).attr("fill", "var(--muted)").text(d.sub);
+      g.append("text").attr("class", "comp-centered").attr("y", y)
+        .attr("text-anchor", "middle").attr("font-size", 10)
+        .attr("fill", "var(--muted)").text(d.sub);
     }
 
-    // Drill-down affordance, only where there is something to open.
-    if (d.classes.length) {
+    if (d.explosion) {
       const toggle = g.append("g").attr("class", "comp-toggle")
         .attr("transform", `translate(14,${HEAD_H / 2 - 2})`)
         .on("click", (event) => {
           event.stopPropagation();
           setExpanded(d, !d.expanded, { reveal: true });
         });
-      toggle.append("title").text(d.expanded ? "hide classes" : `show ${d.classes.length} classes`);
+      toggle.append("title").text(`show / hide ${d.classes.length} classes`);
       toggle.append("circle").attr("r", 8).attr("fill", "var(--panel)").attr("stroke", colors.stroke);
-      toggle.append("text").attr("text-anchor", "middle").attr("y", 4)
-        .attr("font-size", 12).attr("fill", ink).text(d.expanded ? "−" : "+");
-    }
-
-    for (const chip of d.chips || []) {
-      const chipColors = colorsFor(chip.cls.change, DIFF);
-      const chipGroup = g.append("g").attr("transform", `translate(${chip.x},${chip.y})`);
-      chipGroup.append("title").text(classTitle(chip.cls));
-      chipGroup.append("rect")
-        .attr("width", chip.w).attr("height", CHIP_H).attr("rx", 4)
-        .attr("fill", chipColors.fill).attr("stroke", chipColors.stroke)
-        .attr("stroke-width", chip.cls.change === "unchanged" ? 1 : 1.8)
-        .attr("stroke-dasharray", chip.cls.change === "removed" ? "4 3" : null);
-      chipGroup.append("text")
-        .attr("x", 6).attr("y", CHIP_H / 2 + 4).attr("font-size", 10.5)
-        .attr("fill", inkFor(chip.cls.change, DIFF))
-        .attr("text-decoration", chip.cls.change === "removed" ? "line-through" : null)
-        .text(truncate(chip.cls.name + mark(chip.cls.change), (chip.w - 10) / (CHAR_W * 0.86)));
+      toggle.append("text").attr("class", "toggle-sign").attr("text-anchor", "middle").attr("y", 4)
+        .attr("font-size", 12).attr("fill", ink).text("+");
+      buildExplosionDom(g, d);
     }
   });
+  sel.each((d) => sizeNode(d));
 }
 
-function refresh(selection) {
-  drawNode(selection);
+/* The class diagram inside a component: edges first, boxes on top. */
+function buildExplosionDom(g, d) {
+  const layer = g.append("g")
+    .attr("class", "comp-explosion")
+    .attr("display", "none")
+    .attr("transform", `translate(${INNER_PAD},${HEAD_H})`);
+
+  const at = new Map(d.explosion.boxes.map((b) => [b.id, b]));
+  const endpoint = (l, key) => at.get(typeof l[key] === "object" ? l[key].id : l[key]);
+
+  layer.append("g").selectAll("path")
+    .data(d.explosion.links)
+    .join("path")
+    .attr("fill", "none")
+    .attr("stroke", "var(--edge)")
+    .attr("stroke-width", 1.1)
+    .attr("opacity", (l) => (l.kind === "dependency" ? 0.5 : 0.8))
+    .attr("stroke-dasharray", (l) => relationStyle(l.kind).dash)
+    .attr("marker-end", (l) => `url(#arrow-${relationStyle(l.kind).marker})`)
+    .attr("d", (l) => {
+      const a = endpoint(l, "source"), b = endpoint(l, "target");
+      const from = edgePoint(a, b), to = edgePoint(b, a);
+      return `M${from.x},${from.y}L${to.x},${to.y}`;
+    })
+    .append("title")
+    .text((l) => `${endpoint(l, "source").cls.name} ${l.kind} ${endpoint(l, "target").cls.name}`);
+
+  layer.append("g").selectAll("g")
+    .data(d.explosion.boxes)
+    .join("g")
+    .attr("transform", (b) => `translate(${b.x - b.w / 2},${b.y - b.h / 2})`)
+    .each(function (b) {
+      drawClassBox(d3.select(this), b.cls, b.box, { diff: DIFF });
+    });
+}
+
+/* Resize the box and re-centre its chrome — the only work a toggle does. */
+function sizeNode(d) {
+  const g = node.filter((n) => n === d);
+  g.select("rect.comp-box").attr("width", d.w).attr("height", d.h);
+  g.selectAll("rect.comp-tab").attr("x", d.w - 22);
+  g.selectAll("text.comp-centered").attr("x", d.w / 2);
+  g.select("text.toggle-sign").text(d.expanded ? "−" : "+");
+  g.select("g.comp-explosion").attr("display", d.expanded ? null : "none");
+}
+
+function refresh(changed) {
+  for (const d of changed) {
+    layoutClasses(d);
+    sizeNode(d);
+  }
   relayout();
   positionNodes();
   updateEdges();
@@ -386,11 +500,9 @@ function refresh(selection) {
 }
 
 function setExpanded(d, expanded, { reveal = false } = {}) {
-  d.expanded = expanded && d.classes.length > 0;
-  layoutClasses(d);
-  refresh(node.filter((n) => n === d));
-  // Opening a component should put it in front of you: relaxation may have
-  // shifted it, and its classes are unreadable from a zoomed-out view.
+  d.expanded = expanded && !!d.explosion;
+  refresh([d]);
+  // Opening should put the thing you opened in front of you.
   if (reveal && d.expanded) viewport.focus({ x: d.x, y: d.y, w: d.w, h: d.h });
 }
 
@@ -404,7 +516,7 @@ updateEdges();
 updateHulls();
 
 // ---- controls ------------------------------------------------------------
-const expandable = nodes.filter((n) => n.classes.length);
+const expandable = nodes.filter((n) => n.explosion);
 const toggleButton = document.getElementById("toggle-classes");
 
 function syncToggleButton() {
@@ -419,11 +531,8 @@ if (!expandable.length) {
 } else {
   toggleButton.addEventListener("click", () => {
     const expand = !expandable.some((n) => n.expanded);
-    for (const n of expandable) {
-      n.expanded = expand;
-      layoutClasses(n);
-    }
-    refresh(node);
+    for (const n of expandable) n.expanded = expand;
+    refresh(expandable);
   });
 }
 syncToggleButton();

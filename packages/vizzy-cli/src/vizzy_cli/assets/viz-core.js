@@ -41,6 +41,119 @@
     return text.length > chars ? text.slice(0, Math.max(1, Math.floor(chars) - 1)) + "…" : text;
   }
 
+  /* ---- UML class box ---------------------------------------------------
+   * One renderer, used by the class diagram and by a component exploded into
+   * its classes, so a class looks the same wherever you meet it. */
+
+  const BOX = { charWidth: 7.25, rowH: 16, padX: 10, headerH: 34, sep: 6, maxWidth: 460 };
+
+  /* `+name: Type`, `-run(arg: T) Ret`, with UML classifiers. */
+  function memberText(m) {
+    const signature = m.isMethod
+      ? `${m.name}(${m.detail})`
+      : m.detail
+        ? `${m.name}: ${m.detail}`
+        : m.name;
+    const returns = m.isMethod && m.returns ? ` ${m.returns}` : "";
+    const classifier = m.isAbstract ? "*" : m.isStatic ? "$" : "";
+    return `${m.visibility}${signature}${classifier}${returns}${mark(m.change)}`;
+  }
+
+  /* Size a class box to its contents; `scale` shrinks it for nested use. */
+  function classBoxLayout(cls, { showMembers = true, showModule = true, scale = 1, maxWidth } = {}) {
+    const charWidth = BOX.charWidth * scale;
+    const rowH = BOX.rowH * scale;
+    const members = showMembers ? cls.members || [] : [];
+    const fields = members.filter((m) => !m.isMethod);
+    const methods = members.filter((m) => m.isMethod);
+    const rows = [...fields, ...methods];
+    const header = cls.name + mark(cls.change);
+    const widest = Math.max(
+      header.length + 4,
+      showModule && cls.module ? cls.module.length : 0,
+      ...rows.map((m) => memberText(m).length),
+      12
+    );
+    const w = Math.min(maxWidth || BOX.maxWidth, widest * charWidth + BOX.padX * 2);
+    const h =
+      BOX.headerH * scale +
+      (cls.annotation ? 14 * scale : 0) +
+      (fields.length ? BOX.sep + fields.length * rowH : 0) +
+      (methods.length ? BOX.sep + methods.length * rowH : 0) +
+      (rows.length ? 6 : 2);
+    return { w, h, fields, methods, scale, showModule, charWidth, rowH };
+  }
+
+  /* Draw the box into `g`, which is assumed empty. */
+  function drawClassBox(g, cls, layout, { diff = false, external = false } = {}) {
+    const { w, h, fields, methods, scale, showModule, charWidth, rowH } = layout;
+    const colors = external ? PALETTE.external : colorsFor(cls.change, diff);
+    const ink = external ? "var(--muted)" : inkFor(cls.change, diff);
+    const font = (size) => size * scale;
+
+    g.append("title").text(cls.qualified || cls.name);
+    g.append("rect")
+      .attr("width", w)
+      .attr("height", h)
+      .attr("rx", 6 * scale)
+      .attr("fill", colors.fill)
+      .attr("stroke", colors.stroke)
+      .attr("stroke-width", cls.change === "unchanged" && !external ? 1.2 : 2)
+      .attr("stroke-dasharray", cls.change === "removed" || external ? "6 4" : null);
+
+    let y = 15 * scale;
+    if (external || cls.annotation) {
+      g.append("text")
+        .attr("x", w / 2).attr("y", y).attr("text-anchor", "middle")
+        .attr("font-size", font(10.5)).attr("fill", "var(--muted)")
+        .text(`«${external ? "external" : cls.annotation}»`);
+      y += 14 * scale;
+    }
+    g.append("text")
+      .attr("x", w / 2).attr("y", y).attr("text-anchor", "middle")
+      .attr("font-size", font(12.5)).attr("font-weight", 700).attr("fill", ink)
+      .text(cls.name + mark(cls.change));
+    y += 13 * scale;
+    if (showModule && cls.module) {
+      g.append("text")
+        .attr("x", w / 2).attr("y", y).attr("text-anchor", "middle")
+        .attr("font-size", font(9.5)).attr("fill", "var(--muted)")
+        .text(cls.module);
+      y += 6 * scale;
+    }
+
+    for (const section of [fields, methods]) {
+      if (!section.length) continue;
+      y += 3;
+      g.append("line")
+        .attr("x1", 0).attr("x2", w).attr("y1", y).attr("y2", y)
+        .attr("stroke", colors.stroke).attr("stroke-width", 0.8);
+      y += 3;
+      for (const m of section) {
+        y += rowH - 3 * scale;
+        g.append("text")
+          .attr("x", BOX.padX).attr("y", y)
+          .attr("font-size", font(11.5))
+          .attr("fill", inkFor(m.change, diff))
+          .attr("font-style", m.isAbstract ? "italic" : null)
+          .attr("text-decoration", m.change === "removed" ? "line-through" : null)
+          .text(truncate(memberText(m), (w - BOX.padX * 2) / charWidth));
+        y += 3 * scale;
+      }
+    }
+  }
+
+  /* Stroke style per relation kind, matching UML convention: inheritance and
+   * association solid, implements and dependency dashed. */
+  function relationStyle(kind) {
+    return {
+      inherits: { dash: null, marker: "hollow" },
+      implements: { dash: "6 4", marker: "hollow" },
+      association: { dash: null, marker: "open" },
+      dependency: { dash: "4 3", marker: "open" },
+    }[kind] || { dash: null, marker: "open" };
+  }
+
   /* Nodes carry a centre (x, y) and a size (w, h); SVG groups are positioned
    * by their top-left corner. One conversion, used everywhere. */
   function nodeTransform(d) {
@@ -122,12 +235,14 @@
 
   /* A compact arrowhead marker. The default d3/mermaid heads read as oversized
    * once a graph has more than a handful of edges. */
-  function arrowMarker(id, stroke, width = 6) {
+  function arrowMarker(id, stroke, width = 6, shape = "open") {
+    const head =
+      shape === "hollow"
+        ? `<path d="M1,1 L9,5 L1,9 Z" fill="var(--bg)" stroke="${stroke}" stroke-width="1.4"/>`
+        : `<path d="M1.5,1.5 L9,5 L1.5,8.5" fill="none" stroke="${stroke}" stroke-width="1.6"
+             stroke-linecap="round" stroke-linejoin="round"/>`;
     return `<marker id="${id}" viewBox="0 0 10 10" refX="9" refY="5"
-      markerWidth="${width}" markerHeight="${width}" orient="auto-start-reverse">
-      <path d="M1.5,1.5 L9,5 L1.5,8.5" fill="none" stroke="${stroke}" stroke-width="1.6"
-        stroke-linecap="round" stroke-linejoin="round"/>
-    </marker>`;
+      markerWidth="${width}" markerHeight="${width}" orient="auto-start-reverse">${head}</marker>`;
   }
 
   /* Zoom, pan, and fit-to-view. The viewport is remembered per page so a
@@ -225,10 +340,15 @@
 
   window.vizzy = {
     PALETTE,
+    BOX,
     colorsFor,
     inkFor,
     mark,
     truncate,
+    memberText,
+    classBoxLayout,
+    drawClassBox,
+    relationStyle,
     edgePoint,
     nodeTransform,
     linkPath,

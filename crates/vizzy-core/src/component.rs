@@ -860,14 +860,33 @@ pub fn to_json(graph: &ComponentGraph, include_classes: bool) -> String {
         Vec::new()
     };
 
+    // Relations between those classes, so an exploded component can render a
+    // real class diagram rather than a list of names. Derived from the same
+    // resolver the class diagram uses.
+    let class_relations: Vec<Value> = if include_classes {
+        let code = CodeGraph {
+            classes: graph.classes.iter().map(|p| p.class.clone()).collect(),
+            imports: Vec::new(),
+        };
+        crate::resolve::resolve_all_relations(&code)
+            .iter()
+            .filter(|r| matches!(r.to, crate::resolve::Target::Internal(_)))
+            .map(crate::export::relation_json)
+            .collect()
+    } else {
+        Vec::new()
+    };
+
     json!({
         "components": components,
         "edges": edges,
         "classes": classes,
+        "classRelations": class_relations,
         "stats": {
             "components": graph.components.len(),
             "edges": graph.edges.len(),
             "classes": classes.len(),
+            "classRelations": class_relations.len(),
             "diff": graph.diff_mode(),
         },
     })

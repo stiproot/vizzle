@@ -43,10 +43,12 @@ uv run vizzy component ~/code/repo/h -o h-components.html   # interactive
 ```
 
 In the HTML view each app/package gets a labelled box you can **drag as a
-unit**, and every component carries a `+` toggle that **opens it to show the
-classes inside** (or use *Show classes* to open them all at once) — so you can
-go from "what is this app made of" to "what is in this package" without
-leaving the page. `--no-classes` omits that detail for a leaner file.
+unit**, and every component carries a `+` toggle that **explodes it into a full
+UML class diagram** — boxes with stereotypes, fields and methods, data types on
+every member, and the association, dependency and inheritance edges between
+them (or use *Show classes* to open them all at once). Each explosion is laid
+out once at load and then only shown or hidden, so toggling stays instant.
+`--no-classes` omits that detail for a leaner file.
 
 What changed, as a diagram (added = green ✚, removed = red ✖, modified =
 yellow ✱; unchanged classes in touched files render as context):

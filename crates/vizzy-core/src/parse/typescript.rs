@@ -180,14 +180,8 @@ fn extract_enum(node: Node, src: &str, module: &str, graph: &mut CodeGraph) {
             };
             if let Some(variant) = variant {
                 members.push(Member {
-                    visibility: Visibility::Public,
-                    detail: String::new(),
-                    returns: None,
-                    is_method: false,
-                    is_static: false,
-                    is_abstract: false,
-                    change: ChangeKind::Unchanged,
                     name: variant,
+                    ..Default::default()
                 });
             }
         }
@@ -233,18 +227,15 @@ fn extract_method(node: Node, src: &str, is_abstract: bool, members: &mut Vec<Me
                         .is_some_and(|c| c.kind() == "accessibility_modifier")
                 {
                     if let Some(pattern) = p.child_by_field_name("pattern") {
+                        let ty = p
+                            .child_by_field_name("type")
+                            .map(|t| clean_type(text(t, src).trim_start_matches(':').trim()));
                         members.push(Member {
                             visibility: modifier_visibility(p, src),
-                            detail: p
-                                .child_by_field_name("type")
-                                .map(|t| clean_type(text(t, src).trim_start_matches(':').trim()))
-                                .unwrap_or_default(),
-                            returns: None,
-                            is_method: false,
-                            is_static: false,
-                            is_abstract: false,
-                            change: ChangeKind::Unchanged,
+                            detail: ty.clone().unwrap_or_default(),
+                            type_refs: ty.into_iter().collect(),
                             name: text(pattern, src),
+                            ..Default::default()
                         });
                     }
                 }
@@ -255,21 +246,25 @@ fn extract_method(node: Node, src: &str, is_abstract: bool, members: &mut Vec<Me
 
     let params = node
         .child_by_field_name("parameters")
-        .map(|p| parameter_names(p, src))
+        .map(|p| parameters(p, src))
         .unwrap_or_default();
     let returns = node
         .child_by_field_name("return_type")
         .map(|r| clean_type(text(r, src).trim_start_matches(':').trim()));
 
+    let mut type_refs: Vec<String> = params.iter().filter_map(|(_, ty)| ty.clone()).collect();
+    type_refs.extend(returns.clone());
+
     members.push(Member {
         visibility: visibility_of(node, &name, src),
-        detail: params.join(", "),
+        detail: render_params(&params),
         returns,
+        type_refs,
         is_method: true,
         is_static: has_keyword(node, "static", src),
         is_abstract,
-        change: ChangeKind::Unchanged,
         name,
+        ..Default::default()
     });
 }
 
@@ -283,22 +278,40 @@ fn extract_property(node: Node, src: &str, members: &mut Vec<Member>) {
         .map(|t| clean_type(text(t, src).trim_start_matches(':').trim()));
     members.push(Member {
         visibility: visibility_of(node, &name, src),
-        detail: ty.unwrap_or_default(),
-        returns: None,
-        is_method: false,
+        detail: ty.clone().unwrap_or_default(),
+        type_refs: ty.into_iter().collect(),
         is_static: has_keyword(node, "static", src),
-        is_abstract: false,
-        change: ChangeKind::Unchanged,
         name,
+        ..Default::default()
     });
 }
 
-fn parameter_names(params: Node, src: &str) -> Vec<String> {
+/// `(name, type)` for each parameter. Types feed both the rendered signature
+/// and the dependency edges a method implies.
+fn parameters(params: Node, src: &str) -> Vec<(String, Option<String>)> {
     let mut cursor = params.walk();
     params
         .named_children(&mut cursor)
-        .filter_map(|p| p.child_by_field_name("pattern").map(|n| text(n, src)))
+        .filter_map(|p| {
+            let name = p.child_by_field_name("pattern").map(|n| text(n, src))?;
+            let ty = p
+                .child_by_field_name("type")
+                .map(|t| clean_type(text(t, src).trim_start_matches(':').trim()));
+            Some((name, ty))
+        })
         .collect()
+}
+
+/// `name: Type` where a type is known, bare name otherwise.
+fn render_params(params: &[(String, Option<String>)]) -> String {
+    params
+        .iter()
+        .map(|(name, ty)| match ty {
+            Some(ty) => format!("{name}: {ty}"),
+            None => name.clone(),
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 fn bare_type_name(raw: &str) -> String {

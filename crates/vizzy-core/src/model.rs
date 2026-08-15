@@ -24,8 +24,9 @@ impl Language {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Visibility {
+    #[default]
     Public,
     Protected,
     Private,
@@ -64,13 +65,18 @@ impl ChangeKind {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Member {
     pub name: String,
     pub visibility: Visibility,
-    /// Rendered parameter list for methods (without parens), type for fields.
+    /// Rendered parameter list for methods (`name: Type, other`), type for fields.
     pub detail: String,
     pub returns: Option<String>,
+    /// Type expressions this member mentions — a field's type, a method's
+    /// parameter and return types. Resolved into association and dependency
+    /// edges at render time; kept raw so resolution stays a graph-level
+    /// decision rather than a parser one.
+    pub type_refs: Vec<String>,
     pub is_method: bool,
     pub is_static: bool,
     pub is_abstract: bool,
@@ -92,12 +98,37 @@ impl Member {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Copy)]
+#[derive(Debug, Clone, PartialEq, Eq, Copy, PartialOrd, Ord)]
 pub enum RelationKind {
     /// `Derived --|> Base`
     Inherits,
     /// `Impl ..|> Interface`
     Implements,
+    /// `Holder --> Held`: a field's type names another class (structural).
+    Association,
+    /// `User ..> Used`: a method signature names another class (uses).
+    Dependency,
+}
+
+impl RelationKind {
+    /// Mermaid arrow for this relation.
+    pub fn arrow(&self) -> &'static str {
+        match self {
+            RelationKind::Inherits => "--|>",
+            RelationKind::Implements => "..|>",
+            RelationKind::Association => "-->",
+            RelationKind::Dependency => "..>",
+        }
+    }
+
+    pub fn name(&self) -> &'static str {
+        match self {
+            RelationKind::Inherits => "inherits",
+            RelationKind::Implements => "implements",
+            RelationKind::Association => "association",
+            RelationKind::Dependency => "dependency",
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

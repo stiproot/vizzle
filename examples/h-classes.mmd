@@ -1,6 +1,3 @@
----
-title: h — class diagram
----
 classDiagram
     class apps_claude_managed_agent_src_domain_models_AgentRequest["apps.claude-managed-agent.src.domain.models.AgentRequest"] {
         <<dataclass>>
@@ -19,14 +16,14 @@ classDiagram
     }
     class apps_claude_managed_agent_src_domain_ports_agent_runner_IAgentRunner["apps.claude-managed-agent.src.domain.ports.agent_runner.IAgentRunner"] {
         <<interface>>
-        +run(request) AgentResponse
+        +run(request: AgentRequest) AgentResponse
     }
     class apps_claude_managed_agent_src_infrastructure_claude_managed_runner_ClaudeManagedRunner["apps.claude-managed-agent.src.infrastructure.claude_managed_runner.ClaudeManagedRunner"] {
         #_model
         #_runner
         +start() None
         +shutdown() None
-        +run(request) AgentResponse
+        +run(request: AgentRequest) AgentResponse
     }
     class apps_claude_managed_agent_src_presentation_http_run_router_RunRequest["apps.claude-managed-agent.src.presentation.http.run_router.RunRequest"] {
         +input : str
@@ -50,8 +47,8 @@ classDiagram
         #_system_prompt
         #_max_turns
         #_workflows_mcp_url
-        +run(request, workspace) AgentResponse
-        #_loop(adapter, messages, tool_fns, wt) tuple~str, int~
+        +run(request: AgentRequest, workspace: Path) AgentResponse
+        #_loop(adapter: OpenAIChatAdapter, messages: list, tool_fns: dict, wt: WorkflowTools | None) tuple~str, int~
     }
     class apps_dapr_claude_loop_agent_src_infrastructure_claude_loop_runner_ClaudeLoopRunner["apps.dapr-claude-loop-agent.src.infrastructure.claude_loop_runner.ClaudeLoopRunner"] {
         #_model
@@ -60,8 +57,8 @@ classDiagram
         #_client : anthropic.AsyncAnthropic | None
         +start() None
         +shutdown() None
-        +run(request, workspace) AgentResponse
-        #_run_loop(task, system, workspace) tuple~str, int~
+        +run(request: AgentRequest, workspace: Path) AgentResponse
+        #_run_loop(task: str, system: str, workspace: Path) tuple~str, int~
     }
     class apps_dapr_mcp_src_domain_ports_IActorStore_ActorStore["apps.dapr-mcp.src.domain.ports.IActorStore.ActorStore"]
     class apps_dapr_mcp_src_domain_ports_IPubSub_PubSub["apps.dapr-mcp.src.domain.ports.IPubSub.PubSub"]
@@ -91,8 +88,8 @@ classDiagram
     }
     class apps_langgraph_agent_src_domain_ports_IPresetStore["apps.langgraph-agent.src.domain.ports.IPresetStore"] {
         <<interface>>
-        +get(key) GraphConfig | None
-        +save(key, graph) None
+        +get(key: str) GraphConfig | None
+        +save(key: str, graph: GraphConfig) None
     }
     class apps_langgraph_agent_src_infrastructure_langgraph_runner_LangGraphRunner["apps.langgraph-agent.src.infrastructure.langgraph_runner.LangGraphRunner"] {
         #_model
@@ -100,13 +97,13 @@ classDiagram
         #_max_iterations
         +start() None
         +shutdown() None
-        +run(request, workspace) AgentResponse
+        +run(request: AgentRequest, workspace: Path) AgentResponse
     }
     class apps_langgraph_agent_src_infrastructure_preset_store_PresetStore["apps.langgraph-agent.src.infrastructure.preset_store.PresetStore"] {
         #_dir
-        #_path(key) Path
-        +save(key, graph) None
-        +get(key) GraphConfig | None
+        #_path(key: str) Path
+        +save(key: str, graph: GraphConfig) None
+        +get(key: str) GraphConfig | None
     }
     class apps_langgraph_agent_src_presentation_http_run_router_GraphConfigModel["apps.langgraph-agent.src.presentation.http.run_router.GraphConfigModel"] {
         +tools : list~str~ | None
@@ -156,7 +153,7 @@ classDiagram
         +status : str
         +issue_id : str | None
         +result : str | None
-        +from_state(data)$ Task
+        +from_state(data: dict)$ Task
         +to_state() dict
     }
     class apps_workflow_agent_src_domain_models_TaskStatus["apps.workflow-agent.src.domain.models.TaskStatus"] {
@@ -168,22 +165,22 @@ classDiagram
     }
     class apps_workflow_agent_src_domain_ports_ITaskRunner["apps.workflow-agent.src.domain.ports.ITaskRunner"] {
         <<interface>>
-        +run(problem) AgentResult
+        +run(problem: str) AgentResult
     }
     class apps_workflow_agent_src_domain_ports_ITaskStore["apps.workflow-agent.src.domain.ports.ITaskStore"] {
         <<interface>>
         +list_task_ids() list~str~
-        +get_task(task_id) dict | None
-        +save_task(task) None
+        +get_task(task_id: str) dict | None
+        +save_task(task: dict) None
     }
     class apps_workflow_agent_src_infrastructure_statestore_StateStore["apps.workflow-agent.src.infrastructure.statestore.StateStore"] {
         #_base
-        #_get(client, key)
-        #_save(client, key, value) None
+        #_get(client: httpx.AsyncClient, key: str)
+        #_save(client: httpx.AsyncClient, key: str, value) None
         +list_task_ids() list~str~
-        +get_task(task_id) dict | None
-        +save_task(task) None
-        +seed_task(task) None
+        +get_task(task_id: str) dict | None
+        +save_task(task: dict) None
+        +seed_task(task: dict) None
     }
     class apps_workflow_agent_src_infrastructure_workflow_agent_runner_WorkflowAgentRunner["apps.workflow-agent.src.infrastructure.workflow_agent_runner.WorkflowAgentRunner"] {
         #_model
@@ -192,26 +189,20 @@ classDiagram
         #_system
         #_max_iterations
         #_mcp_url
-        +run(problem) AgentResult
+        +run(problem: str) AgentResult
     }
     class apps_workflow_agent_src_presentation_http_cron_router_RunRequest["apps.workflow-agent.src.presentation.http.cron_router.RunRequest"] {
         +taskId : str
     }
     class apps_workflow_agent_tests_test_cron_router_FakeRunner["apps.workflow-agent.tests.test_cron_router.FakeRunner"] {
-        +run(problem) AgentResult
+        +run(problem: str) AgentResult
     }
     class apps_workflow_agent_tests_test_cron_router_FakeStore["apps.workflow-agent.tests.test_cron_router.FakeStore"] {
         +list_task_ids() list~str~
-        +get_task(task_id) dict | None
-        +save_task(task) None
+        +get_task(task_id: str) dict | None
+        +save_task(task: dict) None
     }
     class apps_workflow_mcp_src_domain_ports_IWorkflowService_WorkflowService["apps.workflow-mcp.src.domain.ports.IWorkflowService.WorkflowService"]
-    class apps_workflow_svc_src_domain_chain_members_ChainThreadError["apps.workflow-svc.src.domain.chain-members.ChainThreadError"]
-    class apps_workflow_svc_src_domain_chain_members_WorkflowContract["apps.workflow-svc.src.domain.chain-members.WorkflowContract"] {
-        <<interface>>
-        +buildParams : data: ChainData => Record<string, unkno…
-        +capture : output: string | undefined, data: Chain…
-    }
     class apps_workflow_svc_src_domain_models_watch_model_RunMirrorMeta["apps.workflow-svc.src.domain.models.watch.model.RunMirrorMeta"] {
         <<interface>>
         +costUsd : number | null
@@ -304,9 +295,6 @@ classDiagram
         +listScheduled :  => Effect.Effect< ReadonlyArray< key: …
         +markRun : key: string, lastRunAt: string => Effec…
     }
-    class apps_workflow_svc_src_domain_structured_output_StructuredOutputError["apps.workflow-svc.src.domain.structured-output.StructuredOutputError"] {
-        +name
-    }
     class apps_workflow_svc_src_domain_watch_scan_CostTally["apps.workflow-svc.src.domain.watch-scan.CostTally"] {
         <<interface>>
         +costUsd : number
@@ -320,6 +308,11 @@ classDiagram
     class apps_workflow_svc_src_presentation_http_workflow_router_NotFoundError["apps.workflow-svc.src.presentation.http.workflow.router.NotFoundError"]
     class apps_workflow_svc_src_presentation_http_workflow_router_ScheduleConflictsCronError["apps.workflow-svc.src.presentation.http.workflow.router.ScheduleConflictsCronError"]
     class apps_workflow_svc_src_presentation_http_workflow_router_WorkflowNotFoundError["apps.workflow-svc.src.presentation.http.workflow.router.WorkflowNotFoundError"]
+    class cli_h_hatch_build_BundleSubstrate["cli.h.hatch_build.BundleSubstrate"] {
+        +PLUGIN_NAME
+        +initialize(version: str, build_data: dict~str, Any~) None
+    }
+    class cli_h_src_h_cli_commands_events_RelayStepError["cli.h.src.h_cli.commands.events.RelayStepError"]
     class cli_h_src_h_cli_infrastructure_chain_expr_ChainExpr["cli.h.src.h_cli.infrastructure.chain_expr.ChainExpr"] {
         <<dataclass>>
         +defaults : WorkflowConfig
@@ -350,8 +343,26 @@ classDiagram
         +inputs : tuple~tuple~str, str~, ...~
         +until : str | None
     }
+    class cli_h_src_h_cli_infrastructure_events_fabric_FabricError["cli.h.src.h_cli.infrastructure.events_fabric.FabricError"]
+    class cli_h_src_h_cli_infrastructure_git_Dirt["cli.h.src.h_cli.infrastructure.git.Dirt"] {
+        <<dataclass>>
+        +tracked : bool
+        +untracked : list~str~
+        +untracked_only : bool
+        +any : bool
+    }
+    class cli_h_src_h_cli_infrastructure_git_GitError["cli.h.src.h_cli.infrastructure.git.GitError"]
+    class cli_h_src_h_cli_infrastructure_git_WorktreeEntry["cli.h.src.h_cli.infrastructure.git.WorktreeEntry"] {
+        <<dataclass>>
+        +path : Path
+        +head : str
+        +branch : str | None
+        +branch_short : str | None
+    }
     class cli_h_src_h_cli_infrastructure_helm_HelmError["cli.h.src.h_cli.infrastructure.helm.HelmError"]
+    class cli_h_src_h_cli_infrastructure_local_runtime_LocalRunError["cli.h.src.h_cli.infrastructure.local_runtime.LocalRunError"]
     class cli_h_src_h_cli_infrastructure_panelize_PanelizeError["cli.h.src.h_cli.infrastructure.panelize.PanelizeError"]
+    class cli_h_src_h_cli_infrastructure_workspace_ExternalWorkspaceError["cli.h.src.h_cli.infrastructure.workspace.ExternalWorkspaceError"]
     class packages_js_agent_cli_src_agents_classify_stop_ClassifyStopInput["packages.js.agent-cli.src.agents.classify-stop.ClassifyStopInput"] {
         <<interface>>
         +exitCode : number | null
@@ -461,16 +472,16 @@ classDiagram
         <<interface>>
         +type : AgentType
         +name : string
-        +validateEnvironment(effectiveEnv, processEnv) InvocationResult | null
-        +prepareEnvironment(request) Record<string, string>
-        +buildInvocation(request) Effect.Effect<PreparedAgentInvocation, …
-        +extractSessionId(events) string | undefined
-        +extractMetrics(events, request) Partial<InvocationResult>
-        +tallyToolCalls(current, event) number
+        +validateEnvironment(effectiveEnv: AgentEnv, processEnv: NodeJS.ProcessEnv) InvocationResult | null
+        +prepareEnvironment(request: AgentInvocationRequest) Record<string, string>
+        +buildInvocation(request: AgentInvocationRequest) Effect.Effect<PreparedAgentInvocation, …
+        +extractSessionId(events: StreamEvent[]) string | undefined
+        +extractMetrics(events: StreamEvent[], request: AgentInvocationRequest) Partial<InvocationResult>
+        +tallyToolCalls(current: number, event: Record<string, unknown>) number
     }
     class packages_js_agent_cli_src_agents_types_AgentStreamParser["packages.js.agent-cli.src.agents.types.AgentStreamParser"] {
         <<interface>>
-        +parseLine(line, events, onEvent) void
+        +parseLine(line: string, events: StreamEvent[], onEvent: AgentEventCallback) void
     }
     class packages_js_agent_cli_src_agents_types_AgentTimeoutError["packages.js.agent-cli.src.agents.types.AgentTimeoutError"]
     class packages_js_agent_cli_src_agents_types_InvocationResult["packages.js.agent-cli.src.agents.types.InvocationResult"] {
@@ -480,6 +491,7 @@ classDiagram
         +stderr : string
         +exitCode : number
         +stopReason : StopReason
+        +resultEventText : string
         +tokenUsage :  input: number output: number 
         +model : string
         +modelUsage : Record<string, ModelUsage>
@@ -585,17 +597,21 @@ classDiagram
         +resolveWorkspaceDir : workspaceKey: string => string
         +ledger : ActivityLedgerConfig
     }
+    class packages_js_agent_server_src_gc_route_GcRouteEffectConfig["packages.js.agent-server.src.gc-route.GcRouteEffectConfig"] {
+        <<interface>>
+        +runtime : ManagedRuntime.ManagedRuntime<GcRouteEf…
+        +sharedRoot : string
+        +ledger : ActivityLedgerConfig
+    }
     class packages_js_agent_server_src_run_handler_HandlerReply["packages.js.agent-server.src.run-handler.HandlerReply"] {
         <<interface>>
-        +status(statusCode) unknown
-        +send(payload) unknown
+        +status(statusCode: number) unknown
+        +send(payload: unknown) unknown
     }
     class packages_js_agent_server_src_run_handler_RunHandlerOptions["packages.js.agent-server.src.run-handler.RunHandlerOptions"] {
         <<interface>>
         +successStatus : number
     }
-    class packages_js_agent_server_src_run_ledger_RunLedger["packages.js.agent-server.src.run-ledger.RunLedger"]
-    class packages_js_agent_server_src_run_ledger_RunLedgerError["packages.js.agent-server.src.run-ledger.RunLedgerError"]
     class packages_js_agent_server_src_runner_AgentRunner["packages.js.agent-server.src.runner.AgentRunner"]
     class packages_js_agent_server_src_workflow_babysitter_BabysitPolicy["packages.js.agent-server.src.workflow-babysitter.BabysitPolicy"] {
         <<interface>>
@@ -631,10 +647,10 @@ classDiagram
         -cfg : Required<Omit<BabysitterConfig, fetchIm…
         -fetchImpl : typeof fetch
         -onLog : msg: string => void
-        -invokeUrl(method) string
-        +submit(submit) Promise< instanceId: string watching: b…
+        -invokeUrl(method: string) string
+        +submit(submit: WorkflowSubmit) Promise< instanceId: string watching: b…
         +list() Promise<unknown>
-        -post(method, body) Promise<unknown>
+        -post(method: string, body: unknown) Promise<unknown>
     }
     class packages_js_agent_server_src_workflow_babysitter_WorkflowSubmit["packages.js.agent-server.src.workflow-babysitter.WorkflowSubmit"] {
         <<interface>>
@@ -651,17 +667,17 @@ classDiagram
     class packages_js_core_dapr_src_actors_actor_client_DaprActorError["packages.js.core-dapr.src.actors.actor-client.DaprActorError"]
     class packages_js_core_dapr_src_actors_actor_client_GenericActorClient["packages.js.core-dapr.src.actors.actor-client.GenericActorClient"] {
         -builder : ActorProxyBuilder<IGenericActor>
-        -proxy(actorId) IGenericActor
+        -proxy(actorId: string) IGenericActor
         -manager()
-        +invoke(actorId, method, payload) Promise<unknown>
-        +getState(actorId, key) Promise<ActorStateResult>
-        +setState(actorId, key, value) Promise< key: string >
-        +removeState(actorId, key) Promise< key: string removed: boolean >
-        +listStateKeys(actorId) Promise<string[]>
-        +registerReminder(actorId, name, dueTime, period, data) Promise<void>
-        +unregisterReminder(actorId, name) Promise<void>
-        +registerTimer(actorId, name, dueTime, period, data) Promise<void>
-        +unregisterTimer(actorId, name) Promise<void>
+        +invoke(actorId: string, method: string, payload: unknown) Promise<unknown>
+        +getState(actorId: string, key: string) Promise<ActorStateResult>
+        +setState(actorId: string, key: string, value: unknown) Promise< key: string >
+        +removeState(actorId: string, key: string) Promise< key: string removed: boolean >
+        +listStateKeys(actorId: string) Promise<string[]>
+        +registerReminder(actorId: string, name: string, dueTime: string, period: string, data: unknown) Promise<void>
+        +unregisterReminder(actorId: string, name: string) Promise<void>
+        +registerTimer(actorId: string, name: string, dueTime: string, period: string, data: unknown) Promise<void>
+        +unregisterTimer(actorId: string, name: string) Promise<void>
         +listActiveActors() Promise<object>
     }
     class packages_js_core_dapr_src_actors_actor_client_GenericActorClientOptions["packages.js.core-dapr.src.actors.actor-client.GenericActorClientOptions"] {
@@ -702,23 +718,23 @@ classDiagram
     }
     class packages_js_core_dapr_src_actors_generic_actor_GenericActor["packages.js.core-dapr.src.actors.generic-actor.GenericActor"] {
         -stateOf()
-        -appendLog(entry) Promise<number>
-        +setState(key, value) Promise< key: string >
-        +getState(key) Promise<ActorStateResult>
-        +removeState(key) Promise< key: string removed: boolean >
+        -appendLog(entry: Record<string, unknown>) Promise<number>
+        +setState(key: string, value: unknown) Promise< key: string >
+        +getState(key: string) Promise<ActorStateResult>
+        +removeState(key: string) Promise< key: string removed: boolean >
         +listStateKeys() Promise<string[]>
-        +invokeCommand(method, payload) Promise<unknown>
-        +onTimerFire(data) Promise<void>
-        +receiveReminder(data) Promise<void>
+        +invokeCommand(method: string, payload: unknown) Promise<unknown>
+        +onTimerFire(data: unknown) Promise<void>
+        +receiveReminder(data: string) Promise<void>
     }
     class packages_js_core_dapr_src_actors_generic_actor_IGenericActor["packages.js.core-dapr.src.actors.generic-actor.IGenericActor"] {
         <<interface>>
-        +setState(key, value) Promise< key: string >
-        +getState(key) Promise<ActorStateResult>
-        +removeState(key) Promise< key: string removed: boolean >
+        +setState(key: string, value: unknown) Promise< key: string >
+        +getState(key: string) Promise<ActorStateResult>
+        +removeState(key: string) Promise< key: string removed: boolean >
         +listStateKeys() Promise<string[]>
-        +invokeCommand(method, payload) Promise<unknown>
-        +onTimerFire(data) Promise<void>
+        +invokeCommand(method: string, payload: unknown) Promise<unknown>
+        +onTimerFire(data: unknown) Promise<void>
     }
     class packages_js_core_dapr_src_actors_generic_actor_IncrementPayload["packages.js.core-dapr.src.actors.generic-actor.IncrementPayload"] {
         <<interface>>
@@ -767,22 +783,37 @@ classDiagram
     class packages_js_git_core_src_git_client_GitCloneError["packages.js.git-core.src.git-client.GitCloneError"] {
         +message() string
     }
-    class packages_js_git_core_src_git_client_GitExitError["packages.js.git-core.src.git-client.GitExitError"]
     class packages_js_git_core_src_git_client_GitWorktreeError["packages.js.git-core.src.git-client.GitWorktreeError"] {
         +message() string
     }
+    class packages_js_git_core_src_git_exec_GitExitError["packages.js.git-core.src.git-exec.GitExitError"]
     class packages_js_git_core_src_github_client_GitHubApiError["packages.js.git-core.src.github-client.GitHubApiError"] {
         +message() string
     }
     class packages_js_git_core_src_github_client_GitHubClient["packages.js.git-core.src.github-client.GitHubClient"]
+    class packages_js_local_runtime_src_domain_activities_RefusedActivityError["packages.js.local-runtime.src.domain.activities.RefusedActivityError"]
+    class packages_js_local_runtime_src_domain_activities_UnknownActivityError["packages.js.local-runtime.src.domain.activities.UnknownActivityError"]
+    class packages_js_local_runtime_src_domain_agents_UnknownAgentError["packages.js.local-runtime.src.domain.agents.UnknownAgentError"]
+    class packages_js_local_runtime_src_domain_delegate_EmptyRosterError["packages.js.local-runtime.src.domain.delegate.EmptyRosterError"]
+    class packages_js_local_runtime_src_domain_execute_StepError["packages.js.local-runtime.src.domain.execute.StepError"]
+    class packages_js_local_runtime_src_domain_ports_AgentPort["packages.js.local-runtime.src.domain.ports.AgentPort"]
+    class packages_js_local_runtime_src_domain_ports_JournalError["packages.js.local-runtime.src.domain.ports.JournalError"] {
+        +message() string
+    }
+    class packages_js_local_runtime_src_domain_ports_JournalPort["packages.js.local-runtime.src.domain.ports.JournalPort"]
+    class packages_js_local_runtime_src_domain_ports_ProgressPort["packages.js.local-runtime.src.domain.ports.ProgressPort"]
+    class packages_js_local_runtime_src_domain_ports_WorkspaceError["packages.js.local-runtime.src.domain.ports.WorkspaceError"] {
+        +message() string
+    }
+    class packages_js_local_runtime_src_domain_ports_WorkspacePort["packages.js.local-runtime.src.domain.ports.WorkspacePort"]
     class packages_js_logger_src_index_Logger["packages.js.logger.src.index.Logger"] {
         <<interface>>
-        +trace(context, message) void
-        +debug(context, message) void
-        +info(context, message) void
-        +warn(context, message) void
-        +error(context, message) void
-        +child(context) Logger
+        +trace(context: Context, message: string) void
+        +debug(context: Context, message: string) void
+        +info(context: Context, message: string) void
+        +warn(context: Context, message: string) void
+        +error(context: Context, message: string) void
+        +child(context: Context) Logger
     }
     class packages_js_logger_src_layer_LoggerInitError["packages.js.logger.src.layer.LoggerInitError"]
     class packages_js_logger_src_layer_LoggerService["packages.js.logger.src.layer.LoggerService"] {
@@ -795,17 +826,28 @@ classDiagram
         +child : context: LogContext => Effect.Effect<Lo…
     }
     class packages_js_logger_src_layer_LoggerTag["packages.js.logger.src.layer.LoggerTag"]
+    class packages_js_run_ledger_src_run_ledger_RunLedger["packages.js.run-ledger.src.run-ledger.RunLedger"]
+    class packages_js_run_ledger_src_run_ledger_RunLedgerError["packages.js.run-ledger.src.run-ledger.RunLedgerError"]
+    class packages_js_workflow_core_src_chain_members_ChainThreadError["packages.js.workflow-core.src.chain-members.ChainThreadError"]
+    class packages_js_workflow_core_src_chain_members_WorkflowContract["packages.js.workflow-core.src.chain-members.WorkflowContract"] {
+        <<interface>>
+        +buildParams : data: ChainData => Record<string, unkno…
+        +capture : output: string | undefined, data: Chain…
+    }
+    class packages_js_workflow_core_src_structured_output_StructuredOutputError["packages.js.workflow-core.src.structured-output.StructuredOutputError"] {
+        +name
+    }
     class packages_py_agent_core_src_agent_core_llm_openai_OpenAIChatAdapter["packages.py.agent-core.src.agent_core.llm.openai.OpenAIChatAdapter"] {
         #_client
-        +generate(messages, tools) LLMTurn
-        +append_assistant(messages, turn) None
-        +append_tool_result(messages, call, result) None
+        +generate(messages: list~Any~, tools: list~Any~) LLMTurn
+        +append_assistant(messages: list~Any~, turn: LLMTurn) None
+        +append_tool_result(messages: list~Any~, call: ToolCall, result: str) None
     }
     class packages_py_agent_core_src_agent_core_react_loop_LLMClient["packages.py.agent-core.src.agent_core.react_loop.LLMClient"] {
         <<interface>>
-        +generate(messages, tools) LLMTurn
-        +append_assistant(messages, turn) None
-        +append_tool_result(messages, call, result) None
+        +generate(messages: list~Any~, tools: list~Any~) LLMTurn
+        +append_assistant(messages: list~Any~, turn: LLMTurn) None
+        +append_tool_result(messages: list~Any~, call: ToolCall, result: str) None
     }
     class packages_py_agent_core_src_agent_core_react_loop_LLMTurn["packages.py.agent-core.src.agent_core.react_loop.LLMTurn"] {
         <<dataclass>>
@@ -823,14 +865,14 @@ classDiagram
         #_client
         +tools
         #_by_name
-        +handles(name) bool
-        +run(name, args) str
+        +handles(name: str) bool
+        +run(name: str, args: dict) str
         +aclose() None
     }
     class packages_py_agent_core_tests_test_openai_adapter_FakeClient["packages.py.agent-core.tests.test_openai_adapter.FakeClient"] {
         #_response
         +calls : list~tuple~
-        +generate(messages, tools) FakeResponse
+        +generate(messages: list, tools: Any) FakeResponse
     }
     class packages_py_agent_core_tests_test_openai_adapter_FakeMsg["packages.py.agent-core.tests.test_openai_adapter.FakeMsg"] {
         +content
@@ -845,9 +887,9 @@ classDiagram
         #_turns
         +assistant_appends
         +tool_results : list~str~
-        +generate(messages, tools) LLMTurn
-        +append_assistant(messages, turn) None
-        +append_tool_result(messages, call, result) None
+        +generate(messages: list~Any~, tools: list~Any~) LLMTurn
+        +append_assistant(messages: list~Any~, turn: LLMTurn) None
+        +append_tool_result(messages: list~Any~, call: ToolCall, result: str) None
     }
     class packages_py_agent_core_tests_test_workflow_tools_FakeClient["packages.py.agent-core.tests.test_workflow_tools.FakeClient"] {
         +closed
@@ -903,7 +945,7 @@ classDiagram
     }
     class packages_py_agent_server_src_agent_server_runner_IAgentRunner["packages.py.agent-server.src.agent_server.runner.IAgentRunner"] {
         <<interface>>
-        +run(request, workspace) AgentResponse
+        +run(request: AgentRequest, workspace: Path) AgentResponse
     }
     class packages_py_agent_server_src_agent_server_workflow_route_BabysitPolicy["packages.py.agent-server.src.agent_server.workflow_route.BabysitPolicy"] {
         +maxDurationMs : int | None
@@ -921,10 +963,10 @@ classDiagram
         +dapr_http_port
         +workflow_app_id
         +default_max_duration_ms
-        #_invoke_url(method) str
-        #_post(url, body) dict
-        #_get(url) Any
-        +submit(submit) dict
+        #_invoke_url(method: str) str
+        #_post(url: str, body: dict) dict
+        #_get(url: str) Any
+        +submit(submit: WorkflowSubmit) dict
         +watch_list() Any
     }
     class packages_py_agent_server_src_agent_server_workflow_route_WorkflowSubmit["packages.py.agent-server.src.agent_server.workflow_route.WorkflowSubmit"] {
@@ -939,8 +981,8 @@ classDiagram
         +get_error
         +posts : list~tuple~str, dict~~
         +gets : list~str~
-        #_post(url, body) dict
-        #_get(url) Any
+        #_post(url: str, body: dict) dict
+        #_get(url: str) Any
     }
     packages_js_agent_cli_src_agents_codex_CodexItemCompletedEvent --|> packages_js_agent_cli_src_agents_codex_CodexEventBase
     packages_js_agent_cli_src_agents_codex_CodexThreadStartedEvent --|> packages_js_agent_cli_src_agents_codex_CodexEventBase
@@ -952,4 +994,53 @@ classDiagram
     packages_js_agent_server_src_workflow_babysitter_WorkflowSubmit --|> packages_js_agent_server_src_workflow_babysitter_Trigger
     packages_js_core_dapr_src_actors_generic_actor_GenericActor ..|> packages_js_core_dapr_src_actors_generic_actor_IGenericActor
     packages_py_agent_server_src_agent_server_workflow_route_WorkflowSubmit --|> packages_py_agent_server_src_agent_server_workflow_route_Trigger
-%% vizzy: 182 classes, 85 relations
+    apps_dapr_agent_src_infrastructure_dapr_agent_runner_DaprAgentRunner ..> packages_py_agent_core_src_agent_core_llm_openai_OpenAIChatAdapter
+    apps_dapr_agent_src_infrastructure_dapr_agent_runner_DaprAgentRunner ..> packages_py_agent_core_src_agent_core_workflows_mcp_tools_WorkflowTools
+    apps_langgraph_agent_src_domain_models_AgentRequest --> apps_langgraph_agent_src_domain_models_GraphConfig
+    apps_langgraph_agent_src_domain_ports_IPresetStore ..> apps_langgraph_agent_src_domain_models_GraphConfig
+    apps_langgraph_agent_src_infrastructure_preset_store_PresetStore ..> apps_langgraph_agent_src_domain_models_GraphConfig
+    apps_langgraph_agent_src_presentation_http_run_router_GraphConfigModel ..> apps_langgraph_agent_src_domain_models_GraphConfig
+    apps_langgraph_agent_src_presentation_http_run_router_RunRequest --> apps_langgraph_agent_src_presentation_http_run_router_GraphConfigModel
+    apps_langgraph_agent_src_presentation_http_run_router_SaveRequest --> apps_langgraph_agent_src_presentation_http_run_router_GraphConfigModel
+    apps_workflow_agent_src_domain_ports_ITaskRunner ..> apps_workflow_agent_src_domain_models_AgentResult
+    apps_workflow_agent_src_infrastructure_workflow_agent_runner_WorkflowAgentRunner ..> apps_workflow_agent_src_domain_models_AgentResult
+    apps_workflow_agent_tests_test_cron_router_FakeRunner ..> apps_workflow_agent_src_domain_models_AgentResult
+    cli_h_src_h_cli_infrastructure_chain_expr_ChainExpr --> cli_h_src_h_cli_infrastructure_chain_expr_MemberRef
+    cli_h_src_h_cli_infrastructure_chain_expr_ChainExpr --> cli_h_src_h_cli_infrastructure_chain_expr_WorkflowConfig
+    cli_h_src_h_cli_infrastructure_chain_expr_MemberRef --> cli_h_src_h_cli_infrastructure_chain_expr_WorkflowConfig
+    packages_js_agent_cli_src_agents_parse_stream_BuildInvocationResultOptions --> packages_js_agent_cli_src_agents_types_InvocationResult
+    packages_js_agent_cli_src_agents_parse_stream_BuildInvocationResultOptions --> packages_js_agent_cli_src_agents_types_StreamEvent
+    packages_js_agent_cli_src_agents_types_AgentInvocationRequest --> packages_js_agent_cli_src_agents_types_LlmConfig
+    packages_js_agent_cli_src_agents_types_AgentStrategy ..> packages_js_agent_cli_src_agents_types_AgentInvocationRequest
+    packages_js_agent_cli_src_agents_types_AgentStrategy ..> packages_js_agent_cli_src_agents_types_InvocationResult
+    packages_js_agent_cli_src_agents_types_AgentStrategy ..> packages_js_agent_cli_src_agents_types_PreparedAgentInvocation
+    packages_js_agent_cli_src_agents_types_AgentStrategy ..> packages_js_agent_cli_src_agents_types_StreamEvent
+    packages_js_agent_cli_src_agents_types_AgentStreamParser ..> packages_js_agent_cli_src_agents_types_StreamEvent
+    packages_js_agent_cli_src_agents_types_InvocationResult --> packages_js_agent_cli_src_agents_types_ModelUsage
+    packages_js_agent_cli_src_agents_types_PreparedAgentInvocation --> packages_js_agent_cli_src_agents_types_AgentStreamParser
+    packages_js_agent_cli_src_agents_types_PreparedAgentInvocation --> packages_js_agent_cli_src_agents_types_StreamEvent
+    packages_js_agent_cli_src_agents_types_StreamEvent --> packages_js_agent_cli_src_agents_types_StreamEventModelUsage
+    packages_js_agent_cli_src_invoker_AgentInvokeParams --> packages_js_agent_cli_src_agents_types_LlmConfig
+    packages_js_agent_cli_src_invoker_AgentInvokerService --> packages_js_agent_cli_src_invoker_AgentInvokeParams
+    packages_js_agent_server_src_workflow_babysitter_BabysitterConfig --> packages_js_agent_server_src_workflow_babysitter_BabysitPolicy
+    packages_js_agent_server_src_workflow_babysitter_Trigger --> packages_js_agent_server_src_workflow_babysitter_WatchPolicy
+    packages_js_agent_server_src_workflow_babysitter_WorkflowBabysitter --> packages_js_agent_server_src_workflow_babysitter_BabysitterConfig
+    packages_js_agent_server_src_workflow_babysitter_WorkflowBabysitter ..> packages_js_agent_server_src_workflow_babysitter_WorkflowSubmit
+    packages_js_agent_server_src_workflow_babysitter_WorkflowSubmit --> packages_js_agent_server_src_workflow_babysitter_BabysitPolicy
+    packages_js_core_dapr_src_actors_actor_client_GenericActorClient ..> packages_js_core_dapr_src_actors_generic_actor_ActorStateResult
+    packages_js_core_dapr_src_actors_actor_client_GenericActorClient --> packages_js_core_dapr_src_actors_generic_actor_IGenericActor
+    packages_js_core_dapr_src_actors_generic_actor_GenericActor ..> packages_js_core_dapr_src_actors_generic_actor_ActorStateResult
+    packages_js_core_dapr_src_actors_generic_actor_IGenericActor ..> packages_js_core_dapr_src_actors_generic_actor_ActorStateResult
+    packages_js_core_vercel_src_vercel_ai_VercelAiConfig --> packages_js_core_vercel_src_llm_client_LlmError
+    packages_py_agent_core_src_agent_core_llm_openai_OpenAIChatAdapter ..> packages_py_agent_core_src_agent_core_react_loop_LLMTurn
+    packages_py_agent_core_src_agent_core_llm_openai_OpenAIChatAdapter ..> packages_py_agent_core_src_agent_core_react_loop_ToolCall
+    packages_py_agent_core_src_agent_core_react_loop_LLMClient ..> packages_py_agent_core_src_agent_core_react_loop_LLMTurn
+    packages_py_agent_core_src_agent_core_react_loop_LLMClient ..> packages_py_agent_core_src_agent_core_react_loop_ToolCall
+    packages_py_agent_core_src_agent_core_react_loop_LLMTurn --> packages_py_agent_core_src_agent_core_react_loop_ToolCall
+    packages_py_agent_core_tests_test_openai_adapter_FakeClient ..> packages_py_agent_core_tests_test_openai_adapter_FakeResponse
+    packages_py_agent_core_tests_test_react_loop_FakeClient ..> packages_py_agent_core_src_agent_core_react_loop_LLMTurn
+    packages_py_agent_core_tests_test_react_loop_FakeClient ..> packages_py_agent_core_src_agent_core_react_loop_ToolCall
+    packages_py_agent_server_src_agent_server_routes_SetupRequest --> packages_py_agent_server_src_agent_server_routes_SetupItem
+    packages_py_agent_server_src_agent_server_workflow_route_WorkflowBabysitter ..> packages_py_agent_server_src_agent_server_workflow_route_WorkflowSubmit
+    packages_py_agent_server_src_agent_server_workflow_route_WorkflowSubmit --> packages_py_agent_server_src_agent_server_workflow_route_BabysitPolicy
+%% vizzy: 202 classes, 151 relations

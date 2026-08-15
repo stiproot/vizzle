@@ -29,38 +29,17 @@ __VIZ_CORE_CSS__
 "use strict";
 const graph = JSON.parse(document.getElementById("graph-data").textContent);
 const config = JSON.parse(document.getElementById("config-data").textContent);
-const { PALETTE, colorsFor, inkFor, mark, truncate, edgePoint, nodeTransform, linkPath } = vizzy;
+const { classBoxLayout, drawClassBox, relationStyle, nodeTransform, linkPath } = vizzy;
 const { draggableNodes, externalStub, buildLinks, gridCells, arrowMarker } = vizzy;
 
 const DIFF = graph.stats.diff;
 
-// ---- geometry ---------------------------------------------------------
-const CHAR_W = 7.25, ROW_H = 16, PAD_X = 10, HEADER_H = 34, SEP = 6;
-
-function memberText(m) {
-  const sig = m.isMethod ? `${m.name}(${m.detail})` : m.detail ? `${m.name}: ${m.detail}` : m.name;
-  const ret = m.isMethod && m.returns ? ` ${m.returns}` : "";
-  const cls = m.isAbstract ? "*" : m.isStatic ? "$" : "";
-  return `${m.visibility}${sig}${cls}${ret}${mark(m.change)}`;
-}
+// ---- nodes -------------------------------------------------------------
+const CHAR_W = vizzy.BOX.charWidth, PAD_X = vizzy.BOX.padX, HEADER_H = vizzy.BOX.headerH;
 
 function buildNode(c) {
-  const fields = config.showMembers ? c.members.filter((m) => !m.isMethod) : [];
-  const methods = config.showMembers ? c.members.filter((m) => m.isMethod) : [];
-  const rows = [...fields, ...methods];
-  const header = c.name + mark(c.change);
-  const widest = Math.max(
-    header.length + 4,
-    c.module.length,
-    ...rows.map((m) => memberText(m).length),
-    12
-  );
-  const w = Math.min(460, widest * CHAR_W + PAD_X * 2);
-  const h = HEADER_H + (c.annotation ? 14 : 0)
-    + (fields.length ? SEP + fields.length * ROW_H : 0)
-    + (methods.length ? SEP + methods.length * ROW_H : 0)
-    + (rows.length ? 6 : 2);
-  return { id: c.qualified, cls: c, fields, methods, w, h, external: false };
+  const box = classBoxLayout(c, { showMembers: config.showMembers });
+  return { id: c.qualified, cls: c, box, w: box.w, h: box.h, external: false };
 }
 
 const nodes = graph.classes.map(buildNode);
@@ -71,8 +50,9 @@ if (config.includeExternals) {
   for (const r of graph.relations) {
     if (!r.external || byId.has(`ext:${r.to}`)) continue;
     const stub = externalStub(r.to, { charWidth: CHAR_W, padX: PAD_X, payloadKey: "cls", height: HEADER_H });
-    stub.fields = [];
-    stub.methods = [];
+    stub.box = classBoxLayout(stub.cls, { showMembers: false, showModule: false });
+    stub.box.w = stub.w;
+    stub.box.h = stub.h;
     nodes.push(stub);
     byId.set(stub.id, stub);
   }
@@ -104,7 +84,9 @@ for (let i = 0; i < 300; i++) sim.tick();
 const svg = d3.select("#canvas");
 const view = svg.append("g");
 
-svg.append("defs").html(arrowMarker("arrow-inherits", "var(--edge)", 7));
+svg.append("defs").html(
+  arrowMarker("arrow-hollow", "var(--edge)", 8, "hollow") + arrowMarker("arrow-open", "var(--edge)", 7)
+);
 
 const edge = view.append("g")
   .selectAll("path")
@@ -113,9 +95,10 @@ const edge = view.append("g")
   .attr("fill", "none")
   .attr("stroke", "var(--edge)")
   .attr("stroke-width", 1.1)
-  .attr("opacity", 0.85)
-  .attr("stroke-dasharray", (d) => (d.kind === "implements" ? "6 4" : null))
-  .attr("marker-end", "url(#arrow-inherits)");
+  .attr("opacity", (d) => (d.kind === "dependency" ? 0.55 : 0.85))
+  .attr("stroke-dasharray", (d) => relationStyle(d.kind).dash)
+  .attr("marker-end", (d) => `url(#arrow-${relationStyle(d.kind).marker})`);
+edge.append("title").text((d) => `${d.source.cls.name} ${d.kind} ${d.target.cls.name}`);
 
 const node = view.append("g")
   .selectAll("g")
@@ -126,56 +109,8 @@ const node = view.append("g")
 
 function drawClass(sel) {
   sel.attr("transform", nodeTransform);
-  sel.append("title").text((d) => d.cls.qualified);
-
-  const boxColors = (d) => (d.external ? PALETTE.external : colorsFor(d.cls.change, DIFF));
-
-  sel.append("rect")
-    .attr("width", (d) => d.w).attr("height", (d) => d.h)
-    .attr("rx", 6)
-    .attr("fill", (d) => boxColors(d).fill)
-    .attr("stroke", (d) => boxColors(d).stroke)
-    .attr("stroke-width", (d) => (d.cls.change === "unchanged" && !d.external ? 1.2 : 2))
-    .attr("stroke-dasharray", (d) => (d.cls.change === "removed" || d.external ? "6 4" : null));
-
   sel.each(function (d) {
-    const g = d3.select(this);
-    let y = 15;
-    if (d.external || d.cls.annotation) {
-      g.append("text").attr("x", d.w / 2).attr("y", y).attr("text-anchor", "middle")
-        .attr("font-size", 10.5).attr("fill", "var(--muted)")
-        .text(`«${d.external ? "external" : d.cls.annotation}»`);
-      y += 14;
-    }
-    g.append("text").attr("x", d.w / 2).attr("y", y).attr("text-anchor", "middle")
-      .attr("font-size", 12.5).attr("font-weight", 700)
-      .attr("fill", d.external ? "var(--muted)" : inkFor(d.cls.change, DIFF))
-      .text(d.cls.name + mark(d.cls.change));
-    y += 13;
-    if (d.cls.module) {
-      g.append("text").attr("x", d.w / 2).attr("y", y).attr("text-anchor", "middle")
-        .attr("font-size", 9.5).attr("fill", "var(--muted)")
-        .text(d.cls.module);
-      y += 6;
-    }
-    for (const section of [d.fields, d.methods]) {
-      if (!section.length) continue;
-      y += 3;
-      g.append("line").attr("x1", 0).attr("x2", d.w).attr("y1", y).attr("y2", y)
-        .attr("stroke", boxColors(d).stroke)
-        .attr("stroke-width", 0.8);
-      y += 3;
-      for (const m of section) {
-        y += ROW_H - 3;
-        g.append("text").attr("x", PAD_X).attr("y", y)
-          .attr("font-size", 11.5)
-          .attr("fill", inkFor(m.change, DIFF))
-          .attr("font-style", m.isAbstract ? "italic" : null)
-          .attr("text-decoration", m.change === "removed" ? "line-through" : null)
-          .text(truncate(memberText(m), (d.w - PAD_X * 2) / CHAR_W));
-        y += 3;
-      }
-    }
+    drawClassBox(d3.select(this), d.cls, d.box, { diff: DIFF, external: d.external });
   });
 }
 

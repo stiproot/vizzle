@@ -2,8 +2,8 @@
 
 use serde_json::{json, Value};
 
-use crate::model::{ChangeKind, Class, CodeGraph, RelationKind};
-use crate::resolve::{resolve_relations, Target};
+use crate::model::{ChangeKind, Class, CodeGraph};
+use crate::resolve::{resolve_all_relations, Target};
 
 /// Change status as the wire-format string every renderer keys its palette on.
 pub(crate) fn change_str(change: ChangeKind) -> &'static str {
@@ -13,6 +13,20 @@ pub(crate) fn change_str(change: ChangeKind) -> &'static str {
         ChangeKind::Removed => "removed",
         ChangeKind::Modified => "modified",
     }
+}
+
+/// One resolved relation as JSON, shared by both diagram exports.
+pub(crate) fn relation_json(relation: &crate::resolve::ResolvedRelation) -> Value {
+    let (to, external) = match &relation.to {
+        Target::Internal(qualified) => (qualified.clone(), false),
+        Target::External(name) => (name.clone(), true),
+    };
+    json!({
+        "from": relation.from,
+        "to": to,
+        "external": external,
+        "kind": relation.kind.name(),
+    })
 }
 
 /// One class as JSON. Shared by the class diagram's export and the component
@@ -53,23 +67,9 @@ pub(crate) fn class_json(class: &Class) -> Value {
 pub fn to_json(graph: &CodeGraph) -> String {
     let classes: Vec<Value> = graph.classes.iter().map(class_json).collect();
 
-    let relations: Vec<Value> = resolve_relations(graph)
+    let relations: Vec<Value> = resolve_all_relations(graph)
         .iter()
-        .map(|r| {
-            let (to, external) = match &r.to {
-                Target::Internal(qualified) => (qualified.clone(), false),
-                Target::External(name) => (name.clone(), true),
-            };
-            json!({
-                "from": r.from,
-                "to": to,
-                "external": external,
-                "kind": match r.kind {
-                    RelationKind::Inherits => "inherits",
-                    RelationKind::Implements => "implements",
-                },
-            })
-        })
+        .map(relation_json)
         .collect();
 
     let diff = graph

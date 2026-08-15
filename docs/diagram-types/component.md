@@ -202,27 +202,34 @@ with component-specific behavior:
 - Edge thickness scales with `weight` (capped) and arrowheads are deliberately
   small — at 50+ edges, default-sized heads dominate the picture.
 
-### 5.3 Drill-down: classes inside a component
+### 5.3 Drill-down: the class diagram inside a component
 
 The component view answers "what is this made of?" only if you can open a
-component up. Each box with classes carries a `+` toggle; opening it grows the
-box to hold a grid of class chips (name, change color, members on hover), and
-the header carries a **Show classes** button that opens or closes every
-component at once. Expanding re-runs the relaxation, so growing boxes push
-their neighbours aside instead of overlapping them.
+component up. Each box with classes carries a `+` toggle; opening it explodes
+the component into **a real UML class diagram of its own classes** — boxes with
+stereotype, field and method compartments, data types on every member and
+signature, and the relations between them. A header button opens or closes
+every component at once.
 
-Opening a component also **frames it**: the viewport zooms to the box it just
-grew (never further out than you already are), because relaxation may have
-shifted it and chips are unreadable from a whole-repo view. That is the
-"zoom in, then turn on detail" flow, with the zoom handled for you.
+Nested layout is packed, not force-directed: most classes in a package have no
+relations at all, so repulsion just fills the box with whitespace. Boxes are
+ordered by connectivity (related classes adjacent, isolated ones trailing) and
+packed into rows sized for a landscape block. Expanding re-runs the outer
+relaxation, so a growing box pushes its neighbours aside, and the viewport
+frames what you opened.
 
-The class detail rides along in the page payload (`classes[]`, each tagged with
-its owning `component`), so drill-down is instant and needs no regeneration.
-`--no-classes` omits it for a leaner page.
+**Built once, then shown or hidden.** Every component's class diagram is laid
+out and its DOM created at load; toggling only flips visibility and resizes the
+box. Nothing is rebuilt, so a 34-class component opens in single-digit
+milliseconds however many times you toggle it, and opening all 25 at once on h
+takes ~70ms.
 
-This is deliberately *not* a second diagram: chips carry class identity and
-change status, not full member tables. When you want the members, relationships
-and inheritance edges, that is the class diagram's job.
+The payload carries `classes[]` (each tagged with its owning `component`) and
+`classRelations[]`, both in the same shape the class diagram uses.
+`--no-classes` omits them for a leaner page.
+
+Relations that cross a component boundary are not drawn inside a box — they
+belong at the component level, where the dependency edge already says it.
 
 ## 6. Diff semantics
 
@@ -284,8 +291,10 @@ class graph vizzy already extracts.
 - Runtime/infra edges (Dapr pub/sub, HTTP calls between h services) — imports
   only. A future `--infra` source could read declared bindings, but that is a
   different truth source and must not silently mix with import edges.
-- Class *relationships* inside an opened component (inheritance edges between
-  chips) — chips show identity and change, the class diagram shows structure.
+- Association *multiplicity* and aggregation/composition distinctions — vizzy
+  draws association and dependency, not the diamond notations.
+- Relations crossing a component boundary drawn between the class boxes
+  themselves (they render as component-level dependency edges instead).
 - Rust/Go **parsing** (detection already recognizes their manifests, so a
   `Cargo.toml` crate with only `.rs` files simply yields no node until a
   parser exists).

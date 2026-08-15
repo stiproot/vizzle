@@ -1,5 +1,6 @@
 """End-to-end CLI tests against a throwaway git repo."""
 
+import json
 import re
 import subprocess
 from pathlib import Path
@@ -99,7 +100,15 @@ def workspace(tmp_path: Path) -> Path:
     write("packages/util/package.json", '{"name": "@w/util"}')
     write("packages/util/src/index.ts", "export const u = 1;\n")
     write("apps/svc/package.json", '{"name": "svc"}')
-    write("apps/svc/src/main.ts", 'import { Core } from "@w/core";\nexport class Svc {}\n')
+    write(
+        "apps/svc/src/main.ts",
+        'import { Core } from "@w/core";\n'
+        "export class Handler {}\n"
+        "export class Svc {\n"
+        "  private handler: Handler;\n"
+        "  run(h: Handler): Core { return null; }\n"
+        "}\n",
+    )
     git(tmp_path, "add", ".")
     git(tmp_path, "commit", "-m", "base")
     return tmp_path
@@ -129,6 +138,24 @@ def test_component_html(workspace: Path, tmp_path: Path) -> None:
     assert '"component":"packages/core"' in compact
     assert '"name":"Core"' in compact
     assert "__GRAPH_JSON__" not in page and "__D3_JS__" not in page
+
+
+def test_component_payload_carries_a_class_diagram(workspace: Path, tmp_path: Path) -> None:
+    """An exploded component needs relations and typed members, not just names."""
+    out = tmp_path / "components.html"
+    result = CliRunner().invoke(main, ["component", str(workspace), "-o", str(out)])
+    assert result.exit_code == 0, result.output
+    graph = json.loads(re.search(r'id="graph-data"[^>]*>(.*?)</script>', out.read_text(), re.S).group(1))
+
+    relations = {(r["from"].rsplit(".", 1)[-1], r["to"].rsplit(".", 1)[-1]): r["kind"] for r in graph["classRelations"]}
+    # A field's type is structural; a method signature's types are a dependency.
+    assert relations[("Svc", "Handler")] == "association"
+    assert relations[("Svc", "Core")] == "dependency"
+
+    svc = next(c for c in graph["classes"] if c["name"] == "Svc")
+    run = next(m for m in svc["members"] if m["name"] == "run")
+    assert run["detail"] == "h: Handler", "parameter types reach the rendered signature"
+    assert run["returns"] == "Core"
 
 
 @pytest.mark.parametrize("command", [["class"], ["component"]])

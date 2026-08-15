@@ -4,7 +4,7 @@ title: changes vs HEAD~3
 classDiagram
     class cli_h_hatch_build_BundleSubstrate["cli.h.hatch_build.BundleSubstrate ✚"] {
         +PLUGIN_NAME ✚
-        +initialize(version, build_data) None ✚
+        +initialize(version: str, build_data: dict~str, Any~) None ✚
     }
     class cli_h_src_h_cli_commands_events_RelayStepError["cli.h.src.h_cli.commands.events.RelayStepError"]
     class cli_h_src_h_cli_infrastructure_chain_expr_ChainExpr["cli.h.src.h_cli.infrastructure.chain_expr.ChainExpr"] {
@@ -51,8 +51,11 @@ classDiagram
         +message() string
     }
     class packages_js_local_runtime_src_domain_ports_WorkspacePort["packages.js.local-runtime.src.domain.ports.WorkspacePort"]
+    cli_h_src_h_cli_infrastructure_chain_expr_ChainExpr --> cli_h_src_h_cli_infrastructure_chain_expr_MemberRef
+    cli_h_src_h_cli_infrastructure_chain_expr_ChainExpr --> cli_h_src_h_cli_infrastructure_chain_expr_WorkflowConfig
+    cli_h_src_h_cli_infrastructure_chain_expr_MemberRef --> cli_h_src_h_cli_infrastructure_chain_expr_WorkflowConfig
     cssClass "cli_h_hatch_build_BundleSubstrate,packages_js_local_runtime_src_domain_ports_JournalError,packages_js_local_runtime_src_domain_ports_JournalPort" vizzyAdded
     classDef vizzyAdded fill:#dafbe1,stroke:#1a7f37,stroke-width:2px,color:#1a7f37
     classDef vizzyRemoved fill:#ffebe9,stroke:#cf222e,stroke-width:2px,color:#cf222e,stroke-dasharray:6 4
     classDef vizzyModified fill:#fff1c2,stroke:#bf8700,stroke-width:2px,color:#bf8700
-%% vizzy: 16 classes, 13 relations
+%% vizzy: 16 classes, 16 relations

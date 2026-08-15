@@ -236,7 +236,7 @@ fn extract_method(func: Node, src: &str, decorators: &[String], members: &mut Ve
     let is_property = decorators.iter().any(|d| d.ends_with("property"));
     let params = func
         .child_by_field_name("parameters")
-        .map(|p| parameter_names(p, src))
+        .map(|p| parameters(p, src))
         .unwrap_or_default();
     let returns = func
         .child_by_field_name("return_type")
@@ -247,17 +247,21 @@ fn extract_method(func: Node, src: &str, decorators: &[String], members: &mut Ve
         return;
     }
 
+    let mut type_refs: Vec<String> = params.iter().filter_map(|(_, ty)| ty.clone()).collect();
+    type_refs.extend(returns.clone());
+
     members.push(Member {
         visibility: visibility_of(&name),
-        detail: params.join(", "),
+        detail: render_params(&params),
         returns,
+        type_refs,
         is_method: true,
         is_static: decorators
             .iter()
             .any(|d| d.ends_with("staticmethod") || d.ends_with("classmethod")),
         is_abstract: decorators.iter().any(|d| d.contains("abstractmethod")),
-        change: ChangeKind::Unchanged,
         name,
+        ..Default::default()
     });
 }
 
@@ -267,13 +271,10 @@ fn push_field(name: String, ty: Option<String>, members: &mut Vec<Member>) {
     }
     members.push(Member {
         visibility: visibility_of(&name),
-        detail: ty.unwrap_or_default(),
-        returns: None,
-        is_method: false,
-        is_static: false,
-        is_abstract: false,
-        change: ChangeKind::Unchanged,
+        detail: ty.clone().unwrap_or_default(),
+        type_refs: ty.into_iter().collect(),
         name,
+        ..Default::default()
     });
 }
 
@@ -304,29 +305,47 @@ fn extract_self_assignments(node: Node, src: &str, members: &mut Vec<Member>) {
     }
 }
 
-fn parameter_names(params: Node, src: &str) -> Vec<String> {
+/// `(name, type)` per parameter. Types feed the rendered signature and the
+/// dependency edges a method implies.
+fn parameters(params: Node, src: &str) -> Vec<(String, Option<String>)> {
     let mut cursor = params.walk();
     params
         .named_children(&mut cursor)
-        .filter_map(|p| match p.kind() {
-            "identifier" => Some(text(p, src)),
-            "typed_parameter" | "list_splat_pattern" | "dictionary_splat_pattern" => {
-                let prefix = match p.kind() {
-                    "list_splat_pattern" => "*",
-                    "dictionary_splat_pattern" => "**",
-                    _ => "",
-                };
-                p.named_child(0)
-                    .filter(|n| n.kind() == "identifier")
-                    .map(|n| format!("{prefix}{}", text(n, src)))
+        .filter_map(|p| {
+            let ty = p
+                .child_by_field_name("type")
+                .map(|t| clean_type(&text(t, src)));
+            match p.kind() {
+                "identifier" => Some((text(p, src), None)),
+                "typed_parameter" | "list_splat_pattern" | "dictionary_splat_pattern" => {
+                    let prefix = match p.kind() {
+                        "list_splat_pattern" => "*",
+                        "dictionary_splat_pattern" => "**",
+                        _ => "",
+                    };
+                    p.named_child(0)
+                        .filter(|n| n.kind() == "identifier")
+                        .map(|n| (format!("{prefix}{}", text(n, src)), ty))
+                }
+                "default_parameter" | "typed_default_parameter" => {
+                    p.child_by_field_name("name").map(|n| (text(n, src), ty))
+                }
+                _ => None, // positional/keyword separators
             }
-            "default_parameter" | "typed_default_parameter" => {
-                p.child_by_field_name("name").map(|n| text(n, src))
-            }
-            _ => None, // positional/keyword separators
         })
-        .filter(|name| name != "self" && name != "cls")
+        .filter(|(name, _)| name != "self" && name != "cls")
         .collect()
+}
+
+fn render_params(params: &[(String, Option<String>)]) -> String {
+    params
+        .iter()
+        .map(|(name, ty)| match ty {
+            Some(ty) => format!("{name}: {ty}"),
+            None => name.clone(),
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 fn visibility_of(name: &str) -> Visibility {

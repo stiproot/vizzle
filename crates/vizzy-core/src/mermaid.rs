@@ -3,9 +3,9 @@
 use std::collections::{BTreeMap, HashMap};
 use std::fmt::Write;
 
-use crate::model::{ChangeKind, Class, CodeGraph, Member, RelationKind};
+use crate::model::{ChangeKind, Class, CodeGraph, Member};
 use crate::palette;
-use crate::resolve::{resolve_relations, Target};
+use crate::resolve::{resolve_all_relations, Target};
 
 #[derive(Debug, Clone)]
 pub struct RenderOptions {
@@ -99,9 +99,12 @@ pub fn render(graph: &CodeGraph, opts: &RenderOptions) -> String {
         }
     }
 
-    // Relations (must live outside namespace blocks).
+    // Relations (must live outside namespace blocks): inheritance plus the
+    // associations and dependencies implied by member types.
     let mut externals: Vec<(String, String)> = Vec::new();
-    for relation in resolve_relations(graph) {
+    let relations = resolve_all_relations(graph);
+    let relation_count = relations.len();
+    for relation in relations {
         let from_id = &ids[relation.from.as_str()];
         let to_id = match &relation.to {
             Target::Internal(qualified) => ids[qualified.as_str()].clone(),
@@ -112,11 +115,7 @@ pub fn render(graph: &CodeGraph, opts: &RenderOptions) -> String {
             }
             Target::External(_) => continue,
         };
-        let arrow = match relation.kind {
-            RelationKind::Inherits => "--|>",
-            RelationKind::Implements => "..|>",
-        };
-        let _ = writeln!(out, "    {from_id} {arrow} {to_id}");
+        let _ = writeln!(out, "    {from_id} {} {to_id}", relation.kind.arrow());
     }
 
     externals.sort();
@@ -144,7 +143,6 @@ pub fn render(graph: &CodeGraph, opts: &RenderOptions) -> String {
         out.push_str(&palette::mermaid_classdefs());
     }
 
-    let relation_count = graph.classes.iter().map(|c| c.bases.len()).sum::<usize>();
     let _ = writeln!(
         out,
         "%% vizzy: {} classes, {} relations",
