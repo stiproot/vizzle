@@ -182,19 +182,20 @@ fn component_diagram_from_dir(
 
 /// Export the component graph under `root` as JSON (for external renderers).
 #[pyfunction]
-#[pyo3(signature = (root, *, include = vec![], exclude = vec![], langs = vec![]))]
+#[pyo3(signature = (root, *, include = vec![], exclude = vec![], langs = vec![], classes = true))]
 fn component_json_from_dir(
     root: &str,
     include: Vec<String>,
     exclude: Vec<String>,
     langs: Vec<String>,
+    classes: bool,
 ) -> PyResult<String> {
     let select = SelectOptions {
         include,
         exclude,
         langs,
     };
-    vc::component_json_from_dir(std::path::Path::new(root), &select).map_err(to_py_err)
+    vc::component_json_from_dir(std::path::Path::new(root), &select, classes).map_err(to_py_err)
 }
 
 /// Render a change-highlighted component diagram from two full revisions.
@@ -237,14 +238,22 @@ fn component_diagram_diff(
 
 /// Export a change-annotated component graph from two full revisions as JSON.
 #[pyfunction]
+#[pyo3(signature = (base_files, base_manifests, head_files, head_manifests, *, classes = true))]
 fn component_json_diff(
     base_files: Vec<(String, String)>,
     base_manifests: Vec<(String, String)>,
     head_files: Vec<(String, String)>,
     head_manifests: Vec<(String, String)>,
+    classes: bool,
 ) -> PyResult<String> {
-    vc::component_json_diff(&base_files, &base_manifests, &head_files, &head_manifests)
-        .map_err(to_py_err)
+    vc::component_json_diff(
+        &base_files,
+        &base_manifests,
+        &head_files,
+        &head_manifests,
+        classes,
+    )
+    .map_err(to_py_err)
 }
 
 /// Export the class graph under `root` as JSON (for external renderers).

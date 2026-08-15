@@ -5,36 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>__TITLE__</title>
 <style>
-  :root {
-    --bg: #f6f8fa;
-    --panel: #ffffff;
-    --ink: #1f2328;
-    --muted: #656d76;
-    --box-fill: #eef4ff;
-    --box-stroke: #4969b0;
-    --hull-fill: #afb8c11a;
-    --hull-stroke: #afb8c1;
-    --added-fill: #e6ffec;   --added-stroke: #1a7f37;
-    --removed-fill: #ffebe9; --removed-stroke: #cf222e;
-    --modified-fill: #fff8c5; --modified-stroke: #9a6700;
-    --edge: #57606a;
-  }
-  * { box-sizing: border-box; margin: 0; }
-  html, body { height: 100%; }
-  body { font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--ink); display: flex; flex-direction: column; }
-  header { display: flex; align-items: center; gap: 16px; padding: 10px 16px; background: var(--panel); border-bottom: 1px solid #d0d7de; flex-wrap: wrap; }
-  header h1 { font-size: 15px; font-weight: 600; }
-  header .stats { color: var(--muted); font-size: 12.5px; }
-  header input { padding: 5px 10px; border: 1px solid #d0d7de; border-radius: 6px; font-size: 13px; width: 220px; }
-  header button { padding: 5px 12px; border: 1px solid #d0d7de; border-radius: 6px; background: var(--panel); font-size: 13px; cursor: pointer; }
-  header button:hover { background: var(--bg); }
-  .legend { display: flex; gap: 12px; font-size: 12px; color: var(--muted); align-items: center; }
-  .legend[hidden] { display: none; }
-  .legend .chip { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 4px; vertical-align: -2px; border: 1.5px solid; }
-  #canvas { flex: 1; min-height: 0; cursor: grab; }
-  #canvas:active { cursor: grabbing; }
-  .hint { position: fixed; right: 14px; bottom: 10px; font-size: 11.5px; color: var(--muted); background: color-mix(in srgb, var(--panel) 85%, transparent); padding: 3px 8px; border-radius: 6px; }
-  text { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; user-select: none; }
+__VIZ_CORE_CSS__
+/* Component view specifics. */
+.group-box { cursor: grab; }
+.group-box:active { cursor: grabbing; }
+.comp-toggle { cursor: pointer; }
+.comp-toggle:hover circle { fill: #ddf4ff; stroke: #0969da; }
 </style>
 </head>
 <body>
@@ -43,6 +19,7 @@
   <span class="stats" id="stats"></span>
   <input id="search" type="search" placeholder="filter components / groups…">
   <button id="fit">Fit</button>
+  <button id="toggle-classes" aria-pressed="false">Show classes</button>
   <span class="legend" id="legend" hidden>
     <span><span class="chip" style="background:var(--added-fill);border-color:var(--added-stroke)"></span>added</span>
     <span><span class="chip" style="background:var(--removed-fill);border-color:var(--removed-stroke)"></span>removed</span>
@@ -50,58 +27,63 @@
   </span>
 </header>
 <svg id="canvas"></svg>
-<div class="hint">scroll to zoom · drag background to pan · drag components to arrange</div>
+<div class="hint">scroll to zoom · drag a component or its group box · click ⊕ on a component to open its classes</div>
 
 <script>__D3_JS__</script>
+<script>__VIZ_CORE_JS__</script>
 <script id="graph-data" type="application/json">__GRAPH_JSON__</script>
 <script id="config-data" type="application/json">__CONFIG_JSON__</script>
 <script>
 "use strict";
 const graph = JSON.parse(document.getElementById("graph-data").textContent);
 const config = JSON.parse(document.getElementById("config-data").textContent);
+const { colorsFor, inkFor, mark, truncate, edgePoint, gridCells, arrowMarker } = vizzy;
 
-// ---- geometry ---------------------------------------------------------
+const DIFF = graph.stats.diff;
 const CHAR_W = 7.25, PAD_X = 14;
+const HEAD_H = 58;                       // collapsed component height
+const CHIP_H = 22, CHIP_GAP = 6, CHIP_PAD = 12, CHIP_MAX_W = 190;
 
-const MARK = { added: " ✚", removed: " ✖", modified: " ✱", unchanged: "" };
-const PALETTE = {
-  added:    { fill: "var(--added-fill)",    stroke: "var(--added-stroke)" },
-  removed:  { fill: "var(--removed-fill)",  stroke: "var(--removed-stroke)" },
-  modified: { fill: "var(--modified-fill)", stroke: "var(--modified-stroke)" },
-  unchanged:{ fill: "var(--box-fill)",      stroke: "var(--box-stroke)" },
-  external: { fill: "var(--panel)",         stroke: "var(--muted)" },
-};
+// ---- model ------------------------------------------------------------
+// Classes arrive flat, tagged with their component; group them once.
+const classesByComponent = new Map();
+for (const cls of graph.classes || []) {
+  if (!classesByComponent.has(cls.component)) classesByComponent.set(cls.component, []);
+  classesByComponent.get(cls.component).push(cls);
+}
 
 function statsLine(c) {
   const parts = [];
-  if (c.classes) parts.push(`${c.classes} class${c.classes === 1 ? "" : "es"}`);
-  else parts.push(`${c.files} file${c.files === 1 ? "" : "s"}`);
-  if (c.langs.length) parts.push(c.langs.map((l) => (l === "typescript" ? "ts" : l === "python" ? "py" : l)).join("/"));
+  parts.push(c.classes ? `${c.classes} class${c.classes === 1 ? "" : "es"}` : `${c.files} file${c.files === 1 ? "" : "s"}`);
+  if (c.langs.length) {
+    parts.push(c.langs.map((l) => ({ typescript: "ts", python: "py" })[l] || l).join("/"));
+  }
   return parts.join(" · ");
 }
 
 function buildNode(c) {
-  const header = c.name + (MARK[c.change] || "");
+  const classes = classesByComponent.get(c.path) || [];
+  const header = c.name + mark(c.change);
   const sub = statsLine(c);
   const widest = Math.max(header.length + 2, sub.length, "«component»".length);
   const w = Math.min(340, widest * CHAR_W + PAD_X * 2);
-  return { id: c.path, comp: c, sub, w, h: 58, external: false };
+  return { id: c.path, comp: c, sub, classes, expanded: false, w, h: HEAD_H, baseW: w, external: false };
 }
 
 const nodes = graph.components.map(buildNode);
 const byId = new Map(nodes.map((n) => [n.id, n]));
 
-// External packages become small stub nodes (deduped by name).
 if (config.includeExternals) {
   for (const e of graph.edges) {
-    if (!e.external) continue;
-    const id = `ext:${e.to}`;
-    if (!byId.has(id)) {
-      const w = Math.max(e.to.length + 4, 10) * CHAR_W + PAD_X * 2;
-      const stub = { id, comp: { name: e.to, path: "", group: "", change: "unchanged" }, sub: "", w, h: 30, external: true };
-      nodes.push(stub);
-      byId.set(id, stub);
-    }
+    if (!e.external || byId.has(`ext:${e.to}`)) continue;
+    const w = Math.max(e.to.length + 4, 10) * CHAR_W + PAD_X * 2;
+    const stub = {
+      id: `ext:${e.to}`,
+      comp: { name: e.to, path: "", group: "", change: "unchanged" },
+      sub: "", classes: [], expanded: false, w, h: 30, baseW: w, external: true,
+    };
+    nodes.push(stub);
+    byId.set(stub.id, stub);
   }
 }
 
@@ -110,86 +92,186 @@ const links = graph.edges
   .map((e) => ({ source: e.from, target: e.external ? `ext:${e.to}` : e.to, weight: e.weight, change: e.change }))
   .filter((l) => byId.has(l.source) && byId.has(l.target));
 
-// ---- layout: force simulation, ticked synchronously -------------------
-// Weak per-group gravity keeps each parent directory's components together.
+// Expanding a component grows its box to hold a grid of class chips; the
+// chips are children of the component group, so they drag along with it.
+function layoutClasses(node) {
+  if (!node.expanded || !node.classes.length) {
+    node.w = node.baseW;
+    node.h = HEAD_H;
+    node.chips = [];
+    return;
+  }
+  const chipW = Math.min(
+    CHIP_MAX_W,
+    Math.max(node.baseW - CHIP_PAD * 2, ...node.classes.map((c) => (c.name.length + 3) * CHAR_W))
+  );
+  const cols = Math.max(1, Math.min(4, Math.ceil(Math.sqrt(node.classes.length))));
+  const rows = Math.ceil(node.classes.length / cols);
+  node.w = Math.max(node.baseW, cols * chipW + (cols + 1) * CHIP_PAD);
+  node.h = HEAD_H + rows * (CHIP_H + CHIP_GAP) + CHIP_PAD;
+  node.chips = node.classes.map((cls, i) => ({
+    cls,
+    w: chipW,
+    x: CHIP_PAD + (i % cols) * (chipW + CHIP_PAD),
+    y: HEAD_H + Math.floor(i / cols) * (CHIP_H + CHIP_GAP),
+  }));
+}
+
+// ---- layout ------------------------------------------------------------
 const groups = [...new Set(nodes.map((n) => n.comp.group))].sort();
-const grid = Math.ceil(Math.sqrt(groups.length));
-const CELL = 560;
-const cellOf = new Map(groups.map((g, i) => [g, {
-  x: (i % grid - (grid - 1) / 2) * CELL,
-  y: (Math.floor(i / grid) - (grid - 1) / 2) * CELL,
-}]));
+const cellOf = gridCells(groups, 560);
 
 nodes.forEach((n, i) => {
-  const c = cellOf.get(n.comp.group) || { x: 0, y: 0 };
-  n.x = c.x + (i % 5) * 40 - 80;
-  n.y = c.y + (Math.floor(i / 5) % 5) * 40 - 80;
+  const cell = cellOf.get(n.comp.group) || { x: 0, y: 0 };
+  n.x = cell.x + (i % 5) * 40 - 80;
+  n.y = cell.y + (Math.floor(i / 5) % 5) * 40 - 80;
+  layoutClasses(n);
 });
 
 const sim = d3.forceSimulation(nodes)
-  .force("link", d3.forceLink(links).id((d) => d.id).distance(200).strength(0.35))
-  .force("charge", d3.forceManyBody().strength(-1400).distanceMax(1400))
+  .force("link", d3.forceLink(links).id((d) => d.id).distance(200).strength(0.3))
+  .force("charge", d3.forceManyBody().strength(-1200).distanceMax(1400))
   .force("collide", d3.forceCollide().radius((d) => Math.hypot(d.w, d.h) / 2 + 30).strength(0.95))
-  .force("x", d3.forceX((d) => (cellOf.get(d.comp.group) || { x: 0 }).x).strength(0.08))
-  .force("y", d3.forceY((d) => (cellOf.get(d.comp.group) || { y: 0 }).y).strength(0.08))
+  // Group cohesion outweighs link pull, so a group stays a readable block.
+  .force("x", d3.forceX((d) => (cellOf.get(d.comp.group) || { x: 0 }).x).strength(0.22))
+  .force("y", d3.forceY((d) => (cellOf.get(d.comp.group) || { y: 0 }).y).strength(0.22))
   .stop();
 for (let i = 0; i < 300; i++) sim.tick();
+
+// Boxes are rectangles, and expanding one makes it much bigger, so settle the
+// arrangement in two passes: separate overlapping components, then separate
+// whole groups as blocks. Rectangular separation packs far tighter than the
+// circular collision force, and keeps each group's box from swallowing another.
+function separateComponents(iterations, padding) {
+  for (let pass = 0; pass < iterations; pass++) {
+    let moved = false;
+    for (let i = 0; i < nodes.length; i++) {
+      for (let j = i + 1; j < nodes.length; j++) {
+        const a = nodes[i], b = nodes[j];
+        const dx = b.x - a.x, dy = b.y - a.y;
+        const overlapX = (a.w + b.w) / 2 + padding - Math.abs(dx);
+        const overlapY = (a.h + b.h) / 2 + padding - Math.abs(dy);
+        if (overlapX <= 0 || overlapY <= 0) continue;
+        if (overlapX < overlapY) {           // push apart along the shallower axis
+          const shift = ((dx < 0 ? -1 : 1) * overlapX) / 2;
+          a.x -= shift; b.x += shift;
+        } else {
+          const shift = ((dy < 0 ? -1 : 1) * overlapY) / 2;
+          a.y -= shift; b.y += shift;
+        }
+        moved = true;
+      }
+    }
+    if (!moved) return;
+  }
+}
+
+// The group box drawn around a set of components. Separation and rendering
+// share this geometry, so the gap the layout leaves is the gap you see.
+const HULL = { left: 24, right: 24, top: 34, bottom: 24 };
+
+function blockOf(members) {
+  return {
+    members,
+    x0: d3.min(members, (n) => n.x - n.w / 2) - HULL.left,
+    y0: d3.min(members, (n) => n.y - n.h / 2) - HULL.top,
+    x1: d3.max(members, (n) => n.x + n.w / 2) + HULL.right,
+    y1: d3.max(members, (n) => n.y + n.h / 2) + HULL.bottom,
+  };
+}
+
+// One block per group, plus each ungrouped component on its own.
+function blocks() {
+  const byGroup = new Map();
+  for (const n of nodes) {
+    const key = n.comp.group || ` ${n.id}`;
+    if (!byGroup.has(key)) byGroup.set(key, []);
+    byGroup.get(key).push(n);
+  }
+  return [...byGroup.values()].map(blockOf);
+}
+
+function separateGroups(iterations, padding) {
+  for (let pass = 0; pass < iterations; pass++) {
+    const boxes = blocks();
+    let moved = false;
+    for (let i = 0; i < boxes.length; i++) {
+      for (let j = i + 1; j < boxes.length; j++) {
+        const a = boxes[i], b = boxes[j];
+        const overlapX = Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0) + padding;
+        const overlapY = Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0) + padding;
+        if (overlapX <= 0 || overlapY <= 0) continue;
+        const aCenterX = (a.x0 + a.x1) / 2, bCenterX = (b.x0 + b.x1) / 2;
+        const aCenterY = (a.y0 + a.y1) / 2, bCenterY = (b.y0 + b.y1) / 2;
+        const shiftAll = (block, dx, dy) => {
+          for (const n of block.members) { n.x += dx; n.y += dy; }
+        };
+        if (overlapX < overlapY) {
+          const shift = ((bCenterX < aCenterX ? -1 : 1) * overlapX) / 2;
+          shiftAll(a, -shift, 0); shiftAll(b, shift, 0);
+        } else {
+          const shift = ((bCenterY < aCenterY ? -1 : 1) * overlapY) / 2;
+          shiftAll(a, 0, -shift); shiftAll(b, 0, shift);
+        }
+        moved = true;
+      }
+    }
+    if (!moved) return;
+  }
+}
+
+function relayout() {
+  for (let round = 0; round < 4; round++) {
+    separateComponents(60, 26);
+    separateGroups(40, 22);
+  }
+  separateGroups(40, 22);   // groups win the last word, so no box overlaps
+}
+relayout();
 
 // ---- render ------------------------------------------------------------
 const svg = d3.select("#canvas");
 const view = svg.append("g");
 
-svg.append("defs").html(`
-  <marker id="arrow-dep" viewBox="0 0 12 12" refX="11" refY="6" markerWidth="11" markerHeight="11" orient="auto-start-reverse">
-    <path d="M1,1 L11,6 L1,11" fill="none" stroke="var(--edge)" stroke-width="1.6"/>
-  </marker>
-  <marker id="arrow-dep-added" viewBox="0 0 12 12" refX="11" refY="6" markerWidth="11" markerHeight="11" orient="auto-start-reverse">
-    <path d="M1,1 L11,6 L1,11" fill="none" stroke="var(--added-stroke)" stroke-width="1.8"/>
-  </marker>
-  <marker id="arrow-dep-removed" viewBox="0 0 12 12" refX="11" refY="6" markerWidth="11" markerHeight="11" orient="auto-start-reverse">
-    <path d="M1,1 L11,6 L1,11" fill="none" stroke="var(--removed-stroke)" stroke-width="1.8"/>
-  </marker>`);
+svg.append("defs").html(
+  arrowMarker("arrow-dep", "var(--edge)") +
+  arrowMarker("arrow-dep-added", "var(--added-stroke)", 7) +
+  arrowMarker("arrow-dep-removed", "var(--removed-stroke)", 7)
+);
 
-// Group hulls: a rounded rect behind each parent directory's components.
+// Group boxes are draggable: moving one moves every component inside it.
 const hullLayer = view.append("g");
-const hullData = groups.filter((g) => g);
-const hull = hullLayer.selectAll("g").data(hullData).join("g");
+const hull = hullLayer.selectAll("g").data(groups.filter(Boolean)).join("g");
 hull.append("rect")
+  .attr("class", "group-box")
   .attr("rx", 14)
-  .attr("fill", "var(--hull-fill)")
-  .attr("stroke", "var(--hull-stroke)")
-  .attr("stroke-dasharray", "2 4");
-hull.append("text")
-  .attr("font-size", 12).attr("fill", "var(--muted)")
-  .text((g) => g);
+  .attr("fill", "#afb8c11a")
+  .attr("stroke", "var(--context-stroke)")
+  .attr("stroke-dasharray", "2 4")
+  .call(d3.drag().on("drag", function (event, group) {
+    for (const n of nodes) {
+      if (n.comp.group !== group) continue;
+      n.x += event.dx;
+      n.y += event.dy;
+    }
+    positionNodes();
+    updateEdges();
+    updateHulls();
+  }));
+hull.append("text").attr("font-size", 12).attr("fill", "var(--muted)").text((g) => g);
+hull.append("title").text((g) => `${g} — drag to move the whole group`);
 
 function updateHulls() {
-  hull.each(function (g) {
-    const members = nodes.filter((n) => n.comp.group === g);
+  hull.each(function (group) {
+    const members = nodes.filter((n) => n.comp.group === group);
     if (!members.length) return;
-    const x0 = d3.min(members, (n) => n.x - n.w / 2) - 24;
-    const y0 = d3.min(members, (n) => n.y - n.h / 2) - 34;
-    const x1 = d3.max(members, (n) => n.x + n.w / 2) + 24;
-    const y1 = d3.max(members, (n) => n.y + n.h / 2) + 24;
+    const box = blockOf(members);
     const sel = d3.select(this);
-    sel.select("rect").attr("x", x0).attr("y", y0).attr("width", x1 - x0).attr("height", y1 - y0);
-    sel.select("text").attr("x", x0 + 12).attr("y", y0 + 18);
+    sel.select("rect")
+      .attr("x", box.x0).attr("y", box.y0)
+      .attr("width", box.x1 - box.x0).attr("height", box.y1 - box.y0);
+    sel.select("text").attr("x", box.x0 + 12).attr("y", box.y0 + 18);
   });
-}
-
-// Edge endpoint on the boundary of a node's rectangle, toward `other`.
-function edgePoint(node, other) {
-  const dx = other.x - node.x, dy = other.y - node.y;
-  if (dx === 0 && dy === 0) return { x: node.x, y: node.y };
-  const sx = (node.w / 2) / Math.abs(dx || 1e-9), sy = (node.h / 2) / Math.abs(dy || 1e-9);
-  const s = Math.min(sx, sy);
-  return { x: node.x + dx * s, y: node.y + dy * s };
-}
-
-function edgeColor(d) {
-  if (d.change === "added") return "var(--added-stroke)";
-  if (d.change === "removed") return "var(--removed-stroke)";
-  return "var(--edge)";
 }
 
 const edge = view.append("g")
@@ -197,72 +279,126 @@ const edge = view.append("g")
   .data(links)
   .join("path")
   .attr("fill", "none")
-  .attr("stroke", edgeColor)
-  .attr("stroke-width", (d) => (d.change !== "unchanged" ? 2.6 : 1.2 + Math.min(2.4, Math.log2(d.weight))))
-  .attr("stroke-dasharray", (d) => (d.change === "removed" ? "3 3" : "7 5"))
-  .attr("opacity", (d) => (graph.stats.diff && d.change === "unchanged" ? 0.45 : 1))
+  .attr("stroke", (d) => (d.change === "unchanged" ? "var(--edge)" : colorsFor(d.change, DIFF).stroke))
+  .attr("stroke-width", (d) => (d.change !== "unchanged" ? 1.9 : 0.9 + Math.min(1.3, Math.log2(d.weight) / 2)))
+  .attr("stroke-dasharray", (d) => (d.change === "removed" ? "3 3" : "6 4"))
+  .attr("opacity", (d) => (DIFF && d.change === "unchanged" ? 0.4 : 0.85))
   .attr("marker-end", (d) =>
-    d.change === "added" ? "url(#arrow-dep-added)" : d.change === "removed" ? "url(#arrow-dep-removed)" : "url(#arrow-dep)");
-edge.append("title").text((d) =>
-  `${byId.get(typeof d.source === "object" ? d.source.id : d.source).comp.name} ⟶ ` +
-  `${byId.get(typeof d.target === "object" ? d.target.id : d.target).comp.name}` +
-  ` (${d.weight} importing file${d.weight === 1 ? "" : "s"}${d.change !== "unchanged" ? ", " + d.change : ""})`);
+    d.change === "added" ? "url(#arrow-dep-added)"
+    : d.change === "removed" ? "url(#arrow-dep-removed)"
+    : "url(#arrow-dep)");
+edge.append("title").text((d) => {
+  const from = byId.get(typeof d.source === "object" ? d.source.id : d.source);
+  const to = byId.get(typeof d.target === "object" ? d.target.id : d.target);
+  const suffix = d.change !== "unchanged" ? `, ${d.change}` : "";
+  return `${from.comp.name} ⟶ ${to.comp.name} (${d.weight} importing file${d.weight === 1 ? "" : "s"}${suffix})`;
+});
 
 const node = view.append("g")
   .selectAll("g")
   .data(nodes)
   .join("g")
-  .call(drawComponent)
-  .call(d3.drag()
-    .on("drag", function (event, d) {
-      d.x += event.dx; d.y += event.dy;
-      d3.select(this).attr("transform", `translate(${d.x - d.w / 2},${d.y - d.h / 2})`);
-      updateEdges();
-      updateHulls();
-    }));
+  .call(d3.drag().on("drag", function (event, d) {
+    d.x += event.dx;
+    d.y += event.dy;
+    d3.select(this).attr("transform", `translate(${d.x - d.w / 2},${d.y - d.h / 2})`);
+    updateEdges();
+    updateHulls();
+  }));
 
-function drawComponent(sel) {
-  sel.attr("transform", (d) => `translate(${d.x - d.w / 2},${d.y - d.h / 2})`);
-  sel.append("title").text((d) => (d.external ? d.comp.name : d.comp.path || "(repo root)"));
+function positionNodes() {
+  node.attr("transform", (d) => `translate(${d.x - d.w / 2},${d.y - d.h / 2})`);
+}
 
-  sel.append("rect")
-    .attr("width", (d) => d.w).attr("height", (d) => d.h)
-    .attr("rx", 8)
-    .attr("fill", (d) => (d.external ? PALETTE.external.fill : PALETTE[d.comp.change].fill))
-    .attr("stroke", (d) => (d.external ? PALETTE.external.stroke : PALETTE[d.comp.change].stroke))
-    .attr("stroke-width", (d) => (d.comp.change === "unchanged" && !d.external ? 1.4 : 2.2))
-    .attr("stroke-dasharray", (d) => (d.comp.change === "removed" || d.external ? "6 4" : null));
+function classTitle(cls) {
+  const members = cls.members.slice(0, 24)
+    .map((m) => `  ${m.visibility}${m.name}${m.isMethod ? "()" : ""}${mark(m.change)}`)
+    .join("\n");
+  const more = cls.members.length > 24 ? `\n  … ${cls.members.length - 24} more` : "";
+  const stereotype = cls.annotation ? `«${cls.annotation}» ` : "";
+  return `${stereotype}${cls.qualified}${members ? "\n" + members + more : ""}`;
+}
 
-  // The UML component "tabs" glyph in the top-right corner.
-  sel.filter((d) => !d.external).each(function (d) {
-    const g = d3.select(this);
-    const gx = d.w - 22;
-    for (const dy of [6, 13]) {
-      g.append("rect").attr("x", gx).attr("y", dy).attr("width", 14).attr("height", 5)
-        .attr("fill", "var(--panel)").attr("stroke", PALETTE[d.comp.change].stroke).attr("stroke-width", 1);
-    }
-  });
-
+function drawNode(sel) {
   sel.each(function (d) {
     const g = d3.select(this);
+    g.selectAll("*").remove();               // full redraw: expand/collapse is rare
+    const colors = d.external ? vizzy.PALETTE.external : colorsFor(d.comp.change, DIFF);
+    const ink = d.external ? "var(--muted)" : inkFor(d.comp.change, DIFF);
+
+    g.append("title").text(d.external ? d.comp.name : d.comp.path || "(repo root)");
+    g.append("rect")
+      .attr("width", d.w).attr("height", d.h).attr("rx", 8)
+      .attr("fill", colors.fill)
+      .attr("stroke", colors.stroke)
+      .attr("stroke-width", d.comp.change === "unchanged" && !d.external ? 1.3 : 2)
+      .attr("stroke-dasharray", d.comp.change === "removed" || d.external ? "6 4" : null);
+
+    // UML component tabs.
+    if (!d.external) {
+      for (const dy of [6, 13]) {
+        g.append("rect").attr("x", d.w - 22).attr("y", dy).attr("width", 14).attr("height", 5)
+          .attr("fill", "var(--panel)").attr("stroke", colors.stroke).attr("stroke-width", 1);
+      }
+    }
+
     let y = d.external ? 19 : 15;
     if (!d.external) {
       g.append("text").attr("x", d.w / 2).attr("y", y).attr("text-anchor", "middle")
-        .attr("font-size", 10).attr("fill", "var(--muted)")
-        .text("«component»");
+        .attr("font-size", 10).attr("fill", "var(--muted)").text("«component»");
       y += 16;
     }
     g.append("text").attr("x", d.w / 2).attr("y", y).attr("text-anchor", "middle")
-      .attr("font-size", 12.5).attr("font-weight", 700)
-      .attr("fill", d.external ? "var(--muted)" : PALETTE[d.comp.change].stroke)
-      .text(d.comp.name + (MARK[d.comp.change] || ""));
+      .attr("font-size", 12.5).attr("font-weight", 700).attr("fill", ink)
+      .text(d.comp.name + mark(d.comp.change));
     if (d.sub) {
       y += 15;
       g.append("text").attr("x", d.w / 2).attr("y", y).attr("text-anchor", "middle")
-        .attr("font-size", 10).attr("fill", "var(--muted)")
-        .text(d.sub);
+        .attr("font-size", 10).attr("fill", "var(--muted)").text(d.sub);
+    }
+
+    // Drill-down affordance, only where there is something to open.
+    if (d.classes.length) {
+      const toggle = g.append("g").attr("class", "comp-toggle")
+        .attr("transform", `translate(14,${HEAD_H / 2 - 2})`)
+        .on("click", (event) => { event.stopPropagation(); setExpanded(d, !d.expanded); });
+      toggle.append("title").text(d.expanded ? "hide classes" : `show ${d.classes.length} classes`);
+      toggle.append("circle").attr("r", 8).attr("fill", "var(--panel)").attr("stroke", colors.stroke);
+      toggle.append("text").attr("text-anchor", "middle").attr("y", 4)
+        .attr("font-size", 12).attr("fill", ink).text(d.expanded ? "−" : "+");
+    }
+
+    for (const chip of d.chips || []) {
+      const chipColors = colorsFor(chip.cls.change, DIFF);
+      const chipGroup = g.append("g").attr("transform", `translate(${chip.x},${chip.y})`);
+      chipGroup.append("title").text(classTitle(chip.cls));
+      chipGroup.append("rect")
+        .attr("width", chip.w).attr("height", CHIP_H).attr("rx", 4)
+        .attr("fill", chipColors.fill).attr("stroke", chipColors.stroke)
+        .attr("stroke-width", chip.cls.change === "unchanged" ? 1 : 1.8)
+        .attr("stroke-dasharray", chip.cls.change === "removed" ? "4 3" : null);
+      chipGroup.append("text")
+        .attr("x", 6).attr("y", CHIP_H / 2 + 4).attr("font-size", 10.5)
+        .attr("fill", inkFor(chip.cls.change, DIFF))
+        .attr("text-decoration", chip.cls.change === "removed" ? "line-through" : null)
+        .text(truncate(chip.cls.name + mark(chip.cls.change), (chip.w - 10) / (CHAR_W * 0.86)));
     }
   });
+}
+
+function refresh(selection) {
+  drawNode(selection);
+  relayout();
+  positionNodes();
+  updateEdges();
+  updateHulls();
+  syncToggleButton();
+}
+
+function setExpanded(d, expanded) {
+  d.expanded = expanded && d.classes.length > 0;
+  layoutClasses(d);
+  refresh(node.filter((n) => n === d));
 }
 
 function updateEdges() {
@@ -272,58 +408,51 @@ function updateEdges() {
     return `M${a.x},${a.y}L${b.x},${b.y}`;
   });
 }
+
+drawNode(node);
+positionNodes();
 updateEdges();
 updateHulls();
 
-// ---- zoom / pan / fit ----------------------------------------------------
-// The viewport survives reloads (sessionStorage), so live-reload edits and
-// F5 don't lose your place; "Fit" always recomputes.
-const VIEW_KEY = `vizzy-view:${location.pathname}:${document.title}`;
-const zoom = d3.zoom()
-  .scaleExtent([0.04, 5])
-  .on("zoom", (e) => view.attr("transform", e.transform))
-  .on("end", (e) => {
-    const { k, x, y } = e.transform;
-    try { sessionStorage.setItem(VIEW_KEY, JSON.stringify({ k, x, y })); } catch {}
-  });
-svg.call(zoom);
+// ---- controls ------------------------------------------------------------
+const expandable = nodes.filter((n) => n.classes.length);
+const toggleButton = document.getElementById("toggle-classes");
 
-function fit() {
-  const b = view.node().getBBox();
-  const { width, height } = svg.node().getBoundingClientRect();
-  if (!b.width || !b.height) return;
-  const k = Math.min(width / (b.width + 80), height / (b.height + 80), 1.5);
-  const tx = width / 2 - k * (b.x + b.width / 2);
-  const ty = height / 2 - k * (b.y + b.height / 2);
-  svg.transition().duration(300).call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(k));
+function syncToggleButton() {
+  const open = expandable.filter((n) => n.expanded).length;
+  toggleButton.setAttribute("aria-pressed", String(open > 0));
+  toggleButton.textContent = open > 0 ? `Hide classes (${open})` : "Show classes";
 }
-document.getElementById("fit").addEventListener("click", fit);
 
-const savedView = (() => {
-  try { return JSON.parse(sessionStorage.getItem(VIEW_KEY)); } catch { return null; }
-})();
-if (savedView && [savedView.k, savedView.x, savedView.y].every(Number.isFinite)) {
-  svg.call(zoom.transform, d3.zoomIdentity.translate(savedView.x, savedView.y).scale(savedView.k));
+if (!expandable.length) {
+  toggleButton.disabled = true;
+  toggleButton.title = "no class detail in this diagram (generated with --no-classes)";
 } else {
-  requestAnimationFrame(fit);
+  toggleButton.addEventListener("click", () => {
+    const expand = !expandable.some((n) => n.expanded);
+    for (const n of expandable) {
+      n.expanded = expand;
+      layoutClasses(n);
+    }
+    refresh(node);
+  });
 }
+syncToggleButton();
 
-// ---- search ----------------------------------------------------------------
-function matches(n, q) {
-  return n.comp.name.toLowerCase().includes(q)
-    || n.comp.path.toLowerCase().includes(q)
-    || n.comp.group.toLowerCase().includes(q);
-}
-document.getElementById("search").addEventListener("input", (e) => {
-  const q = e.target.value.trim().toLowerCase();
-  node.attr("opacity", (d) => (!q || matches(d, q) ? 1 : 0.12));
-  edge.attr("opacity", (d) => (!q || matches(d.source, q) || matches(d.target, q) ? 1 : 0.06));
-});
+vizzy.attachViewport(svg, view, { fitButton: "fit" });
 
-// ---- header -----------------------------------------------------------------
-document.getElementById("stats").textContent =
-  `${graph.stats.components} components · ${links.length} dependencies`;
-if (graph.stats.diff) document.getElementById("legend").hidden = false;
+const matches = (n, query) =>
+  n.comp.name.toLowerCase().includes(query) ||
+  n.comp.path.toLowerCase().includes(query) ||
+  n.comp.group.toLowerCase().includes(query) ||
+  n.classes.some((c) => c.name.toLowerCase().includes(query));
+vizzy.attachFilter("search", { nodes: node, edges: edge, matches });
+
+vizzy.setHeader(
+  `${graph.stats.components} components · ${links.length} dependencies` +
+    (graph.stats.classes ? ` · ${graph.stats.classes} classes` : ""),
+  DIFF
+);
 </script>
 </body>
 </html>

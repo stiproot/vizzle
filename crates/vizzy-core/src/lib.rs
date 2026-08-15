@@ -91,9 +91,14 @@ pub fn component_diagram_from_dir(
 }
 
 /// Export the component graph for the repo at `root` as JSON.
-pub fn component_json_from_dir(root: &Path, select: &SelectOptions) -> Result<String> {
+/// `include_classes` carries the per-component class detail for drill-down.
+pub fn component_json_from_dir(
+    root: &Path,
+    select: &SelectOptions,
+    include_classes: bool,
+) -> Result<String> {
     let graph = component_graph_from_dir(root, select)?;
-    Ok(component::to_json(&graph))
+    Ok(component::to_json(&graph, include_classes))
 }
 
 fn component_graph_from_dir(
@@ -125,9 +130,10 @@ pub fn component_json_diff(
     base_manifests: &[(String, String)],
     head_files: &[(String, String)],
     head_manifests: &[(String, String)],
+    include_classes: bool,
 ) -> Result<String> {
     let merged = component_diff_graph(base_files, base_manifests, head_files, head_manifests)?;
-    Ok(component::to_json(&merged))
+    Ok(component::to_json(&merged, include_classes))
 }
 
 fn component_diff_graph(

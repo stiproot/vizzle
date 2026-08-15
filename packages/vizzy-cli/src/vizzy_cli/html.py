@@ -8,14 +8,21 @@ from importlib import resources
 
 
 def _fill(template_name: str, graph_json: str, title: str, config: dict) -> str:
+    """Inline every asset into one self-contained page.
+
+    Each view owns its own template; the palette, viewport, filter, and header
+    plumbing they share live in viz-core.{css,js} and are inlined into both.
+    """
     assets = resources.files("vizzy_cli") / "assets"
-    template = (assets / template_name).read_text(encoding="utf-8")
-    d3_source = (assets / "d3.v7.min.js").read_text(encoding="utf-8")
+    read = lambda name: (assets / name).read_text(encoding="utf-8")  # noqa: E731
     # A literal "</script>" inside embedded JSON would end the script block early.
     safe_json = graph_json.replace("</", "<\\/")
     return (
-        template.replace("__TITLE__", html_escape.escape(title))
-        .replace("__D3_JS__", d3_source)
+        read(template_name)
+        .replace("__TITLE__", html_escape.escape(title))
+        .replace("__VIZ_CORE_CSS__", read("viz-core.css"))
+        .replace("__D3_JS__", read("d3.v7.min.js"))
+        .replace("__VIZ_CORE_JS__", read("viz-core.js"))
         .replace("__GRAPH_JSON__", safe_json)
         .replace("__CONFIG_JSON__", json.dumps(config))
     )
@@ -50,4 +57,7 @@ def summarize(graph_json: str) -> str:
 def summarize_components(graph_json: str) -> str:
     graph = json.loads(graph_json)
     internal = sum(1 for e in graph["edges"] if not e["external"])
-    return f"{graph['stats']['components']} components, {internal} dependencies"
+    summary = f"{graph['stats']['components']} components, {internal} dependencies"
+    if graph["stats"].get("classes"):
+        summary += f", {graph['stats']['classes']} classes"
+    return summary

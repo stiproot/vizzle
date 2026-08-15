@@ -13,8 +13,9 @@ use std::hash::{Hash, Hasher};
 
 use serde_json::{json, Value};
 
+use crate::export::change_str;
 use crate::mermaid::{escape_label, sanitize_id};
-use crate::model::{ChangeKind, CodeGraph, Import, Language};
+use crate::model::{ChangeKind, Class, CodeGraph, Import, Language};
 use crate::parse;
 
 /// Manifest file names that mark a directory as a component, in priority
@@ -59,10 +60,22 @@ pub struct ComponentEdge {
     pub change: ChangeKind,
 }
 
+/// A class together with the component that owns it — the drill-down detail
+/// behind a component box.
+#[derive(Debug, Clone)]
+pub struct PlacedClass {
+    /// Path of the owning component.
+    pub component: String,
+    pub class: Class,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct ComponentGraph {
     pub components: Vec<Component>,
     pub edges: Vec<ComponentEdge>,
+    /// Classes inside each component. Carried so a reader can open a component
+    /// and see what it is made of without regenerating a separate diagram.
+    pub classes: Vec<PlacedClass>,
 }
 
 impl ComponentGraph {
@@ -70,6 +83,9 @@ impl ComponentGraph {
         self.components.sort_by(|a, b| a.path.cmp(&b.path));
         self.edges
             .sort_by(|a, b| (&a.from, &a.to).cmp(&(&b.from, &b.to)));
+        self.classes.sort_by(|a, b| {
+            (&a.component, &a.class.qualified).cmp(&(&b.component, &b.class.qualified))
+        });
     }
 
     pub fn diff_mode(&self) -> bool {
@@ -310,15 +326,24 @@ fn build_from_graph(
         component.langs = langs.into_iter().collect();
         component.fingerprint = hasher.finish();
     }
+    let mut placed: Vec<PlacedClass> = Vec::new();
     for class in &code.classes {
         if let Some(&idx) = module_owner.get(&class.module) {
             components[idx].classes += 1;
+            placed.push(PlacedClass {
+                component: components[idx].path.clone(),
+                class: class.clone(),
+            });
         }
     }
 
     let edges = build_edges(&code.imports, &components, &detector, &py_names);
 
-    let mut graph = ComponentGraph { components, edges };
+    let mut graph = ComponentGraph {
+        components,
+        edges,
+        classes: placed,
+    };
     graph.normalize();
     graph
 }
@@ -558,8 +583,38 @@ pub fn diff(base: &ComponentGraph, head: &ComponentGraph) -> ComponentGraph {
         }
     }
 
+    merged.classes = diff_classes(&base.classes, &head.classes);
     merged.normalize();
     merged
+}
+
+/// Annotate the drill-down classes with their own change status, reusing the
+/// class diagram's diff engine so both views agree on what changed.
+fn diff_classes(base: &[PlacedClass], head: &[PlacedClass]) -> Vec<PlacedClass> {
+    let as_graph = |placed: &[PlacedClass]| CodeGraph {
+        classes: placed.iter().map(|p| p.class.clone()).collect(),
+        imports: Vec::new(),
+    };
+    // Base first so a surviving class is attributed to its head component
+    // (a moved class follows the move); removed classes keep their base home.
+    let mut owner: HashMap<&str, &str> = HashMap::new();
+    for placed in base.iter().chain(head) {
+        owner.insert(placed.class.qualified.as_str(), placed.component.as_str());
+    }
+
+    let merged = crate::diff::diff_graphs(&as_graph(base), &as_graph(head));
+    merged
+        .classes
+        .into_iter()
+        .filter_map(|class| {
+            owner
+                .get(class.qualified.as_str())
+                .map(|component| PlacedClass {
+                    component: (*component).to_owned(),
+                    class,
+                })
+        })
+        .collect()
 }
 
 // ------------------------------------------------------------------- render
@@ -759,28 +814,22 @@ pub fn render_mermaid(graph: &ComponentGraph, opts: &ComponentRenderOptions) -> 
 
 // --------------------------------------------------------------------- json
 
-fn change_str(change: ChangeKind) -> &'static str {
-    match change {
-        ChangeKind::Unchanged => "unchanged",
-        ChangeKind::Added => "added",
-        ChangeKind::Removed => "removed",
-        ChangeKind::Modified => "modified",
-    }
-}
-
 /// Serialize for external renderers (the d3 HTML view). Shape:
 ///
 /// ```json
 /// {
 ///   "components": [{"name", "path", "group", "langs", "files", "classes", "change"}],
 ///   "edges": [{"from", "to", "external", "weight", "change"}],
+///   "classes": [{"component", ...class fields}],
 ///   "stats": {"components", "edges", "diff"}
 /// }
 /// ```
 ///
 /// `from`/`to` reference components by path; external edges carry the
-/// package name with `"external": true`.
-pub fn to_json(graph: &ComponentGraph) -> String {
+/// package name with `"external": true`. `classes` is the drill-down detail
+/// (same shape as the class diagram's export); `include_classes = false`
+/// omits it for a leaner page.
+pub fn to_json(graph: &ComponentGraph, include_classes: bool) -> String {
     let components: Vec<Value> = graph
         .components
         .iter()
@@ -813,12 +862,28 @@ pub fn to_json(graph: &ComponentGraph) -> String {
             })
         })
         .collect();
+    let classes: Vec<Value> = if include_classes {
+        graph
+            .classes
+            .iter()
+            .map(|placed| {
+                let mut value = crate::export::class_json(&placed.class);
+                value["component"] = json!(placed.component);
+                value
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
+
     json!({
         "components": components,
         "edges": edges,
+        "classes": classes,
         "stats": {
             "components": graph.components.len(),
             "edges": graph.edges.len(),
+            "classes": classes.len(),
             "diff": graph.diff_mode(),
         },
     })
@@ -973,6 +1038,66 @@ mod tests {
             .iter()
             .filter(|e| e.from == "apps/svc")
             .all(|e| e.change == ChangeKind::Unchanged));
+    }
+
+    #[test]
+    fn attaches_classes_to_their_component() {
+        let (files, manifests) = workspace();
+        let graph = build(&files, &manifests).unwrap();
+
+        let owner = |name: &str| {
+            graph
+                .classes
+                .iter()
+                .find(|p| p.class.name == name)
+                .map(|p| p.component.as_str())
+        };
+        assert_eq!(owner("Core"), Some("packages/core"));
+        assert_eq!(owner("Svc"), Some("apps/svc"));
+        assert_eq!(owner("PyCore"), Some("libs/pylib"));
+
+        let value: serde_json::Value = serde_json::from_str(&to_json(&graph, true)).unwrap();
+        assert_eq!(value["stats"]["classes"], 3);
+        let core = value["classes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|c| c["name"] == "Core")
+            .unwrap();
+        assert_eq!(core["component"], "packages/core");
+        assert!(core["members"].is_array()); // full class detail for drill-down
+
+        // The lean page omits the detail but keeps components and edges.
+        let lean: serde_json::Value = serde_json::from_str(&to_json(&graph, false)).unwrap();
+        assert_eq!(lean["classes"].as_array().unwrap().len(), 0);
+        assert_eq!(lean["components"], value["components"]);
+    }
+
+    #[test]
+    fn diff_annotates_classes_inside_components() {
+        let (base_files, manifests) = workspace();
+        let mut head_files = base_files.clone();
+        for (path, contents) in &mut head_files {
+            if path == "packages/core/src/index.ts" {
+                *contents = "export class Core {}\nexport class Extra {}\n".into();
+            }
+        }
+        let merged = diff(
+            &build(&base_files, &manifests).unwrap(),
+            &build(&head_files, &manifests).unwrap(),
+        );
+
+        let class = |name: &str| {
+            merged
+                .classes
+                .iter()
+                .find(|p| p.class.name == name)
+                .unwrap()
+        };
+        assert_eq!(class("Extra").class.change, ChangeKind::Added);
+        assert_eq!(class("Extra").component, "packages/core");
+        assert_eq!(class("Core").class.change, ChangeKind::Unchanged);
+        assert_eq!(class("Svc").class.change, ChangeKind::Unchanged);
     }
 
     #[test]

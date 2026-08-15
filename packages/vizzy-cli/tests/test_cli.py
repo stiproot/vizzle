@@ -1,5 +1,6 @@
 """End-to-end CLI tests against a throwaway git repo."""
 
+import re
 import subprocess
 from pathlib import Path
 
@@ -134,7 +135,31 @@ def test_component_html(workspace: Path, tmp_path: Path) -> None:
     compact = page.replace(" ", "")
     assert '"path":"packages/core"' in compact
     assert '"name":"@w/core"' in compact
+    # Class detail rides along so a component can be opened in the page.
+    assert '"component":"packages/core"' in compact
+    assert '"name":"Core"' in compact
     assert "__GRAPH_JSON__" not in page and "__D3_JS__" not in page
+
+
+@pytest.mark.parametrize("command", [["class"], ["component"]])
+def test_pages_inline_the_shared_core(workspace: Path, tmp_path: Path, command: list[str]) -> None:
+    """Both views are built from viz-core.{css,js}; neither may ship a placeholder."""
+    out = tmp_path / "page.html"
+    result = CliRunner().invoke(main, [*command, str(workspace), "-o", str(out)])
+    assert result.exit_code == 0, result.output
+    page = out.read_text()
+    assert "window.vizzy" in page  # shared JS
+    assert "--context-fill" in page  # shared palette
+    assert not re.search(r"__[A-Z0-9_]+__", page)
+
+
+def test_component_no_classes_makes_a_lean_page(workspace: Path, tmp_path: Path) -> None:
+    out = tmp_path / "lean.html"
+    result = CliRunner().invoke(main, ["component", str(workspace), "--no-classes", "-o", str(out)])
+    assert result.exit_code == 0, result.output
+    compact = out.read_text().replace(" ", "")
+    assert '"classes":[]' in compact
+    assert '"path":"packages/core"' in compact  # components still there
 
 
 def test_component_diff_shows_rewiring(workspace: Path) -> None:

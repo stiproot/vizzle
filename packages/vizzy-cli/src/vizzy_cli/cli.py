@@ -157,6 +157,13 @@ def class_diagram(
     help="Wrap sibling components in a block per parent directory.",
 )
 @click.option("--weights", is_flag=True, help="Label edges with their weight (distinct importing files).")
+@click.option(
+    "--classes/--no-classes",
+    "classes",
+    default=True,
+    show_default=True,
+    help="Embed each component's classes so they can be opened in the page (html only).",
+)
 @click.option("--externals", is_flag=True, help="Show one node per external package (npm/PyPI).")
 @click.option(
     "--direction", type=click.Choice(["TB", "BT", "LR", "RL"]), default=None, help="Layout direction (mermaid only)."
@@ -184,6 +191,7 @@ def component_diagram(
     lang: tuple[str, ...],
     group: bool,
     weights: bool,
+    classes: bool,
     externals: bool,
     direction: str | None,
     title: str | None,
@@ -193,13 +201,13 @@ def component_diagram(
     """Generate a component diagram for the codebase at PATH.
 
     One box per build-level module (workspace package, app, service), one
-    dashed arrow per dependency derived from imports. Spec:
-    docs/diagram-types/component.md.
+    dashed arrow per dependency derived from imports. In the HTML view, open a
+    component to see the classes inside it. Spec: docs/diagram-types/component.md.
     """
     resolved_fmt = _resolve_format(fmt, output)
     if resolved_fmt == "html":
         graph_json = vizzy_core.component_json_from_dir(
-            str(path), include=list(include), exclude=list(exclude), langs=list(lang)
+            str(path), include=list(include), exclude=list(exclude), langs=list(lang), classes=classes
         )
         page = build_component_html(
             graph_json,
@@ -318,7 +326,9 @@ def diff_diagram(
         base_files, base_manifests, head_files, head_manifests = _collect_component_diff(path, base, head)
         resolved_title = title or f"changes vs {base}"
         if _resolve_format(fmt, output) == "html":
-            graph_json = vizzy_core.component_json_diff(base_files, base_manifests, head_files, head_manifests)
+            graph_json = vizzy_core.component_json_diff(
+                base_files, base_manifests, head_files, head_manifests, classes=True
+            )
             page = build_component_html(graph_json, title=resolved_title, include_externals=externals)
             _emit(page, output, summarize_components(graph_json))
             return
@@ -412,7 +422,9 @@ def serve_command(
         if diagram_type == "component":
             if diff_mode:
                 base_files, base_manifests, head_files, head_manifests = _collect_component_diff(path, base, head)
-                graph_json = vizzy_core.component_json_diff(base_files, base_manifests, head_files, head_manifests)
+                graph_json = vizzy_core.component_json_diff(
+                    base_files, base_manifests, head_files, head_manifests, classes=True
+                )
                 page_title = title or f"changes vs {base} (live)"
             else:
                 graph_json = vizzy_core.component_json_from_dir(

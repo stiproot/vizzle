@@ -39,7 +39,14 @@ service; any directory with a `package.json`/`pyproject.toml`/`Cargo.toml`/
 
 ```sh
 uv run vizzy component ~/code/repo/h -o h-components.mmd --weights
+uv run vizzy component ~/code/repo/h -o h-components.html   # interactive
 ```
+
+In the HTML view each app/package gets a labelled box you can **drag as a
+unit**, and every component carries a `+` toggle that **opens it to show the
+classes inside** (or use *Show classes* to open them all at once) — so you can
+go from "what is this app made of" to "what is in this package" without
+leaving the page. `--no-classes` omits that detail for a leaner file.
 
 What changed, as a diagram (added = green ✚, removed = red ✖, modified =
 yellow ✱; unchanged classes in touched files render as context):
@@ -73,7 +80,19 @@ open changes.html
 
 Layout is a d3 force simulation (link + charge + rectangle collision) with a
 weak per-module gravity, ticked synchronously before first paint so the page
-opens settled.
+opens settled. The component view adds a two-level relaxation pass —
+components separate within their group, then groups separate as blocks — so
+group boxes never overlap, including after a component is expanded.
+
+Both views are built from one shared core (`assets/viz-core.{css,js}`, inlined
+into every page): the palette, geometry, viewport, filter, and header. A
+template only describes what its own nodes look like.
+
+**Comprehension first.** Nothing here needs a git diff: `vizzy class` and
+`vizzy component` are for reading unfamiliar code. The diff is a *lens* laid
+over the same diagram — under it, unchanged elements fade to neutral context
+and only what changed keeps saturated color, so the change reads instantly
+without losing its surroundings.
 
 ### Live server with hot reload
 

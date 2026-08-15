@@ -2,16 +2,41 @@
 
 use serde_json::{json, Value};
 
-use crate::model::{ChangeKind, CodeGraph, RelationKind};
+use crate::model::{ChangeKind, Class, CodeGraph, RelationKind};
 use crate::resolve::{resolve_relations, Target};
 
-fn change_str(change: ChangeKind) -> &'static str {
+/// Change status as the wire-format string every renderer keys its palette on.
+pub(crate) fn change_str(change: ChangeKind) -> &'static str {
     match change {
         ChangeKind::Unchanged => "unchanged",
         ChangeKind::Added => "added",
         ChangeKind::Removed => "removed",
         ChangeKind::Modified => "modified",
     }
+}
+
+/// One class as JSON. Shared by the class diagram's export and the component
+/// diagram's per-component class detail, so both views describe a class the
+/// same way and the renderers can share their drawing code.
+pub(crate) fn class_json(class: &Class) -> Value {
+    json!({
+        "name": class.name,
+        "qualified": class.qualified,
+        "module": class.module,
+        "lang": class.lang.name(),
+        "annotation": class.annotation,
+        "change": change_str(class.change),
+        "members": class.members.iter().map(|m| json!({
+            "name": m.name,
+            "visibility": m.visibility.sigil().to_string(),
+            "detail": m.detail,
+            "returns": m.returns,
+            "isMethod": m.is_method,
+            "isStatic": m.is_static,
+            "isAbstract": m.is_abstract,
+            "change": change_str(m.change),
+        })).collect::<Vec<_>>(),
+    })
 }
 
 /// Serialize the graph with resolved relations. Shape:
@@ -26,30 +51,7 @@ fn change_str(change: ChangeKind) -> &'static str {
 /// }
 /// ```
 pub fn to_json(graph: &CodeGraph) -> String {
-    let classes: Vec<Value> = graph
-        .classes
-        .iter()
-        .map(|c| {
-            json!({
-                "name": c.name,
-                "qualified": c.qualified,
-                "module": c.module,
-                "lang": c.lang.name(),
-                "annotation": c.annotation,
-                "change": change_str(c.change),
-                "members": c.members.iter().map(|m| json!({
-                    "name": m.name,
-                    "visibility": m.visibility.sigil().to_string(),
-                    "detail": m.detail,
-                    "returns": m.returns,
-                    "isMethod": m.is_method,
-                    "isStatic": m.is_static,
-                    "isAbstract": m.is_abstract,
-                    "change": change_str(m.change),
-                })).collect::<Vec<_>>(),
-            })
-        })
-        .collect();
+    let classes: Vec<Value> = graph.classes.iter().map(class_json).collect();
 
     let relations: Vec<Value> = resolve_relations(graph)
         .iter()

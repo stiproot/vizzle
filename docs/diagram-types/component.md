@@ -29,6 +29,24 @@ able to look at it for five seconds and know what the application is made of,
 and — in diff mode — which parts of the application a change touched and
 whether the change *rewired* anything.
 
+### 1.1 Two lenses, comprehension first
+
+Every diagram type serves two readings, and **comprehension is the primary
+one** — a diagram must be worth opening when there is no diff in sight:
+
+- **Comprehension** (`vizzy component <repo>`, no git involved): what is this
+  application made of, what depends on what, what lives inside each part.
+  Nothing in the model, the renderer, or the page may *require* a base
+  revision; git is one source of an annotation, not a precondition.
+- **Change** (`vizzy diff --type component`): the same diagram with a change
+  annotation layered on top. The diff lens **desaturates unchanged elements to
+  context** and saturates changed ones, so the eye lands on the change without
+  losing the surrounding shape.
+
+Concretely: `ChangeKind::Unchanged` is the default everywhere, the page renders
+identically with or without change data, and drill-down (§5.3) is a
+comprehension feature that happens to also work under the diff lens.
+
 ## 2. Elements
 
 ### 2.1 Component
@@ -171,15 +189,35 @@ Same self-contained page as the class diagram (inlined d3, zoom, pan, drag,
 fit-to-view, filter box, position-preserving live reload under `vizzy serve`),
 with component-specific behavior:
 
-- Nodes are compact boxes: name + `«component»` tag + small stats line
-  (`9 classes · ts`). No member rows.
-- Force layout with per-group gravity (the existing per-module gravity,
-  applied per `group`); groups get a translucent hull or tinted background.
-- Edge thickness scales with `weight` (capped); hover shows the list of
-  importing files.
-- **Click a component → drill down** to the class diagram filtered to that
-  component (v1: regenerate with `-I '<path>/**'`; in-page drill-down is a
-  later niceness, §9).
+- Nodes are compact boxes: name + `«component»` tag + UML tabs glyph + a small
+  stats line (`9 classes · ts`).
+- **Group boxes are first-class objects, not decoration**: the box around
+  `apps` or `packages/js` is labelled, and dragging it moves every component
+  inside it, so a reader can pull a whole subsystem aside.
+- Layout is a force pass seeded by per-group gravity, then a two-level
+  rectangular relaxation: components separate within their group, then groups
+  separate as whole blocks. The relaxation shares its geometry with the group
+  box renderer, so the gap the layout leaves is the gap you see, and no box
+  ever overlaps another.
+- Edge thickness scales with `weight` (capped) and arrowheads are deliberately
+  small — at 50+ edges, default-sized heads dominate the picture.
+
+### 5.3 Drill-down: classes inside a component
+
+The component view answers "what is this made of?" only if you can open a
+component up. Each box with classes carries a `+` toggle; opening it grows the
+box to hold a grid of class chips (name, change color, members on hover), and
+the header carries a **Show classes** button that opens or closes every
+component at once. Expanding re-runs the relaxation, so growing boxes push
+their neighbours aside instead of overlapping them.
+
+The class detail rides along in the page payload (`classes[]`, each tagged with
+its owning `component`), so drill-down is instant and needs no regeneration.
+`--no-classes` omits it for a leaner page.
+
+This is deliberately *not* a second diagram: chips carry class identity and
+change status, not full member tables. When you want the members, relationships
+and inheritance edges, that is the class diagram's job.
 
 ## 6. Diff semantics
 
@@ -199,6 +237,14 @@ A *rewiring* (added/removed edge) is the headline signal of this diagram and
 must be visually louder than component-level churn: changed edges render
 solid + colored + thicker, unchanged edges stay faint.
 
+Under the diff lens the whole palette shifts: unchanged components, edges, and
+class chips drop to a neutral grey (`--context-*`), and only changed elements
+keep saturated color (green added / red removed / amber modified) plus their
+✚ ✖ ✱ glyph. Without a diff the same elements render in the normal palette —
+contrast is applied *because* there is something to contrast against.
+Classes inside a component carry their own change status, so opening a modified
+component shows which classes drove the change.
+
 Unchanged components with no changed edges render as context (same rule as
 unchanged classes in touched files today), but components entirely unrelated
 to the change may be collapsed per-group under `--focus` to keep large diffs
@@ -214,8 +260,9 @@ vizzy serve <repo> --type component [--diff]
 
 Shared flags keep their existing meaning: `-o`, `-f/--format mermaid|html`,
 `--title`, `-I/-E`, `--direction`, `--externals`. New: `--no-group`,
-`--weights`, `--focus` (diff only). `--type class` remains the default for
-`diff`/`serve`, so existing invocations are untouched.
+`--weights`, `--no-classes` (html payload), `--focus` (diff only).
+`--type class` remains the default for `diff`/`serve`, so existing invocations
+are untouched.
 
 ## 8. Future: provided interfaces
 
@@ -232,11 +279,25 @@ class graph vizzy already extracts.
 - Runtime/infra edges (Dapr pub/sub, HTTP calls between h services) — imports
   only. A future `--infra` source could read declared bindings, but that is a
   different truth source and must not silently mix with import edges.
-- In-page drill-down from component to class view (regenerate-with-filter is
-  the v1 path).
+- Class *relationships* inside an opened component (inheritance edges between
+  chips) — chips show identity and change, the class diagram shows structure.
 - Rust/Go **parsing** (detection already recognizes their manifests, so a
   `Cargo.toml` crate with only `.rs` files simply yields no node until a
   parser exists).
+
+## 9.1 Implementation notes
+
+The two HTML views are built from one shared core (`assets/viz-core.css` and
+`assets/viz-core.js`, inlined into every page): palette and change-color rules,
+box/edge geometry, the arrowhead marker, zoom/pan/fit with a viewport that
+survives reloads, the filter box, and the header readout. A template owns only
+what is specific to its diagram — what a node looks like and how it is laid
+out. Add a third diagram type by writing a template, not by copying a page.
+
+The same rule holds in the core: `export::class_json` and `export::change_str`
+are shared by the class and component exports, so both describe a class
+identically, and the component diff reuses `diff::diff_graphs` rather than
+implementing a second class-comparison.
 
 ## 10. Acceptance, on h
 
