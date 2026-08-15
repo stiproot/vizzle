@@ -1,10 +1,12 @@
 """Tests for the live-reload server."""
 
+import os
 import threading
 import time
 import urllib.request
 from pathlib import Path
 
+import pytest
 from vizzy_cli import server
 
 
@@ -30,6 +32,62 @@ def test_hub_wakes_waiters_on_notify() -> None:
     hub.notify()
     thread.join(timeout=5.0)
     assert seen == [1]
+
+
+def test_source_watch_dirs_prunes_vendored_and_hidden_trees(tmp_path: Path) -> None:
+    for rel in ("src/app", "node_modules/dep/lib", ".git/objects", "packages/core/src", "target/debug"):
+        (tmp_path / rel).mkdir(parents=True)
+
+    watched = {str(p.relative_to(tmp_path)) for p in server.source_watch_dirs(tmp_path)}
+    assert {".", "src", "src/app", "packages", "packages/core", "packages/core/src"} <= watched
+    assert not any(part in name for name in watched for part in ("node_modules", ".git", "target"))
+
+
+def test_source_watch_dirs_respects_the_limit(tmp_path: Path) -> None:
+    for i in range(10):
+        (tmp_path / f"d{i}").mkdir()
+    assert len(server.source_watch_dirs(tmp_path, limit=4)) == 4
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root can read any directory")
+def test_source_watch_dirs_skips_unreadable_subtrees(tmp_path: Path) -> None:
+    blocked = tmp_path / "state"
+    (blocked / "inner").mkdir(parents=True)
+    (tmp_path / "src").mkdir()
+    blocked.chmod(0o000)
+    try:
+        watched = {str(p.relative_to(tmp_path)) for p in server.source_watch_dirs(tmp_path)}
+        assert "src" in watched
+        assert not any(name.startswith("state") for name in watched)
+    finally:
+        blocked.chmod(0o755)
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root can read any directory")
+def test_watcher_survives_an_unreadable_directory(tmp_path: Path) -> None:
+    """Repos routinely hold state dirs owned by another user (e.g. a container
+    volume); one must not take live reload down with it."""
+    blocked = tmp_path / "state"
+    blocked.mkdir()
+    (blocked / "data").write_text("x")
+    blocked.chmod(0o000)
+    (tmp_path / "app.py").write_text("class A:\n    pass\n")
+
+    hub = server.ReloadHub()
+    stop = threading.Event()
+    errors: list[str] = []
+    thread = server.start_watcher(tmp_path, hub, stop, errors.append)
+    try:
+        time.sleep(0.5)  # let the watcher settle
+        assert thread.is_alive()
+        assert errors == []
+
+        generation = hub.generation
+        (tmp_path / "app.py").write_text("class A:\n    x: int\n")
+        assert hub.wait_for_change(generation, timeout=10.0) != generation
+    finally:
+        stop.set()
+        blocked.chmod(0o755)
 
 
 def test_server_serves_page_and_pushes_reload_on_file_change(tmp_path: Path) -> None:

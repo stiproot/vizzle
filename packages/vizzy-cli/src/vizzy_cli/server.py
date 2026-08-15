@@ -6,12 +6,31 @@ reload event to connected browsers whenever a watched source file changes.
 
 from __future__ import annotations
 
+import os
 import threading
 from collections.abc import Callable
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from .git import SUPPORTED_SUFFIXES
+
+# Vendored and generated trees hold no source vizzy parses, but dominate the
+# directory count (on a mid-size monorepo: ~10k dirs vs ~400 without them).
+PRUNED_DIR_NAMES = frozenset(
+    {
+        "node_modules",
+        "site-packages",
+        "target",
+        "dist",
+        "build",
+        "out",
+        "coverage",
+        "__pycache__",
+        "venv",
+    }
+)
+# Upper bound on watched directories, so a pathological tree can't stall startup.
+MAX_WATCH_DIRS = 4000
 
 LIVE_RELOAD_SNIPPET = (
     '<script>new EventSource("/events").addEventListener("message", () => location.reload());</script>'
@@ -100,14 +119,70 @@ def is_watched_source(path: str) -> bool:
     return path.endswith(SUPPORTED_SUFFIXES) and not path.endswith(".d.ts")
 
 
-def start_watcher(root: Path, hub: ReloadHub, stop: threading.Event) -> threading.Thread:
-    """Watch `root` for source changes on a daemon thread; notify `hub`."""
+def source_watch_dirs(root: Path, limit: int = MAX_WATCH_DIRS) -> list[Path]:
+    """Directories under `root` worth watching for source changes.
+
+    Handed to watchfiles as an explicit non-recursive path list rather than
+    letting it recurse from `root`, for two reasons: an unreadable directory
+    anywhere in the tree (a container's root-owned state dir, say) otherwise
+    takes the whole watch down with it, and vendored trees like node_modules
+    would swamp the watch with directories holding nothing vizzy parses.
+    """
+    dirs = [root]
+    stack = [root]
+    while stack and len(dirs) < limit:
+        current = stack.pop()
+        try:
+            entries = list(os.scandir(current))
+        except OSError:
+            continue  # vanished or unreadable: its parent is still watched
+        for entry in entries:
+            if len(dirs) >= limit:
+                return dirs
+            if not entry.is_dir(follow_symlinks=False):
+                continue
+            if entry.name.startswith(".") or entry.name in PRUNED_DIR_NAMES:
+                continue
+            if not os.access(entry.path, os.R_OK | os.X_OK):
+                continue
+            path = Path(entry.path)
+            dirs.append(path)
+            stack.append(path)
+    return dirs
+
+
+def start_watcher(
+    root: Path,
+    hub: ReloadHub,
+    stop: threading.Event,
+    on_error: Callable[[str], None] | None = None,
+) -> threading.Thread:
+    """Watch `root` for source changes on a daemon thread; notify `hub`.
+
+    Watches an explicit list of source directories (see [`source_watch_dirs`])
+    so an unreadable or vendored subtree can't break or swamp the watch. If the
+    watcher dies anyway, live reload is lost but the server keeps serving, so
+    report the reason instead of dumping a thread traceback. Directories
+    created after startup are picked up on the next restart.
+    """
     from watchfiles import watch
 
+    targets = source_watch_dirs(root)
+
     def run() -> None:
-        for changes in watch(root, stop_event=stop, debounce=200):
-            if any(is_watched_source(changed_path) for _, changed_path in changes):
-                hub.notify()
+        try:
+            for changes in watch(
+                *targets,
+                stop_event=stop,
+                debounce=200,
+                recursive=False,
+                ignore_permission_denied=True,
+            ):
+                if any(is_watched_source(changed_path) for _, changed_path in changes):
+                    hub.notify()
+        except Exception as err:  # noqa: BLE001 (the thread must not die noisily)
+            if on_error is not None:
+                on_error(f"live reload disabled: {type(err).__name__}: {err}")
 
     thread = threading.Thread(target=run, daemon=True, name="vizzy-watcher")
     thread.start()
@@ -120,11 +195,12 @@ def serve(
     host: str,
     port: int,
     on_ready: Callable[[str], None] | None = None,
+    on_error: Callable[[str], None] | None = None,
 ) -> None:
     """Run the server until interrupted. `on_ready` receives the URL."""
     hub = ReloadHub()
     stop = threading.Event()
-    start_watcher(watch_root, hub, stop)
+    start_watcher(watch_root, hub, stop, on_error)
     server = make_server(build_page, hub, host, port)
     try:
         if on_ready is not None:

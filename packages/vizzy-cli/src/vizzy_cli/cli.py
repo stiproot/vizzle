@@ -441,7 +441,10 @@ def serve_command(
 
             webbrowser.open(url)
 
-    server.serve(build_page, path.resolve(), host, port, on_ready)
+    def on_error(message: str) -> None:
+        click.echo(f"warning: {message}", err=True)
+
+    server.serve(build_page, path.resolve(), host, port, on_ready, on_error)
 
 
 if __name__ == "__main__":
