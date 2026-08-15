@@ -29,12 +29,16 @@ fn collect(node: Node, src: &str, module: &str, graph: &mut CodeGraph) {
             }
             "interface_declaration" => extract_interface(child, src, module, graph),
             "enum_declaration" => extract_enum(child, src, module, graph),
+            "import_statement" => extract_import(child, src, graph),
             // Unwrap `export class ...`, namespaces, and top-level statements.
-            "export_statement"
-            | "internal_module"
-            | "module"
-            | "statement_block"
-            | "ambient_declaration" => collect(child, src, module, graph),
+            // An export can also be a re-export (`export { x } from "y"`).
+            "export_statement" => {
+                extract_import(child, src, graph);
+                collect(child, src, module, graph)
+            }
+            "internal_module" | "module" | "statement_block" | "ambient_declaration" => {
+                collect(child, src, module, graph)
+            }
             _ => {}
         }
     }
@@ -42,6 +46,24 @@ fn collect(node: Node, src: &str, module: &str, graph: &mut CodeGraph) {
 
 fn qualified(module: &str, name: &str) -> String {
     format!("{module}.{name}")
+}
+
+/// `import ... from "spec"` / `export ... from "spec"`. The importing file's
+/// path is stamped on by [`super::parse_file`].
+fn extract_import(node: Node, src: &str, graph: &mut CodeGraph) {
+    let Some(source) = node.child_by_field_name("source") else {
+        return;
+    };
+    let spec = text(source, src);
+    let spec = spec.trim_matches(['"', '\'', '`']);
+    if spec.is_empty() {
+        return;
+    }
+    graph.imports.push(Import {
+        file: String::new(),
+        target: spec.to_owned(),
+        lang: Language::TypeScript,
+    });
 }
 
 fn extract_class(node: Node, src: &str, module: &str, graph: &mut CodeGraph) {

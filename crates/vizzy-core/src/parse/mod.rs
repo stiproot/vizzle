@@ -31,10 +31,14 @@ pub fn parse_file(rel_path: &str, source: &str) -> Result<CodeGraph> {
         return Ok(CodeGraph::default());
     };
     let module = module_path(rel_path);
-    match lang {
+    let mut graph = match lang {
         Language::Python => python::parse(&module, source),
         Language::TypeScript => typescript::parse(&module, source),
+    }?;
+    for import in &mut graph.imports {
+        import.file = rel_path.to_owned();
     }
+    Ok(graph)
 }
 
 /// Parse many `(relative_path, contents)` pairs in parallel into one graph.

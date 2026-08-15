@@ -7,6 +7,7 @@
 //! 3. Optionally [`diff::diff_graphs`] annotates a base/head pair with changes.
 //! 4. [`mermaid::render`] emits the diagram text.
 
+pub mod component;
 pub mod diff;
 pub mod export;
 pub mod mermaid;
@@ -19,6 +20,7 @@ use std::path::Path;
 
 use anyhow::Result;
 
+pub use component::ComponentRenderOptions;
 pub use mermaid::RenderOptions;
 
 /// File-selection options shared by the high-level entry points.
@@ -76,6 +78,67 @@ pub fn json_from_dir(root: &Path, select: &SelectOptions) -> Result<String> {
     let files = walk::collect_files(root, &select.include, &select.exclude, &select.languages()?)?;
     let graph = parse::parse_files(&files)?;
     Ok(export::to_json(&graph))
+}
+
+/// Render a component diagram (modules + dependency edges) for the repo at `root`.
+pub fn component_diagram_from_dir(
+    root: &Path,
+    select: &SelectOptions,
+    render: &ComponentRenderOptions,
+) -> Result<String> {
+    let graph = component_graph_from_dir(root, select)?;
+    Ok(component::render_mermaid(&graph, render))
+}
+
+/// Export the component graph for the repo at `root` as JSON.
+pub fn component_json_from_dir(root: &Path, select: &SelectOptions) -> Result<String> {
+    let graph = component_graph_from_dir(root, select)?;
+    Ok(component::to_json(&graph))
+}
+
+fn component_graph_from_dir(
+    root: &Path,
+    select: &SelectOptions,
+) -> Result<component::ComponentGraph> {
+    let files = walk::collect_files(root, &select.include, &select.exclude, &select.languages()?)?;
+    let manifests = walk::collect_manifests(root)?;
+    component::build(&files, &manifests)
+}
+
+/// Render a change-highlighted component diagram from two full revisions of a
+/// repo's sources and manifests. Unlike the class diff, both sides must be the
+/// complete file set — an edge's existence depends on files a change didn't touch.
+pub fn component_diff_diagram(
+    base_files: &[(String, String)],
+    base_manifests: &[(String, String)],
+    head_files: &[(String, String)],
+    head_manifests: &[(String, String)],
+    render: &ComponentRenderOptions,
+) -> Result<String> {
+    let merged = component_diff_graph(base_files, base_manifests, head_files, head_manifests)?;
+    Ok(component::render_mermaid(&merged, render))
+}
+
+/// Export a change-annotated component graph from two full revisions as JSON.
+pub fn component_json_diff(
+    base_files: &[(String, String)],
+    base_manifests: &[(String, String)],
+    head_files: &[(String, String)],
+    head_manifests: &[(String, String)],
+) -> Result<String> {
+    let merged = component_diff_graph(base_files, base_manifests, head_files, head_manifests)?;
+    Ok(component::to_json(&merged))
+}
+
+fn component_diff_graph(
+    base_files: &[(String, String)],
+    base_manifests: &[(String, String)],
+    head_files: &[(String, String)],
+    head_manifests: &[(String, String)],
+) -> Result<component::ComponentGraph> {
+    let base = component::build(base_files, base_manifests)?;
+    let head = component::build(head_files, head_manifests)?;
+    Ok(component::diff(&base, &head))
 }
 
 /// Export a change-annotated class graph from two revisions of a file set as JSON.

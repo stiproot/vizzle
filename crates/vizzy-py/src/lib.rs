@@ -4,7 +4,7 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
 use ::vizzy_core as vc;
-use vc::{RenderOptions, SelectOptions};
+use vc::{ComponentRenderOptions, RenderOptions, SelectOptions};
 
 fn to_py_err(err: anyhow::Error) -> PyErr {
     PyValueError::new_err(format!("{err:#}"))
@@ -129,6 +129,124 @@ fn class_diagram_diff(
     vc::diff_diagram(&base_files, &head_files, &render).map_err(to_py_err)
 }
 
+fn component_options(
+    group: bool,
+    weights: bool,
+    include_externals: bool,
+    direction: Option<String>,
+    title: Option<String>,
+) -> ComponentRenderOptions {
+    ComponentRenderOptions {
+        group,
+        weights,
+        include_externals,
+        direction,
+        title,
+    }
+}
+
+/// Render a Mermaid component diagram (modules + dependency edges) for `root`.
+#[pyfunction]
+#[pyo3(signature = (
+    root,
+    *,
+    include = vec![],
+    exclude = vec![],
+    langs = vec![],
+    group = true,
+    weights = false,
+    include_externals = false,
+    direction = None,
+    title = None,
+))]
+#[allow(clippy::too_many_arguments)]
+fn component_diagram_from_dir(
+    root: &str,
+    include: Vec<String>,
+    exclude: Vec<String>,
+    langs: Vec<String>,
+    group: bool,
+    weights: bool,
+    include_externals: bool,
+    direction: Option<String>,
+    title: Option<String>,
+) -> PyResult<String> {
+    let select = SelectOptions {
+        include,
+        exclude,
+        langs,
+    };
+    let render = component_options(group, weights, include_externals, direction, title);
+    vc::component_diagram_from_dir(std::path::Path::new(root), &select, &render).map_err(to_py_err)
+}
+
+/// Export the component graph under `root` as JSON (for external renderers).
+#[pyfunction]
+#[pyo3(signature = (root, *, include = vec![], exclude = vec![], langs = vec![]))]
+fn component_json_from_dir(
+    root: &str,
+    include: Vec<String>,
+    exclude: Vec<String>,
+    langs: Vec<String>,
+) -> PyResult<String> {
+    let select = SelectOptions {
+        include,
+        exclude,
+        langs,
+    };
+    vc::component_json_from_dir(std::path::Path::new(root), &select).map_err(to_py_err)
+}
+
+/// Render a change-highlighted component diagram from two full revisions.
+/// Both sides take the complete source file set plus the manifest files.
+#[pyfunction]
+#[pyo3(signature = (
+    base_files,
+    base_manifests,
+    head_files,
+    head_manifests,
+    *,
+    group = true,
+    weights = false,
+    include_externals = false,
+    direction = None,
+    title = None,
+))]
+#[allow(clippy::too_many_arguments)]
+fn component_diagram_diff(
+    base_files: Vec<(String, String)>,
+    base_manifests: Vec<(String, String)>,
+    head_files: Vec<(String, String)>,
+    head_manifests: Vec<(String, String)>,
+    group: bool,
+    weights: bool,
+    include_externals: bool,
+    direction: Option<String>,
+    title: Option<String>,
+) -> PyResult<String> {
+    let render = component_options(group, weights, include_externals, direction, title);
+    vc::component_diff_diagram(
+        &base_files,
+        &base_manifests,
+        &head_files,
+        &head_manifests,
+        &render,
+    )
+    .map_err(to_py_err)
+}
+
+/// Export a change-annotated component graph from two full revisions as JSON.
+#[pyfunction]
+fn component_json_diff(
+    base_files: Vec<(String, String)>,
+    base_manifests: Vec<(String, String)>,
+    head_files: Vec<(String, String)>,
+    head_manifests: Vec<(String, String)>,
+) -> PyResult<String> {
+    vc::component_json_diff(&base_files, &base_manifests, &head_files, &head_manifests)
+        .map_err(to_py_err)
+}
+
 /// Export the class graph under `root` as JSON (for external renderers).
 #[pyfunction]
 #[pyo3(signature = (root, *, include = vec![], exclude = vec![], langs = vec![]))]
@@ -161,6 +279,10 @@ fn vizzy_core_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(class_diagram_from_dir, m)?)?;
     m.add_function(wrap_pyfunction!(class_diagram_from_files, m)?)?;
     m.add_function(wrap_pyfunction!(class_diagram_diff, m)?)?;
+    m.add_function(wrap_pyfunction!(component_diagram_from_dir, m)?)?;
+    m.add_function(wrap_pyfunction!(component_json_from_dir, m)?)?;
+    m.add_function(wrap_pyfunction!(component_diagram_diff, m)?)?;
+    m.add_function(wrap_pyfunction!(component_json_diff, m)?)?;
     m.add_function(wrap_pyfunction!(graph_json_from_dir, m)?)?;
     m.add_function(wrap_pyfunction!(graph_json_diff, m)?)?;
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;

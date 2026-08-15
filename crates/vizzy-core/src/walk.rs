@@ -19,6 +19,36 @@ fn build_globset(patterns: &[String]) -> Result<Option<GlobSet>> {
     Ok(Some(builder.build()?))
 }
 
+/// Collect `(relative_path, contents)` for package manifests under `root`,
+/// respecting .gitignore (so vendored trees like node_modules stay out).
+pub fn collect_manifests(root: &Path) -> Result<Vec<(String, String)>> {
+    let mut manifests = Vec::new();
+    for entry in WalkBuilder::new(root).hidden(true).build() {
+        let entry = entry?;
+        if !entry.file_type().is_some_and(|t| t.is_file()) {
+            continue;
+        }
+        let Some(name) = entry.path().file_name().and_then(|n| n.to_str()) else {
+            continue;
+        };
+        if !crate::component::MANIFEST_NAMES.contains(&name) {
+            continue;
+        }
+        let rel = entry
+            .path()
+            .strip_prefix(root)
+            .unwrap_or(entry.path())
+            .to_string_lossy()
+            .replace('\\', "/");
+        match std::fs::read_to_string(entry.path()) {
+            Ok(contents) => manifests.push((rel, contents)),
+            Err(_) => continue,
+        }
+    }
+    manifests.sort();
+    Ok(manifests)
+}
+
 /// Collect `(relative_path, contents)` for supported source files under `root`,
 /// respecting .gitignore. `include`/`exclude` are glob patterns matched against
 /// the relative path; `langs` (empty = all) restricts languages.

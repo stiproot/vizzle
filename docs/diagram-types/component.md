@@ -1,0 +1,252 @@
+# Component diagram
+
+**Status:** v1 implemented (§8 provided-interfaces and the §9 items remain future work).
+**Command:** `vizzy component <repo>` (+ `vizzy diff --type component`, `vizzy serve --type component`)
+
+The spec for vizzy's second diagram type. The class diagram answers *"what is
+the shape of the code?"*; the component diagram answers *"what is the shape of
+the application?"* — one box per module, one arrow per dependency, changes
+highlighted.
+
+## 1. What this diagram is
+
+A UML component diagram shows the **modular units of a system and the
+dependencies between them**. Strict UML defines a component as a replaceable,
+encapsulated unit exposing *provided* and *required* interfaces
+(ball-and-socket notation); the grouping-of-namespaces view formally belongs
+to the UML *package diagram*. vizzy takes the pragmatic, source-derived
+reading that has become the de-facto standard for codebase visualization:
+
+> **A component is a build-level module of the repository** — a workspace
+> package, an app, a crate, a service — **and an edge is a dependency one
+> component has on another**, derived from imports.
+
+Interfaces are not dropped from the model, just deferred: see
+[§8 Future: provided interfaces](#8-future-provided-interfaces).
+
+This sits one level of altitude above the class diagram: a reader should be
+able to look at it for five seconds and know what the application is made of,
+and — in diff mode — which parts of the application a change touched and
+whether the change *rewired* anything.
+
+## 2. Elements
+
+### 2.1 Component
+
+A **component** is a directory that is a unit of build/distribution.
+
+| Attribute | Meaning | Example (h) |
+|---|---|---|
+| `name` | Manifest name if declared, else directory name | `@h/workflow-core`, `dapr-agent` |
+| `path` | Repo-relative directory | `packages/js/workflow-core` |
+| `group` | Nearest meaningful ancestor grouping (see §3.2) | `packages/js`, `apps` |
+| `languages` | Languages of parsed files inside it | `typescript` |
+| `stats` | File count, class count (from the existing class graph) | `12 files, 9 classes` |
+| `change` | `ChangeKind` — same enum the class diagram uses | `Modified` |
+
+### 2.2 Dependency edge
+
+A directed edge `A ──▶ B`: *component A imports from component B*.
+
+| Attribute | Meaning |
+|---|---|
+| `from`, `to` | Component names |
+| `weight` | Number of distinct importing **files** in `A` (not import statements) |
+| `change` | `Added` / `Removed` / `Unchanged` (diff mode; see §6) |
+
+Edges are deduplicated: many imports from `A` to `B` produce one edge with a
+weight. Self-edges are discarded. External dependencies (npm/PyPI/crates.io)
+are excluded by default; `--externals` renders them as a distinct
+`«external»` node style, collapsed to one node per package.
+
+### 2.3 Group
+
+A visual container (mermaid `subgraph` / d3 hull) holding sibling components
+— not a node in the graph, carries no edges of its own. In h: `apps`,
+`packages/js`, `packages/py`, plus top-level singletons (`web`, `cli`).
+
+## 3. Component detection
+
+Detection is **manifest-driven with a directory fallback**, language-neutral,
+and requires zero configuration for conventional repos.
+
+### 3.1 Rules, in order
+
+1. **Manifest = component.** Any directory containing a package manifest is a
+   component: `package.json`, `pyproject.toml`, `Cargo.toml`, `go.mod`.
+   The *innermost* manifest above a source file owns that file.
+2. **The repo root is never a component.** A root manifest (workspace
+   `package.json`, workspace `Cargo.toml`) declares the workspace; files owned
+   directly by the root fall through to rule 3.
+3. **Fallback: top-level directory.** A parsed source file under no manifest
+   belongs to a component named after its top-level directory (`scripts/…` →
+   component `scripts`). Parsed files sitting directly in the repo root are
+   collected into a `(root)` component.
+4. **Empty components are dropped.** A manifest directory containing no files
+   vizzy can parse (no `.py`/`.ts` today) produces no node.
+
+`-I`/`-E` include/exclude globs apply *before* detection, so `-E 'apps/*'`
+removes those components entirely.
+
+### 3.2 Naming and grouping
+
+- `name` comes from the manifest (`package.json .name`,
+  `pyproject.toml project.name`, `Cargo.toml package.name`); fall back to the
+  directory name. Names are unique per graph; on collision, disambiguate with
+  the parent directory (`js/core` vs `py/core`).
+- `group` is the component's parent path relative to the repo root
+  (`apps`, `packages/js`). Components at depth 1 (`web/`) are ungrouped.
+
+### 3.3 Worked example: h
+
+```
+apps/*             → 15 components   group "apps"        (package.json each)
+packages/js/*      → 11 components   group "packages/js"
+packages/py/*      →  2 components   group "packages/py" (pyproject.toml each)
+web                →  1 component    ungrouped
+cli, scripts, ...  → fallback components if they contain parseable sources
+```
+
+Expected edges include `apps/* ──▶ @h/core`, `apps/workflow-svc ──▶
+@h/workflow-core`, agents ──▶ `@h/core-dapr`, etc.
+
+## 4. Edge extraction
+
+The parsers gain **import extraction** alongside class extraction (a new
+`Import { file, target }` list on `CodeGraph`). An import produces an edge
+only when it **resolves to another detected component**:
+
+| Import form | Resolution |
+|---|---|
+| TS: bare specifier `@h/core`, `@h/core/dist/x` | Match longest prefix against detected components' manifest names (workspace deps) |
+| TS: relative `../../packages/js/core/src/x` | Resolve path; owning component = innermost manifest (§3.1) |
+| Python: absolute `from agent_core.runner import X` | Match first segment(s) against components' importable package names (from `pyproject.toml` / top-level package dirs) |
+| Python: relative `from ..x import y` | Resolve against the file's own path |
+| Anything else (stdlib, npm, PyPI) | External — dropped, or one `«external»` node per package under `--externals` |
+
+Resolution intentionally reuses the spirit of the class diagram's
+`resolve.rs`: best-effort, name-based, no build-system evaluation. TS path
+aliases (`tsconfig.json paths`) are out of scope for v1 and listed in §9.
+
+## 5. Rendering
+
+### 5.1 Mermaid
+
+Mermaid has no native UML component-diagram syntax, so vizzy renders a
+`flowchart` styled to read as one — the same pragmatic choice the class
+renderer makes with Mermaid 11 quirks. Conventions:
+
+- Node label: `«component»<br/><b>name</b>` (guillemets keep the UML idiom).
+- Groups render as `subgraph` blocks (analogous to `--group` namespaces in
+  the class diagram; here grouping is **on by default**, `--no-group` flattens).
+- Dependency edges are dashed arrows `-.->`, the flowchart cousin of UML's
+  dashed dependency `..>`. Weight ≥ 2 renders as an edge label (`-. 7 .->`)
+  under `--weights`.
+- Direction defaults to `LR` (dependency graphs read better left→right);
+  `--direction` overrides, matching the class command.
+- Diff styling reuses the class diagram's exact palette and glyphs:
+  added = green `✚`, removed = red `✖`, modified = yellow `✱`, via `classDef`
+  emitted **after** class attachments (same Mermaid 11 ordering quirk).
+
+Sketch:
+
+```mermaid
+flowchart LR
+  subgraph apps
+    workflow_svc["«component»<br/><b>workflow-svc</b>"]
+    dapr_agent["«component»<br/><b>dapr-agent</b>"]
+  end
+  subgraph packages/js
+    core["«component»<br/><b>@h/core</b>"]
+    workflow_core["«component»<br/><b>@h/workflow-core</b>"]
+  end
+  workflow_svc -.-> workflow_core
+  workflow_svc -.-> core
+  dapr_agent -.-> core
+```
+
+### 5.2 Interactive HTML (d3)
+
+Same self-contained page as the class diagram (inlined d3, zoom, pan, drag,
+fit-to-view, filter box, position-preserving live reload under `vizzy serve`),
+with component-specific behavior:
+
+- Nodes are compact boxes: name + `«component»` tag + small stats line
+  (`9 classes · ts`). No member rows.
+- Force layout with per-group gravity (the existing per-module gravity,
+  applied per `group`); groups get a translucent hull or tinted background.
+- Edge thickness scales with `weight` (capped); hover shows the list of
+  importing files.
+- **Click a component → drill down** to the class diagram filtered to that
+  component (v1: regenerate with `-I '<path>/**'`; in-page drill-down is a
+  later niceness, §9).
+
+## 6. Diff semantics
+
+`vizzy diff --type component` reuses the whole git pipeline (changed files
+via `git diff --name-status -M -z`, base contents via `git show`) but —
+unlike the class diff, which only parses touched files — **builds the full
+component graph for both revisions**, since an edge's existence depends on
+files the diff didn't touch. Cost is acceptable: parsing is the hot path and
+already handles whole-repo scale.
+
+| Element | Added | Removed | Modified |
+|---|---|---|---|
+| Component | didn't exist at base | gone at head | any owned file added/removed/changed |
+| Edge | new dependency between surviving components | dependency dropped | — (weight change alone is *not* a diff signal) |
+
+A *rewiring* (added/removed edge) is the headline signal of this diagram and
+must be visually louder than component-level churn: changed edges render
+solid + colored + thicker, unchanged edges stay faint.
+
+Unchanged components with no changed edges render as context (same rule as
+unchanged classes in touched files today), but components entirely unrelated
+to the change may be collapsed per-group under `--focus` to keep large diffs
+readable.
+
+## 7. CLI surface
+
+```sh
+vizzy component <repo> [-o out.mmd|out.html] [flags]     # full graph
+vizzy diff <repo> --type component [--base ... --head ...]
+vizzy serve <repo> --type component [--diff]
+```
+
+Shared flags keep their existing meaning: `-o`, `-f/--format mermaid|html`,
+`--title`, `-I/-E`, `--direction`, `--externals`. New: `--no-group`,
+`--weights`, `--focus` (diff only). `--type class` remains the default for
+`diff`/`serve`, so existing invocations are untouched.
+
+## 8. Future: provided interfaces
+
+The UML-strict layer, deferred from v1 but the model leaves room for it: a
+component may declare **provided interfaces** — in h, the hexagonal
+`src/domain/ports/*` interfaces are exactly this — rendered lollipop-style,
+with edges landing on the interface instead of the component when the import
+targets a port. Requires interface-level resolution, so it builds on the
+class graph vizzy already extracts.
+
+## 9. Out of scope (v1)
+
+- TS `tsconfig.json` path aliases and Python namespace packages.
+- Runtime/infra edges (Dapr pub/sub, HTTP calls between h services) — imports
+  only. A future `--infra` source could read declared bindings, but that is a
+  different truth source and must not silently mix with import edges.
+- In-page drill-down from component to class view (regenerate-with-filter is
+  the v1 path).
+- Rust/Go **parsing** (detection already recognizes their manifests, so a
+  `Cargo.toml` crate with only `.rs` files simply yields no node until a
+  parser exists).
+
+## 10. Acceptance, on h
+
+1. `vizzy component ~/code/h -o h-components.html` renders ~29 components in
+   4 groups; `@h/core` is visibly the most-depended-on node; the page opens
+   settled, zooms, pans, filters.
+2. `vizzy component ~/code/h -o h-components.mmd` produces valid Mermaid 11
+   (`mmdc` renders it without error).
+3. Adding `import { x } from "@h/git-core"` to an app that didn't use it, then
+   `vizzy diff ~/code/h --type component`, shows exactly one green edge (and
+   the app marked modified) — no other rewiring noise.
+4. Whole-repo generation stays well under a second in the Rust core, matching
+   the class diagram's budget.

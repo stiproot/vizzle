@@ -1,0 +1,93 @@
+flowchart LR
+    subgraph sg_apps["apps"]
+        c_apps_claude_agent["«component»<br/><b>claude-agent</b>"]
+        c_apps_claude_managed_agent["«component»<br/><b>claude-managed-agent</b>"]
+        c_apps_codex_agent["«component»<br/><b>codex-agent</b>"]
+        c_apps_dapr_agent["«component»<br/><b>dapr-agent</b>"]
+        c_apps_dapr_claude_loop_agent["«component»<br/><b>dapr-claude-loop-agent</b>"]
+        c_apps_dapr_mcp["«component»<br/><b>dapr-mcp</b>"]
+        c_apps_kimi_agent["«component»<br/><b>kimi-agent</b>"]
+        c_apps_langgraph_agent["«component»<br/><b>langgraph-agent</b>"]
+        c_apps_obs_mcp["«component»<br/><b>obs-mcp</b>"]
+        c_apps_openhands_agent["«component»<br/><b>openhands-agent</b>"]
+        c_apps_pi_agent["«component»<br/><b>pi-agent</b>"]
+        c_apps_stub_agent["«component»<br/><b>stub-agent</b>"]
+        c_apps_workflow_agent["«component»<br/><b>workflow-agent</b>"]
+        c_apps_workflow_mcp["«component»<br/><b>workflow-mcp</b>"]
+        c_apps_workflow_svc["«component»<br/><b>workflow-svc</b>"]
+    end
+    subgraph sg_cli["cli"]
+        c_cli_h["«component»<br/><b>h-cli</b>"]
+    end
+    subgraph sg_packages_js["packages/js"]
+        c_packages_js_agent_cli["«component»<br/><b>agent-cli</b>"]
+        c_packages_js_agent_server["«component»<br/><b>js/agent-server</b>"]
+        c_packages_js_core["«component»<br/><b>core</b>"]
+        c_packages_js_core_dapr["«component»<br/><b>core-dapr</b>"]
+        c_packages_js_core_vercel["«component»<br/><b>core-vercel</b>"]
+        c_packages_js_git_core["«component»<br/><b>git-core</b>"]
+        c_packages_js_local_runtime["«component»<br/><b>local-runtime</b>"]
+        c_packages_js_logger["«component»<br/><b>logger</b>"]
+        c_packages_js_run_ledger["«component»<br/><b>run-ledger</b>"]
+        c_packages_js_telemetry["«component»<br/><b>telemetry</b>"]
+        c_packages_js_workflow_core["«component»<br/><b>workflow-core</b>"]
+    end
+    subgraph sg_packages_py["packages/py"]
+        c_packages_py_agent_core["«component»<br/><b>agent-core</b>"]
+        c_packages_py_agent_server["«component»<br/><b>py/agent-server</b>"]
+    end
+    c_apps_claude_agent -. "3" .-> c_packages_js_agent_cli
+    c_apps_claude_agent -. "3" .-> c_packages_js_core
+    c_apps_claude_agent -. "2" .-> c_packages_js_telemetry
+    c_apps_claude_agent -. "3" .-> c_packages_py_agent_server
+    c_apps_codex_agent -. "2" .-> c_packages_js_agent_cli
+    c_apps_codex_agent -.-> c_packages_js_core
+    c_apps_codex_agent -. "2" .-> c_packages_js_logger
+    c_apps_codex_agent -.-> c_packages_js_telemetry
+    c_apps_codex_agent -. "2" .-> c_packages_py_agent_server
+    c_apps_dapr_agent -. "3" .-> c_packages_py_agent_core
+    c_apps_dapr_agent -. "2" .-> c_packages_py_agent_server
+    c_apps_dapr_claude_loop_agent -.-> c_packages_py_agent_core
+    c_apps_dapr_claude_loop_agent -. "2" .-> c_packages_py_agent_server
+    c_apps_dapr_mcp -. "7" .-> c_packages_js_core_dapr
+    c_apps_kimi_agent -. "2" .-> c_packages_js_agent_cli
+    c_apps_kimi_agent -. "3" .-> c_packages_js_core
+    c_apps_kimi_agent -.-> c_packages_js_telemetry
+    c_apps_kimi_agent -. "2" .-> c_packages_py_agent_server
+    c_apps_langgraph_agent -.-> c_packages_py_agent_core
+    c_apps_langgraph_agent -. "4" .-> c_packages_py_agent_server
+    c_apps_obs_mcp -. "2" .-> c_packages_js_telemetry
+    c_apps_openhands_agent -. "3" .-> c_packages_js_agent_cli
+    c_apps_openhands_agent -. "2" .-> c_packages_js_core
+    c_apps_openhands_agent -. "3" .-> c_packages_js_logger
+    c_apps_openhands_agent -.-> c_packages_js_telemetry
+    c_apps_openhands_agent -. "3" .-> c_packages_py_agent_server
+    c_apps_pi_agent -. "3" .-> c_packages_js_agent_cli
+    c_apps_pi_agent -. "2" .-> c_packages_js_core
+    c_apps_pi_agent -. "3" .-> c_packages_js_logger
+    c_apps_pi_agent -.-> c_packages_js_telemetry
+    c_apps_pi_agent -. "3" .-> c_packages_py_agent_server
+    c_apps_stub_agent -.-> c_packages_js_core
+    c_apps_stub_agent -.-> c_packages_js_telemetry
+    c_apps_stub_agent -. "2" .-> c_packages_py_agent_server
+    c_apps_workflow_agent -. "2" .-> c_packages_py_agent_core
+    c_apps_workflow_agent -.-> c_packages_py_agent_server
+    c_apps_workflow_mcp -. "4" .-> c_packages_js_core
+    c_apps_workflow_mcp -. "3" .-> c_packages_js_telemetry
+    c_apps_workflow_mcp -.-> c_packages_js_workflow_core
+    c_apps_workflow_svc -. "30" .-> c_packages_js_core
+    c_apps_workflow_svc -. "22" .-> c_packages_js_core_dapr
+    c_apps_workflow_svc -.-> c_packages_js_git_core
+    c_apps_workflow_svc -. "6" .-> c_packages_js_telemetry
+    c_apps_workflow_svc -. "15" .-> c_packages_js_workflow_core
+    c_packages_js_agent_server -. "5" .-> c_packages_js_core
+    c_packages_js_agent_server -. "7" .-> c_packages_js_git_core
+    c_packages_js_agent_server -. "8" .-> c_packages_js_run_ledger
+    c_packages_js_agent_server -. "5" .-> c_packages_js_telemetry
+    c_packages_js_core_dapr -. "2" .-> c_packages_js_core
+    c_packages_js_core_dapr -. "2" .-> c_packages_js_telemetry
+    c_packages_js_local_runtime -.-> c_packages_js_agent_cli
+    c_packages_js_local_runtime -. "2" .-> c_packages_js_git_core
+    c_packages_js_local_runtime -. "2" .-> c_packages_js_run_ledger
+    c_packages_js_local_runtime -. "4" .-> c_packages_js_workflow_core
+%% vizzy: 29 components, 54 dependencies

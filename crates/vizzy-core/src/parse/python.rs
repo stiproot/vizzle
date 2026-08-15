@@ -34,8 +34,41 @@ fn collect(node: Node, src: &str, module: &str, outer: Option<&str>, graph: &mut
                     }
                 }
             }
-            // Classes can hide inside `if TYPE_CHECKING:` etc.
+            "import_statement" | "import_from_statement" => extract_imports(child, src, graph),
+            // Classes (and imports) can hide inside `if TYPE_CHECKING:` etc.
             "if_statement" | "try_statement" | "block" => collect(child, src, module, outer, graph),
+            _ => {}
+        }
+    }
+}
+
+/// `import a.b, c` -> targets `a.b`, `c`; `from ..x import y` -> target `..x`
+/// (relative dots preserved). The file path is stamped on by [`super::parse_file`].
+fn extract_imports(node: Node, src: &str, graph: &mut CodeGraph) {
+    let mut push = |target: String| {
+        if !target.is_empty() {
+            graph.imports.push(Import {
+                file: String::new(),
+                target,
+                lang: Language::Python,
+            });
+        }
+    };
+    if node.kind() == "import_from_statement" {
+        if let Some(module_name) = node.child_by_field_name("module_name") {
+            push(text(module_name, src));
+        }
+        return;
+    }
+    let mut cursor = node.walk();
+    for child in node.named_children(&mut cursor) {
+        match child.kind() {
+            "dotted_name" => push(text(child, src)),
+            "aliased_import" => {
+                if let Some(name) = child.child_by_field_name("name") {
+                    push(text(name, src));
+                }
+            }
             _ => {}
         }
     }

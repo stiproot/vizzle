@@ -128,20 +128,36 @@ impl Class {
     }
 }
 
+/// A file-level import, the raw material of the component graph.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Import {
+    /// Repo-relative path of the importing file.
+    pub file: String,
+    /// Specifier as written in source: `@h/core` or `./util` (TypeScript),
+    /// `a.b.c` or `..mod` (Python, relative dots preserved).
+    pub target: String,
+    pub lang: Language,
+}
+
 /// Everything extracted from one revision of a set of source files.
 #[derive(Debug, Clone, Default)]
 pub struct CodeGraph {
     pub classes: Vec<Class>,
+    pub imports: Vec<Import>,
 }
 
 impl CodeGraph {
     pub fn merge(&mut self, other: CodeGraph) {
         self.classes.extend(other.classes);
+        self.imports.extend(other.imports);
     }
 
-    /// Sort classes for deterministic output.
+    /// Sort classes and imports for deterministic output.
     pub fn normalize(&mut self) {
         self.classes.sort_by(|a, b| a.qualified.cmp(&b.qualified));
         self.classes.dedup_by(|a, b| a.qualified == b.qualified);
+        self.imports
+            .sort_by(|a, b| (&a.file, &a.target).cmp(&(&b.file, &b.target)));
+        self.imports.dedup();
     }
 }

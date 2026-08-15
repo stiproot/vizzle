@@ -75,3 +75,76 @@ def test_diff_html_marks_changes(repo: Path) -> None:
 def test_diff_outside_git_repo(tmp_path: Path) -> None:
     result = CliRunner().invoke(main, ["diff", str(tmp_path)])
     assert result.exit_code != 0
+
+
+@pytest.fixture()
+def workspace(tmp_path: Path) -> Path:
+    """A committed mini-workspace: two packages, one app depending on core."""
+
+    def git(*args: str) -> None:
+        subprocess.run(
+            ["git", *args],
+            cwd=tmp_path,
+            check=True,
+            capture_output=True,
+            env={
+                "GIT_AUTHOR_NAME": "t",
+                "GIT_AUTHOR_EMAIL": "t@t",
+                "GIT_COMMITTER_NAME": "t",
+                "GIT_COMMITTER_EMAIL": "t@t",
+                "PATH": "/usr/bin:/bin",
+            },
+        )
+
+    def write(rel: str, contents: str) -> None:
+        path = tmp_path / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(contents)
+
+    git("init")
+    write("package.json", '{"name": "root", "workspaces": ["packages/*", "apps/*"]}')
+    write("packages/core/package.json", '{"name": "@w/core"}')
+    write("packages/core/src/index.ts", "export class Core {}\n")
+    write("packages/util/package.json", '{"name": "@w/util"}')
+    write("packages/util/src/index.ts", "export const u = 1;\n")
+    write("apps/svc/package.json", '{"name": "svc"}')
+    write("apps/svc/src/main.ts", 'import { Core } from "@w/core";\nexport class Svc {}\n')
+    git("add", ".")
+    git("commit", "-m", "base")
+    return tmp_path
+
+
+def test_component_diagram(workspace: Path) -> None:
+    result = CliRunner().invoke(main, ["component", str(workspace)])
+    assert result.exit_code == 0, result.output
+    assert result.output.startswith("flowchart LR")
+    assert 'subgraph sg_apps["apps"]' in result.output
+    assert "«component»<br/><b>svc</b>" in result.output
+    assert "c_apps_svc -.-> c_packages_core" in result.output
+    assert "c_packages_util" in result.output  # present even with no edges
+    assert "%% vizzy: 3 components, 1 dependencies" in result.output
+
+
+def test_component_html(workspace: Path, tmp_path: Path) -> None:
+    out = tmp_path / "components.html"
+    result = CliRunner().invoke(main, ["component", str(workspace), "-o", str(out)])
+    assert result.exit_code == 0, result.output
+    page = out.read_text()
+    assert page.startswith("<!doctype html>")
+    compact = page.replace(" ", "")
+    assert '"path":"packages/core"' in compact
+    assert '"name":"@w/core"' in compact
+    assert "__GRAPH_JSON__" not in page and "__D3_JS__" not in page
+
+
+def test_component_diff_shows_rewiring(workspace: Path) -> None:
+    # A new file wires svc to @w/util, which it never used before.
+    extra = workspace / "apps/svc/src/extra.ts"
+    extra.write_text('import { u } from "@w/util";\n')
+    result = CliRunner().invoke(main, ["diff", str(workspace), "--type", "component"])
+    assert result.exit_code == 0, result.output
+    assert "«component»<br/><b>svc ✱</b>" in result.output
+    assert 'c_apps_svc -. "✚" .-> c_packages_util' in result.output
+    assert "linkStyle" in result.output and "#1a7f37" in result.output
+    # The untouched dependency stays uncolored context.
+    assert "c_apps_svc -.-> c_packages_core" in result.output

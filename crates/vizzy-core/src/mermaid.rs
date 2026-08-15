@@ -42,7 +42,7 @@ fn change_marker(change: ChangeKind) -> &'static str {
     }
 }
 
-fn sanitize_id(qualified: &str) -> String {
+pub(crate) fn sanitize_id(qualified: &str) -> String {
     let mut id: String = qualified
         .chars()
         .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
@@ -53,7 +53,7 @@ fn sanitize_id(qualified: &str) -> String {
     id
 }
 
-fn escape_label(label: &str) -> String {
+pub(crate) fn escape_label(label: &str) -> String {
     label.replace('"', "'")
 }
 
