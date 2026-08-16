@@ -12,12 +12,18 @@ crates/vizzle-py/       PyO3 bindings. A thin, dumb translation layer.
 packages/vizzle-cli/    Click CLI. Git orchestration, file I/O, page assembly.
   └── assets/          viz-core.{css,js} (shared) + one template per diagram type.
 docs/diagram-types/    One spec per diagram type. Written before the code.
+docs/distribution.md   How vizzle reaches other repos, and why.
 ```
 
 Each layer has one job. The Rust core never shells out to git and never knows
 about HTML; the CLI never parses source; the bindings contain no logic beyond
 argument translation. If you find yourself reaching across a layer, the design
 is wrong, not the layer.
+
+Two properties exist to serve distribution, and are easy to break by accident:
+a generated page is **fully self-contained** (no runtime fetches — d3 is inlined,
+so a page is shareable with no infrastructure), and the tool's only external
+requirement is **`git` on PATH**. See `docs/distribution.md` §7 and §9.
 
 ## Adding a diagram type
 

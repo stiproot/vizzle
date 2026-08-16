@@ -21,11 +21,16 @@ composition diamonds are a convention rather than an inference:
 
 ## Setup
 
-Requires [uv](https://docs.astral.sh/uv/) and a Rust toolchain.
+From a clone — requires [uv](https://docs.astral.sh/uv/) and a Rust toolchain:
 
 ```sh
 uv sync   # builds the Rust extension via maturin and installs the CLI
 ```
+
+vizzle is **not published yet**, so there is no `uvx vizzle` today. Once it is,
+that becomes the way to use it — no clone, no toolchain, nothing added to the
+repo you are looking at. The plan, and the reasoning behind it, is in
+[`docs/distribution.md`](docs/distribution.md).
 
 ## Usage
 
