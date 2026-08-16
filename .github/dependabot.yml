@@ -1,0 +1,31 @@
+# Every action in .github/workflows/ is pinned to a commit SHA, because a
+# mutable tag on a third-party action is a write path into a workflow that
+# publishes to PyPI. Pinning without automated updates only trades one risk for
+# another — a stale action with a known advisory — so Dependabot keeps the pins
+# moving and rewrites the `# v4` comment beside each one.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly }
+    commit-message: { prefix: "ci" }
+
+  - package-ecosystem: cargo
+    directory: /
+    schedule: { interval: weekly }
+    commit-message: { prefix: "deps" }
+    groups:
+      # tree-sitter and its grammars move together; separate PRs for each would
+      # be three PRs that only pass when merged as one.
+      tree-sitter:
+        patterns: ["tree-sitter", "tree-sitter-*"]
+
+  - package-ecosystem: uv
+    directory: /packages/vizzle-cli
+    schedule: { interval: weekly }
+    commit-message: { prefix: "deps" }
+
+  - package-ecosystem: npm
+    directory: /web
+    schedule: { interval: weekly }
+    commit-message: { prefix: "deps" }
