@@ -59,15 +59,18 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { name: linux-x86_64, runner: ubuntu-latest, target: x86_64, manylinux: auto }
-          - { name: linux-aarch64, runner: ubuntu-latest, target: aarch64, manylinux: auto }
+          # manylinux_2_28, not `auto`. `auto` selects manylinux2014 (glibc
+          # 2.17), where tree-sitter's endian shim compiles but produces an
+          # `undefined symbol: le16toh` at import: it asks for _DEFAULT_SOURCE,
+          # a macro glibc did not gain until 2.19. glibc 2.28 is a 2018 floor.
+          - { name: linux-x86_64, runner: ubuntu-latest, target: x86_64, manylinux: "2_28" }
+          - { name: linux-aarch64, runner: ubuntu-latest, target: aarch64, manylinux: "2_28" }
           - { name: macos-arm64, runner: macos-14, target: aarch64-apple-darwin }
           # Cross-compiled on Apple Silicon: GitHub has retired the Intel macOS
           # runners, and a macos-13 job queues forever rather than failing. The
           # macOS toolchain targets both architectures, so this costs nothing —
           # but it is the one wheel the smoke job below cannot run.
           - { name: macos-x86_64, runner: macos-14, target: x86_64-apple-darwin }
-          - { name: windows-x86_64, runner: windows-latest, target: x64 }
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -122,8 +125,11 @@ jobs:
           path: ${{ env.PROJECT_DIR }}/dist/*.tar.gz
           if-no-files-found: error
 
-  # Install each wheel on a clean runner and actually run it. A wheel that
-  # imports but cannot render is still a broken release.
+  # Install each wheel on a clean runner and actually run it. Importing the
+  # extension is the load-bearing part: a wheel can build cleanly and still
+  # fail at import with an undefined symbol, which is how the manylinux2014
+  # wheels shipped broken. Every architecture we publish gets exercised here —
+  # except macos-x86_64, which has no runner (see the build matrix).
   smoke:
     name: "smoke: ${{ matrix.name }}"
     needs: build
@@ -134,8 +140,8 @@ jobs:
       matrix:
         include:
           - { name: linux-x86_64, runner: ubuntu-latest }
+          - { name: linux-aarch64, runner: ubuntu-24.04-arm }
           - { name: macos-arm64, runner: macos-14 }
-          - { name: windows-x86_64, runner: windows-latest }
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -148,13 +154,24 @@ jobs:
       - name: Install the wheel and render this repo
         shell: bash
         run: |
+          set -x
           python -m pip install --upgrade pip
           python -m pip install dist/*.whl
+          # Import first and on its own: an undefined symbol surfaces here, and
+          # a bare traceback from `vizzle --version` is harder to read.
+          python -c "from vizzle_cli import _core; print('extension ok:', _core.__version__)"
           vizzle --version
           vizzle component . -o components.mmd
           vizzle class . -o classes.html
-          test -s components.mmd && test -s classes.html
-          echo "rendered $(wc -c < classes.html) bytes of HTML"
+      # Assert on content, not just on the file existing: an empty render and a
+      # successful one both produce a file, and only one of them is a release.
+      - name: The output is a real diagram
+        shell: bash
+        run: |
+          grep -q '^flowchart' components.mmd || { echo "::error::no flowchart in components.mmd"; cat components.mmd; exit 1; }
+          grep -q '<svg' classes.html || { echo "::error::no svg in classes.html"; exit 1; }
+          grep -q 'd3' classes.html || { echo "::error::d3 was not inlined — the page is not self-contained"; exit 1; }
+          echo "components.mmd $(wc -c < components.mmd) bytes, classes.html $(wc -c < classes.html) bytes"
 
   publish:
     name: Publish to PyPI

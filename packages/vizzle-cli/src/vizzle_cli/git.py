@@ -123,6 +123,8 @@ def file_at_ref(root: Path, ref: str, path: str) -> str | None:
 
 def file_in_worktree(root: Path, path: str) -> str | None:
     try:
-        return (root / path).read_text(errors="replace")
+        # utf-8 to match `git show` above, which decodes blobs the same way;
+        # the platform default would read the two revisions inconsistently.
+        return (root / path).read_text(encoding="utf-8", errors="replace")
     except OSError:
         return None

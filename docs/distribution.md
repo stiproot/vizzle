@@ -260,26 +260,56 @@ is a single number to bump.
 small: **one wheel per (OS, architecture)**, not per Python version, valid on
 every Python ≥ 3.10 forever. The measured artifact is 1.7 MB.
 
-| Target | Wheel tag |
-| --- | --- |
-| Linux x86_64 | `manylinux_2_17_x86_64` |
-| Linux aarch64 | `manylinux_2_17_aarch64` |
-| macOS arm64 | `macosx_11_0_arm64` |
-| macOS x86_64 | `macosx_10_12_x86_64` (cross-compiled — see below) |
-| Windows x86_64 | `win_amd64` |
+| Target | Wheel tag | Smoke-tested |
+| --- | --- | --- |
+| Linux x86_64 | `manylinux_2_28_x86_64` | yes |
+| Linux aarch64 | `manylinux_2_28_aarch64` | yes (`ubuntu-24.04-arm`) |
+| macOS arm64 | `macosx_11_0_arm64` | yes |
+| macOS x86_64 | `macosx_10_12_x86_64` | **no** — cross-compiled, no runner |
+
+Five artifacts including the sdist. The sdist is the fallback for anything
+unlisted and requires a Rust toolchain on the consumer's machine, which is
+acceptable for a long tail.
+
+### 5.1 Three things the first release attempt taught us
+
+All three were found by tagging `v0.1.0` for real. None would have been caught
+by building wheels alone, which is the argument for the smoke job.
+
+**glibc 2.17 produces a wheel that builds and cannot import.** `manylinux: auto`
+selects manylinux2014 (glibc 2.17). tree-sitter's portable endian shim asks for
+`_DEFAULT_SOURCE` — a macro glibc did not gain until **2.19** — so on 2.17
+`le16toh` falls back to an implicit declaration, compiles with a warning cargo
+never surfaces, and dies at import with `undefined symbol: le16toh`. Confirmed
+directly in both containers:
+
+```
+manylinux2014   glibc 2.17  → implicit declaration, 1 undefined le16toh
+manylinux_2_28  glibc 2.28  → clean
+```
+
+Hence `manylinux: "2_28"` pinned explicitly rather than `auto`. **The Linux
+floor is glibc 2.28** (2018: RHEL 8, Ubuntu 18.10, Debian 10).
 
 **Intel macOS has no runner any more.** GitHub retired the `macos-13` images,
 and the failure mode is nasty: the job **queues forever instead of failing**, so
-the release simply never finishes and nothing says why. Found on the first real
-release attempt, when every other leg went green in under three minutes and that
-one sat pending. The x86_64 wheel is now cross-compiled on Apple Silicon, which
-the macOS toolchain handles natively — at the cost of being the one wheel the
-smoke job cannot execute. Every build job carries `timeout-minutes` so a future
-runner retirement fails loudly rather than hanging.
+the release never finishes and nothing says why — every other leg went green in
+under three minutes while that one sat pending. The x86_64 wheel is now
+cross-compiled on Apple Silicon, which the macOS toolchain handles natively, at
+the cost of being the one wheel nothing can execute. Every build job now carries
+`timeout-minutes` so the next runner retirement fails loudly instead of hanging.
 
-Six artifacts including the sdist. `PyO3/maturin-action` builds this matrix off
-the shelf; the sdist is the fallback for anything unlisted and requires a Rust
-toolchain on the consumer's machine, which is acceptable for a long tail.
+**Writing a diagram used the platform's default encoding.** `_emit` called
+`Path.write_text` with no encoding, and diagrams carry `«guillemets»` and the
+`✚ ✖ ✱` glyphs. On Windows that is cp1252 and every write raised
+`UnicodeEncodeError`; on Linux under a non-UTF-8 locale it would do the same.
+Fixed at both ends — writing output, and `file_in_worktree` reading source,
+which had to match how `git show` already decoded the other revision or the two
+sides of a diff would be read inconsistently.
+
+**Windows is out of the matrix for now**, by decision rather than by defect —
+the encoding bug it exposed is fixed. Adding it back means a `windows-latest`
+leg in both matrices and nothing else.
 
 **Three guards the release runs before it can publish**, each protecting a
 failure this layout actually invites:
@@ -334,6 +364,8 @@ unpublished crate is easier to change than a published one.
 
 - **`git` on PATH.** `vizzle_cli/git.py` shells out (`git diff --name-status`,
   `git cat-file --batch`). Universal in the context where vizzle is used.
+- **Python ≥ 3.10**, and on Linux **glibc ≥ 2.28** (§5.1). Anything older falls
+  back to the sdist and needs a Rust toolchain.
 - **Nothing else.** In particular *no Node*: d3 is vendored into the package and
   inlined into every generated page. A vizzle HTML file opens from `file://`
   with no network, which is what makes §9 work.

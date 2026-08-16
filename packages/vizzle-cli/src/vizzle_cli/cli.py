@@ -43,7 +43,9 @@ def _resolve_format(fmt: str | None, output: Path | None) -> str:
 
 def _emit(content: str, output: Path | None, summary: str) -> None:
     if output:
-        output.write_text(content)
+        # Explicit utf-8: diagrams carry «guillemets» and ✚✖✱ glyphs, and the
+        # platform default encoding would mangle or refuse them.
+        output.write_text(content, encoding="utf-8")
         click.echo(f"wrote {output}  ({summary})", err=True)
     else:
         click.echo(content)
