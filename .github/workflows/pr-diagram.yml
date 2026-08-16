@@ -1,0 +1,135 @@
+# Post a component diagram of what a pull request did to the shape of the
+# application, as a comment on the PR. GitHub renders ```mermaid blocks
+# natively, so this needs no image hosting and no external service.
+#
+# This is docs/distribution.md §2.3 — the rung that reaches readers who will
+# never install anything. Copy it into any repo that has Python or TypeScript
+# in it; the only requirement is `uvx` on the runner.
+#
+# SECURITY: this runs on `pull_request`, deliberately NOT `pull_request_target`.
+# pull_request_target would run with a write token while checking out the PR's
+# code, which is the pwn-request pattern — a PR could rewrite this workflow's
+# own steps and exfiltrate the token. The cost of doing it the safe way is that
+# fork PRs get a read-only token and cannot be commented on; see the job guard
+# below, and the note at the bottom of this file for the pattern that fixes it.
+name: pr-diagram
+
+on:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      base:
+        description: "Base revision to diff against (for trying this out without a PR)"
+        default: "HEAD~1"
+
+permissions:
+  contents: read
+
+jobs:
+  component-diff:
+    name: Component diff
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Fork PRs get a read-only GITHUB_TOKEN, so the comment step would 403.
+    # Skip rather than fail: a red X on someone's first contribution is a worse
+    # outcome than a missing diagram.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.pull_request.head.repo.full_name == github.repository
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          # vizzle reads both revisions out of git, so it needs the history
+          # between them, not just the tip.
+          fetch-depth: 0
+
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
+        with:
+          enable-cache: true
+
+      - name: Does vizzle see this repo at all?
+        id: applicable
+        run: |
+          # vizzle parses Python and TypeScript, and drops components holding
+          # neither. On a repo made of anything else there is nothing to draw,
+          # and an empty diagram would read as a claim about the architecture.
+          count=$(git ls-files | grep -cE '\.(py|ts|tsx)$' || true)
+          echo "sources=$count" >> "$GITHUB_OUTPUT"
+          echo "$count parseable source files"
+
+      - name: Render the component diff
+        if: steps.applicable.outputs.sources != '0'
+        id: render
+        env:
+          BASE: ${{ github.event_name == 'workflow_dispatch' && inputs.base || github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          uvx vizzle diff . --base "$BASE" --type component -o diagram.mmd
+          uvx vizzle diff . --base "$BASE" --type component -o diagram.html
+
+          # Change markers are emitted only when something actually changed, so
+          # their absence is the signal for "this PR did not touch the shape".
+          if grep -qE 'vizzle(Added|Removed|Modified)' diagram.mmd; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "bytes=$(wc -c < diagram.mmd)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: steps.applicable.outputs.sources != '0'
+        with:
+          name: component-diagram
+          path: diagram.html
+          if-no-files-found: error
+
+      - name: Comment on the pull request
+        if: github.event_name == 'pull_request' && steps.applicable.outputs.sources != '0'
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        env:
+          CHANGED: ${{ steps.render.outputs.changed }}
+        with:
+          script: |
+            const fs = require('fs');
+            // Hidden marker so each run edits its own comment instead of
+            // adding one per push — a 12-commit PR should not have 12 diagrams.
+            const MARKER = '<!-- vizzle-component-diff -->';
+            const LIMIT = 60000; // GitHub caps a comment at 65536 characters.
+
+            let body;
+            if (process.env.CHANGED !== 'true') {
+              body = `${MARKER}\n### Component diagram\n\n` +
+                `No structural change — this pull request does not add, remove, or rewire any component.`;
+            } else {
+              const mmd = fs.readFileSync('diagram.mmd', 'utf8');
+              const run = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+              if (mmd.length > LIMIT) {
+                body = `${MARKER}\n### Component diagram\n\n` +
+                  `The diagram is ${mmd.length} characters, past what a comment can hold. ` +
+                  `Download the interactive version from [the workflow run](${run}).`;
+              } else {
+                body = `${MARKER}\n### What this changed in the shape of the application\n\n` +
+                  '```mermaid\n' + mmd + '\n```\n\n' +
+                  `<sub>✚ added · ✖ removed · ✱ modified. An added or removed *arrow* means the ` +
+                  `application was rewired, which is a bigger deal than a changed component. ` +
+                  `The draggable version is attached to [the run](${run}).</sub>`;
+              }
+            }
+
+            const { owner, repo } = context.repo;
+            const issue_number = context.payload.pull_request.number;
+            const comments = await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number });
+            const existing = comments.find(c => c.body?.startsWith(MARKER));
+            if (existing) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number, body });
+            }
+# To cover fork PRs safely, split this in two: keep this workflow token-less
+# and have it upload diagram.mmd as an artifact, then add a second workflow on
+# `workflow_run` that downloads the artifact and posts the comment. The
+# privileged half never checks out the PR's code, so there is nothing for a
+# contributor to rewrite. Worth doing when the first outside PR arrives.
