@@ -265,8 +265,17 @@ every Python ≥ 3.10 forever. The measured artifact is 1.7 MB.
 | Linux x86_64 | `manylinux_2_17_x86_64` |
 | Linux aarch64 | `manylinux_2_17_aarch64` |
 | macOS arm64 | `macosx_11_0_arm64` |
-| macOS x86_64 | `macosx_10_12_x86_64` |
+| macOS x86_64 | `macosx_10_12_x86_64` (cross-compiled — see below) |
 | Windows x86_64 | `win_amd64` |
+
+**Intel macOS has no runner any more.** GitHub retired the `macos-13` images,
+and the failure mode is nasty: the job **queues forever instead of failing**, so
+the release simply never finishes and nothing says why. Found on the first real
+release attempt, when every other leg went green in under three minutes and that
+one sat pending. The x86_64 wheel is now cross-compiled on Apple Silicon, which
+the macOS toolchain handles natively — at the cost of being the one wheel the
+smoke job cannot execute. Every build job carries `timeout-minutes` so a future
+runner retirement fails loudly rather than hanging.
 
 Six artifacts including the sdist. `PyO3/maturin-action` builds this matrix off
 the shelf; the sdist is the fallback for anything unlisted and requires a Rust

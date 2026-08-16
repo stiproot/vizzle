@@ -54,6 +54,7 @@ jobs:
     name: "wheel: ${{ matrix.name }}"
     needs: check-version
     runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -61,7 +62,11 @@ jobs:
           - { name: linux-x86_64, runner: ubuntu-latest, target: x86_64, manylinux: auto }
           - { name: linux-aarch64, runner: ubuntu-latest, target: aarch64, manylinux: auto }
           - { name: macos-arm64, runner: macos-14, target: aarch64-apple-darwin }
-          - { name: macos-x86_64, runner: macos-13, target: x86_64-apple-darwin }
+          # Cross-compiled on Apple Silicon: GitHub has retired the Intel macOS
+          # runners, and a macos-13 job queues forever rather than failing. The
+          # macOS toolchain targets both architectures, so this costs nothing —
+          # but it is the one wheel the smoke job below cannot run.
+          - { name: macos-x86_64, runner: macos-14, target: x86_64-apple-darwin }
           - { name: windows-x86_64, runner: windows-latest, target: x64 }
     steps:
       - uses: actions/checkout@v4
@@ -123,6 +128,7 @@ jobs:
     name: "smoke: ${{ matrix.name }}"
     needs: build
     runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
