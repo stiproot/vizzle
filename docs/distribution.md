@@ -1,8 +1,8 @@
 # Distribution
 
-**Status:** decided, not yet implemented. §3 (the name) is done; §4 → §5 → §6 →
-§2.6 is the build order. §8 is a standing rejection with trigger conditions;
-§10 is deferred.
+**Status:** §3 (the name), §4 (one distribution), §5 and §6 (the release
+pipeline) are implemented; §2.6 (the agent plugin) is next, after the first
+release. §8 is a standing rejection with trigger conditions; §10 is deferred.
 **Measured on:** 2026-08-16, against `~/code/h` (358 parsed source files) on Linux.
 
 The spec for how vizzle reaches the repos that use it. Diagram-type specs answer
@@ -254,9 +254,11 @@ is a single number to bump.
 
 ## 5. The build matrix
 
+**Implemented 2026-08-16** in `.github/workflows/release.yml`.
+
 `crates/vizzle-py/Cargo.toml` sets `abi3-py310`, which is why the matrix is
 small: **one wheel per (OS, architecture)**, not per Python version, valid on
-every Python ≥ 3.10 forever. The measured artifact is 1.5 MB.
+every Python ≥ 3.10 forever. The measured artifact is 1.7 MB.
 
 | Target | Wheel tag |
 | --- | --- |
@@ -270,13 +272,50 @@ Six artifacts including the sdist. `PyO3/maturin-action` builds this matrix off
 the shelf; the sdist is the fallback for anything unlisted and requires a Rust
 toolchain on the consumer's machine, which is acceptable for a long tail.
 
-There is no CI in the repo at all today (`.github/` does not exist). It is the
-one genuinely absent piece of infrastructure.
+**Three guards the release runs before it can publish**, each protecting a
+failure this layout actually invites:
+
+- **Tag vs. version.** §4 made the version a single number in the root
+  `Cargo.toml`, which means a tag can now disagree with it. `check-version`
+  fails the run before the matrix starts rather than after twenty minutes.
+- **sdist completeness.** `manifest-path` reaches outside the project
+  directory, so the sdist must carry `crates/` and the workspace manifest or it
+  cannot build. The `sdist` job asserts all three files are present — a
+  regression here would surface as a stranger's failed `pip install`.
+- **A smoke test per platform.** Each wheel is installed on a clean runner and
+  used to render this repo. A wheel that imports but cannot render is still a
+  broken release, and only running it catches that.
+
+`ci.yml` covers the same checks CLAUDE.md calls "verifying" on every push and
+pull request, across Python 3.10 (the floor abi3 promises) and 3.13.
 
 ## 6. Publishing
 
+**Implemented 2026-08-16.**
+
 Tag-driven: pushing `v*` builds the matrix and publishes to PyPI via **Trusted
-Publishing** (OIDC), so no API token is stored as a repository secret.
+Publishing** (OIDC), so no API token is stored as a repository secret — PyPI
+verifies GitHub directly.
+
+**The publisher registration this depends on**, recorded here because it lives
+in PyPI's web UI where nothing in this repo can point at it:
+
+| Field | Value |
+| --- | --- |
+| PyPI project | `vizzle` |
+| Owner / repository | `stiproot` / `vizzle` |
+| Workflow | `release.yml` |
+| Environment | `pypi` |
+
+Two couplings that will bite silently if forgotten. **Renaming
+`.github/workflows/release.yml` breaks publishing** until the registration is
+updated to match — the filename is part of the trust relationship, not just a
+path. And the `publish` job names `environment: pypi`, which must exist as a
+GitHub environment; it is also the natural place to require manual approval
+before a release leaves the building.
+
+Releasing is therefore: bump `version` in the root `Cargo.toml`, commit, tag
+`vX.Y.Z`, push the tag.
 
 The Rust crates are published to crates.io only if and when someone wants
 `vizzle-core` as a Rust library. Nothing about §2 depends on it, and an

@@ -1,0 +1,168 @@
+# Build wheels for every supported platform and publish them to PyPI.
+#
+# Triggered by a `v*` tag. Publishing uses PyPI Trusted Publishing (OIDC), so
+# there is no API token stored in this repository — PyPI verifies GitHub
+# directly. The publisher registered on PyPI names this file, so renaming it
+# breaks publishing until the pending publisher is updated to match.
+#
+# See docs/distribution.md §5 and §6.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publish to PyPI (otherwise build only)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+env:
+  # The maturin project root: the pyproject.toml lives here and reaches back to
+  # crates/vizzle-py via manifest-path (docs/distribution.md §4).
+  PROJECT_DIR: packages/vizzle-cli
+
+jobs:
+  # The version is stated once, in the root Cargo.toml. A tag that disagrees
+  # with it would publish the wrong number under the right name, so fail loudly
+  # and early rather than after the matrix has burned twenty minutes.
+  check-version:
+    name: Tag matches Cargo version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - id: cargo
+        run: |
+          version=$(grep -m1 '^version = ' Cargo.toml | cut -d'"' -f2)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Cargo workspace version: $version"
+      - if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          tag="${GITHUB_REF#refs/tags/v}"
+          cargo="${{ steps.cargo.outputs.version }}"
+          if [ "$tag" != "$cargo" ]; then
+            echo "::error::tag v$tag does not match Cargo.toml version $cargo"
+            exit 1
+          fi
+          echo "tag v$tag matches Cargo.toml"
+
+  build:
+    name: "wheel: ${{ matrix.name }}"
+    needs: check-version
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: linux-x86_64, runner: ubuntu-latest, target: x86_64, manylinux: auto }
+          - { name: linux-aarch64, runner: ubuntu-latest, target: aarch64, manylinux: auto }
+          - { name: macos-arm64, runner: macos-14, target: aarch64-apple-darwin }
+          - { name: macos-x86_64, runner: macos-13, target: x86_64-apple-darwin }
+          - { name: windows-x86_64, runner: windows-latest, target: x64 }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # abi3-py310 means ONE wheel per platform covers every Python from 3.10
+      # up, so this never needs --find-interpreter (docs/distribution.md §5).
+      - uses: PyO3/maturin-action@v1
+        with:
+          target: ${{ matrix.target }}
+          manylinux: ${{ matrix.manylinux }}
+          working-directory: ${{ env.PROJECT_DIR }}
+          args: --release --out dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheels-${{ matrix.name }}
+          path: ${{ env.PROJECT_DIR }}/dist/*.whl
+          if-no-files-found: error
+
+  sdist:
+    name: sdist
+    needs: check-version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: PyO3/maturin-action@v1
+        with:
+          command: sdist
+          working-directory: ${{ env.PROJECT_DIR }}
+          args: --out dist
+
+      # manifest-path reaches outside the project directory, so the sdist has to
+      # carry crates/ and the workspace manifest or it cannot build. Verify that
+      # here rather than discovering it from a user's failed `pip install`.
+      - name: sdist carries the Rust workspace
+        run: |
+          tarball=$(ls ${{ env.PROJECT_DIR }}/dist/*.tar.gz)
+          echo "checking $tarball"
+          for required in Cargo.toml crates/vizzle-core/src/lib.rs crates/vizzle-py/src/lib.rs; do
+            if ! tar tzf "$tarball" | sed 's#^[^/]*/##' | grep -qx "$required"; then
+              echo "::error::sdist is missing $required — it would not build"
+              exit 1
+            fi
+            echo "  ok: $required"
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheels-sdist
+          path: ${{ env.PROJECT_DIR }}/dist/*.tar.gz
+          if-no-files-found: error
+
+  # Install each wheel on a clean runner and actually run it. A wheel that
+  # imports but cannot render is still a broken release.
+  smoke:
+    name: "smoke: ${{ matrix.name }}"
+    needs: build
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: linux-x86_64, runner: ubuntu-latest }
+          - { name: macos-arm64, runner: macos-14 }
+          - { name: windows-x86_64, runner: windows-latest }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - uses: actions/download-artifact@v4
+        with:
+          name: wheels-${{ matrix.name }}
+          path: dist
+      - name: Install the wheel and render this repo
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install dist/*.whl
+          vizzle --version
+          vizzle component . -o components.mmd
+          vizzle class . -o classes.html
+          test -s components.mmd && test -s classes.html
+          echo "rendered $(wc -c < classes.html) bytes of HTML"
+
+  publish:
+    name: Publish to PyPI
+    needs: [build, sdist, smoke]
+    if: startsWith(github.ref, 'refs/tags/v') || inputs.publish
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write # Trusted Publishing; no API token needed.
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: wheels-*
+          merge-multiple: true
+          path: dist
+      - run: ls -la dist
+      - uses: pypa/gh-action-pypi-publish@release/v1

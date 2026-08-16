@@ -1,0 +1,63 @@
+# The checks CLAUDE.md calls "verifying", run on every push and pull request.
+# Release builds wheels for five platforms; there is no point spending that
+# time on a tree whose tests do not pass.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  rust:
+    name: Rust
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: cargo fmt --all -- --check
+      # -p vizzle-core, not --workspace: linking a test binary for the PyO3
+      # crate needs a shared libpython, which these runners do not ship.
+      - run: cargo test -p vizzle-core
+      - name: cargo clippy
+        # pyo3's build script wants an absolute interpreter path.
+        run: PYO3_PYTHON="$(which python3)" cargo clippy --workspace --all-targets -- -D warnings
+
+  python:
+    name: Python ${{ matrix.python }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # The floor abi3-py310 promises, and a current release.
+        python: ["3.10", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv sync --python ${{ matrix.python }}
+      - run: uv run pytest packages/vizzle-cli/tests -q
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv run ruff format --check .
+      - run: uv run ruff check .
