@@ -65,12 +65,39 @@ a long-lived process makes the per-invocation cost of `uvx` pointless.
 **Reader:** the *second* audience, the one asking "what did this change do?" —
 and the only rung that reaches readers who will never install anything.
 
+**Implemented 2026-08-16** in `.github/workflows/pr-diagram.yml`.
+
 `vizzle diff --type component --base <base-sha>` on a PR, with the Mermaid
 posted as a comment and the HTML uploaded as a build artifact. GitHub renders
 ` ```mermaid ` fenced blocks natively in comments and in Markdown files, so the
 diagram appears inline with **no image hosting, no asset pipeline, and no
 external service**. That property is worth protecting in the Mermaid renderer:
 it is what makes this rung nearly free.
+
+Four things the workflow does that are easy to leave out, and each of which
+turns a nice idea into something people would switch off:
+
+- **It runs on `pull_request`, never `pull_request_target`.** The latter runs
+  with a write token while checking out the contributor's code — the
+  pwn-request pattern, where a PR rewrites the workflow that is about to run it
+  and walks off with the token. The price of safety is that fork PRs get a
+  read-only token, so the job **skips** them rather than failing: a red X on
+  someone's first contribution is worse than a missing diagram. The two-workflow
+  `workflow_run` split that covers forks safely is described at the foot of the
+  file, and is worth building when the first outside PR arrives.
+- **It edits one comment instead of appending.** A twelve-commit PR should not
+  accumulate twelve diagrams; a hidden `<!-- vizzle-component-diff -->` marker
+  finds the previous one.
+- **It says "no structural change" when nothing moved.** vizzle emits change
+  markers only when something actually changed, so their absence is a reliable
+  signal — and one honest line is better than a full diagram of an unchanged
+  graph on every docs PR.
+- **It checks vizzle can see the repo at all** before drawing (§2.6): with no
+  `.py`/`.ts` present there is nothing to draw, and an empty diagram would read
+  as a claim about the architecture rather than a limit of the tool.
+
+Comments cap at 65536 characters, so a diagram past 60000 is replaced by a link
+to the run's artifact.
 
 ### 2.4 Committed diagrams, checked for drift
 
@@ -460,8 +487,12 @@ more expensive. Keep pages self-contained.
   repo pinning the published wheel. Worth doing only once §2.4 proves out.
 - **Homebrew, `curl | sh`, cargo-dist.** All downstream of §8.
 - **Publishing `vizzle-core` to crates.io** (§6) or the d3 renderer to npm.
-- **A GitHub Action as a marketplace listing.** §2.3 works as a plain workflow
-  step first; a published action is packaging on top of something that works.
+- **A GitHub Action as a marketplace listing.** §2.3 now works as a plain
+  workflow, dogfooded here; packaging it as a reusable action or a marketplace
+  listing is worth doing once a second repo has copied the file and the
+  differences between them show what actually needs parameterising.
+- **Fork-PR coverage for §2.3**, via the `workflow_run` split. Needs a first
+  outside contributor to be worth the second workflow.
 - **`--format json`.** `--format` is `Choice(["mermaid", "html"])`; the JSON
   exists in the bindings (`component_json_from_dir`, `graph_json_from_dir`) but
   never reaches stdout or a file — it is an intermediate on the way to HTML.
