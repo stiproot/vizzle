@@ -1,7 +1,8 @@
 # Distribution
 
-**Status:** decided, not yet implemented. §3 (the name) is done; §4–§6 are the
-build order. §8 is a standing rejection with trigger conditions; §10 is deferred.
+**Status:** decided, not yet implemented. §3 (the name) is done; §4 → §5 → §6 →
+§2.6 is the build order. §8 is a standing rejection with trigger conditions;
+§10 is deferred.
 **Measured on:** 2026-08-16, against `~/code/h` (358 parsed source files) on Linux.
 
 The spec for how vizzle reaches the repos that use it. Diagram-type specs answer
@@ -82,6 +83,60 @@ Needs a `--check` mode that does not exist yet (§10).
 
 Lowest rung deliberately: see §10 for why it needs a mirror repo rather than a
 hook pointed at this one, and why it is worth least of the five.
+
+### 2.6 A coding agent
+
+**Reader:** an LLM agent orienting itself in a repo before changing it, or
+checking what its own change did. Listed last because it is the newest, not
+because it reaches fewest — it may end up the mode that runs vizzle most.
+
+An agent is a genuinely different reader from the two in CLAUDE.md, and the
+difference is not cosmetic:
+
+- **The HTML view is inert to it.** Zoom, pan, drag, the `+` explode toggle, the
+  filter box — every affordance §2.1 exists to deliver is unusable. `--format
+  html` is the wrong output for this reader, always.
+- **Its constraint is tokens, not attention.** A human skims a big diagram
+  cheaply and focuses where they like. An agent pays linearly for every element
+  and cannot skim.
+
+**What was measured** (on `~/code/h`, 358 parsed source files; token estimates
+at ~3.7 chars/token):
+
+| Output | Bytes | ~Tokens |
+| --- | --- | --- |
+| `component` → Mermaid | 5.4 KB | **1.5k** |
+| `component` → JSON, `classes=False` | 34 KB | 9.3k |
+| `component` → JSON, with classes | 185 KB | 50k |
+| `class` → Mermaid | 59 KB | 16k |
+| `class` → JSON | 156 KB | 42k |
+
+**What that says, and it is the opposite of the obvious guess.** Mermaid is
+**3–6× cheaper than JSON** for the same graph, and needs no parsing step — it is
+a compact DSL an LLM already reads. The instinct that "a machine reader wants
+JSON" is wrong here on token economics.
+
+Part of that gap is content rather than encoding: the JSON export carries all
+311 edges including externals, while the Mermaid renderer emits the 54 internal
+ones by default. The direction survives the correction.
+
+**The consequence, which is the whole reason an agent-facing skill is worth
+shipping:** a component diagram costs ~1.5k tokens and substitutes for reading
+358 files. Nothing else an agent can do has that orientation-per-token ratio,
+and no agent discovers it unprompted. The corollary matters as much — an
+unscoped `class` diagram is ~16k tokens, affordable occasionally but not
+reflexively, so agents must be taught to scope it with `-I`.
+
+**How this ships:** as a Claude Code plugin carrying one skill, in *this* repo
+as its own single-plugin marketplace — not in the scaffolder that generates it.
+A skill describing a flag the CLI does not have is a lying spec, the same
+failure CLAUDE.md names for diagram specs, and the only defence is versioning
+the skill with the code it documents.
+
+**Sequenced after §6 deliberately.** A skill's first instruction is how to
+invoke the tool, so the plugin is worth no more than its install line. Built
+before publishing, that line is "clone it and install a Rust toolchain"; built
+after, it is `uvx vizzle component .`.
 
 ## 3. Decision: the distribution name is `vizzle`
 
@@ -263,6 +318,19 @@ more expensive. Keep pages self-contained.
 - **Publishing `vizzle-core` to crates.io** (§6) or the d3 renderer to npm.
 - **A GitHub Action as a marketplace listing.** §2.3 works as a plain workflow
   step first; a published action is packaging on top of something that works.
+- **`--format json`.** `--format` is `Choice(["mermaid", "html"])`; the JSON
+  exists in the bindings (`component_json_from_dir`, `graph_json_from_dir`) but
+  never reaches stdout or a file — it is an intermediate on the way to HTML.
+  Deferred **on evidence**, not oversight: the §2.6 measurements make JSON the
+  more expensive way for an agent to read a graph, so it is not the agent
+  format. Its one real advantage is queryability — `jq '.edges[] |
+  select(.to=="packages/js/core")'` answers *"what depends on this?"* without
+  reading the graph at all, which Mermaid cannot do. Worth adding when a
+  concrete query use-case appears; it is one `Choice` entry and a branch.
+- **A `/vizzle` command and a code-map subagent** alongside the §2.6 skill.
+  The skill is the load-bearing piece; these are conveniences on top of it, and
+  worth revisiting once the skill has been used enough to show where it fails to
+  trigger.
 
 ## 11. Acceptance
 
@@ -276,3 +344,6 @@ Distribution is done when, from a machine that has never seen vizzle:
    Mermaid comment, produced by a workflow step that installs nothing globally.
 4. The generated HTML from (3) opens from `file://` with the network disabled
    and renders without console errors.
+5. An agent with the §2.6 plugin installed, asked to explain an unfamiliar
+   repo, reaches for `vizzle component` before reading files — and spends
+   ~1.5k tokens instead of tens of thousands.
