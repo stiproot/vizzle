@@ -1,11 +1,11 @@
-/* Shared d3 plumbing for every vizzy HTML view.
+/* Shared d3 plumbing for every vizzle HTML view.
  *
  * Diagram templates own what a node looks like; everything here is the part
  * that is identical whether you are reading classes or components — the
  * palette, box geometry, zoom/pan/fit with a viewport that survives reloads,
  * the filter box, and the header readout.
  *
- * Exposed as `window.vizzy`.
+ * Exposed as `window.vizzle`.
  */
 "use strict";
 (function () {
@@ -251,7 +251,7 @@
    * Returns `{ zoom, fit, focus }`; `focus(box)` frames one region — used when
    * opening a detail view, so the thing you just opened is the thing you see. */
   function attachViewport(svg, view, { fitButton } = {}) {
-    const key = `vizzy-view:${location.pathname}:${document.title}`;
+    const key = `vizzle-view:${location.pathname}:${document.title}`;
     const zoom = d3
       .zoom()
       .scaleExtent([0.02, 6])
@@ -338,7 +338,7 @@
     legend.hidden = false;
   }
 
-  window.vizzy = {
+  window.vizzle = {
     PALETTE,
     BOX,
     colorsFor,

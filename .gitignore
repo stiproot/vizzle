@@ -28,7 +28,7 @@ node_modules/
 *.mmd.svg
 *.mmd.png
 !examples/*.mmd
-# Diagrams written into the repo root (the natural cwd for `vizzy -o out.html`).
+# Diagrams written into the repo root (the natural cwd for `vizzle -o out.html`).
 # Root-anchored, so committed pages under examples/ and the HTML templates
 # under packages/ are unaffected.
 /*.html

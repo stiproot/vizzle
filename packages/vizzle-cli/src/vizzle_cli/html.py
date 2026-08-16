@@ -6,7 +6,7 @@ import html as html_escape
 import json
 from importlib import resources
 
-import vizzy_core
+import vizzle_core
 
 
 def _fill(template_name: str, graph_json: str, title: str, config: dict) -> str:
@@ -15,15 +15,15 @@ def _fill(template_name: str, graph_json: str, title: str, config: dict) -> str:
     Each view owns its own template; the palette, viewport, filter, and header
     plumbing they share live in viz-core.{css,js} and are inlined into both.
     """
-    assets = resources.files("vizzy_cli") / "assets"
+    assets = resources.files("vizzle_cli") / "assets"
 
     def read(name: str) -> str:
         return (assets / name).read_text(encoding="utf-8")
 
     # A literal "</script>" inside embedded JSON would end the script block early.
     safe_json = graph_json.replace("</", "<\\/")
-    # The change palette is owned by vizzy-core so HTML and Mermaid agree.
-    core_css = read("viz-core.css").replace("__PALETTE_CSS__", vizzy_core.diff_palette_css())
+    # The change palette is owned by vizzle-core so HTML and Mermaid agree.
+    core_css = read("viz-core.css").replace("__PALETTE_CSS__", vizzle_core.diff_palette_css())
     return (
         read(template_name)
         .replace("__TITLE__", html_escape.escape(title))

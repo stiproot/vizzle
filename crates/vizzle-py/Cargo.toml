@@ -1,16 +1,16 @@
 [package]
-name = "vizzy-py"
-description = "Python bindings for vizzy-core"
+name = "vizzle-py"
+description = "Python bindings for vizzle-core"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
 
 [lib]
-name = "vizzy_core"
+name = "vizzle_core"
 crate-type = ["cdylib"]
 
 [dependencies]
 anyhow = { workspace = true }
 pyo3 = { version = "0.26", features = ["abi3-py310"] }
-vizzy-core = { path = "../vizzy-core" }
+vizzle-core = { path = "../vizzle-core" }

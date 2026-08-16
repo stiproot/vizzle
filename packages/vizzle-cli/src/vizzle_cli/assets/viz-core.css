@@ -1,4 +1,4 @@
-/* Shared chrome for every vizzy HTML view: palette, page frame, header,
+/* Shared chrome for every vizzle HTML view: palette, page frame, header,
    legend. Diagram-specific rules live in the individual templates. */
 :root {
   --bg: #f6f8fa;
@@ -17,7 +17,7 @@
   --context-stroke: #b6bec8;
   --context-ink: #8b949e;
 
-  /* Change colors come from vizzy-core's palette, so the HTML and Mermaid
+  /* Change colors come from vizzle-core's palette, so the HTML and Mermaid
      renderings of the same diagram cannot drift apart. */
 __PALETTE_CSS__
 }

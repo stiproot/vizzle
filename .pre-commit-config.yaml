@@ -2,7 +2,7 @@
 # Install with: uv run pre-commit install
 
 # Vendored (d3) and generated (examples) files are not ours to reformat.
-exclude: '^(packages/vizzy-cli/src/vizzy_cli/assets/d3\.|examples/)'
+exclude: '^(packages/vizzle-cli/src/vizzle_cli/assets/d3\.|examples/)'
 
 repos:
   - repo: local

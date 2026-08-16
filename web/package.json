@@ -1,7 +1,7 @@
 {
-  "name": "vizzy-web",
+  "name": "vizzle-web",
   "private": true,
-  "description": "JS dependencies for vizzy's interactive HTML output (managed with bun)",
+  "description": "JS dependencies for vizzle's interactive HTML output (managed with bun)",
   "type": "module",
   "scripts": {
     "sync-assets": "bun run sync-assets.ts"

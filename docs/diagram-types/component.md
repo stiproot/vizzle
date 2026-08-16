@@ -1,9 +1,9 @@
 # Component diagram
 
 **Status:** v1 implemented (§8 provided-interfaces and the §9 items remain future work).
-**Command:** `vizzy component <repo>` (+ `vizzy diff --type component`, `vizzy serve --type component`)
+**Command:** `vizzle component <repo>` (+ `vizzle diff --type component`, `vizzle serve --type component`)
 
-The spec for vizzy's second diagram type (the first is [class.md](class.md)).
+The spec for vizzle's second diagram type (the first is [class.md](class.md)).
 The class diagram answers *"what is the shape of the code?"*; the component diagram answers *"what is the shape of
 the application?"* — one box per module, one arrow per dependency, changes
 highlighted.
@@ -14,7 +14,7 @@ A UML component diagram shows the **modular units of a system and the
 dependencies between them**. Strict UML defines a component as a replaceable,
 encapsulated unit exposing *provided* and *required* interfaces
 (ball-and-socket notation); the grouping-of-namespaces view formally belongs
-to the UML *package diagram*. vizzy takes the pragmatic, source-derived
+to the UML *package diagram*. vizzle takes the pragmatic, source-derived
 reading that has become the de-facto standard for codebase visualization:
 
 > **A component is a build-level module of the repository** — a workspace
@@ -34,11 +34,11 @@ whether the change *rewired* anything.
 Every diagram type serves two readings, and **comprehension is the primary
 one** — a diagram must be worth opening when there is no diff in sight:
 
-- **Comprehension** (`vizzy component <repo>`, no git involved): what is this
+- **Comprehension** (`vizzle component <repo>`, no git involved): what is this
   application made of, what depends on what, what lives inside each part.
   Nothing in the model, the renderer, or the page may *require* a base
   revision; git is one source of an annotation, not a precondition.
-- **Change** (`vizzy diff --type component`): the same diagram with a change
+- **Change** (`vizzle diff --type component`): the same diagram with a change
   annotation layered on top. The diff lens **desaturates unchanged elements to
   context** and saturates changed ones, so the eye lands on the change without
   losing the surrounding shape.
@@ -101,7 +101,7 @@ and requires zero configuration for conventional repos.
    component `scripts`). Parsed files sitting directly in the repo root are
    collected into a `(root)` component.
 4. **Empty components are dropped.** A manifest directory containing no files
-   vizzy can parse (no `.py`/`.ts` today) produces no node.
+   vizzle can parse (no `.py`/`.ts` today) produces no node.
 
 `-I`/`-E` include/exclude globs apply *before* detection, so `-E 'apps/*'`
 removes those components entirely.
@@ -150,7 +150,7 @@ aliases (`tsconfig.json paths`) are out of scope for v1 and listed in §9.
 
 ### 5.1 Mermaid
 
-Mermaid has no native UML component-diagram syntax, so vizzy renders a
+Mermaid has no native UML component-diagram syntax, so vizzle renders a
 `flowchart` styled to read as one — the same pragmatic choice the class
 renderer makes with Mermaid 11 quirks. Conventions:
 
@@ -186,7 +186,7 @@ flowchart LR
 ### 5.2 Interactive HTML (d3)
 
 Same self-contained page as the class diagram (inlined d3, zoom, pan, drag,
-fit-to-view, filter box, position-preserving live reload under `vizzy serve`),
+fit-to-view, filter box, position-preserving live reload under `vizzle serve`),
 with component-specific behavior:
 
 - Nodes are compact boxes: name + `«component»` tag + UML tabs glyph + a small
@@ -233,7 +233,7 @@ belong at the component level, where the dependency edge already says it.
 
 ## 6. Diff semantics
 
-`vizzy diff --type component` reuses the whole git pipeline (changed files
+`vizzle diff --type component` reuses the whole git pipeline (changed files
 via `git diff --name-status -M -z`, base contents via `git show`) but —
 unlike the class diff, which only parses touched files — **builds the full
 component graph for both revisions**, since an edge's existence depends on
@@ -265,9 +265,9 @@ readable.
 ## 7. CLI surface
 
 ```sh
-vizzy component <repo> [-o out.mmd|out.html] [flags]     # full graph
-vizzy diff <repo> --type component [--base ... --head ...]
-vizzy serve <repo> --type component [--diff]
+vizzle component <repo> [-o out.mmd|out.html] [flags]     # full graph
+vizzle diff <repo> --type component [--base ... --head ...]
+vizzle serve <repo> --type component [--diff]
 ```
 
 Shared flags keep their existing meaning: `-o`, `-f/--format mermaid|html`,
@@ -283,7 +283,7 @@ component may declare **provided interfaces** — in h, the hexagonal
 `src/domain/ports/*` interfaces are exactly this — rendered lollipop-style,
 with edges landing on the interface instead of the component when the import
 targets a port. Requires interface-level resolution, so it builds on the
-class graph vizzy already extracts.
+class graph vizzle already extracts.
 
 ## 9. Out of scope (v1)
 
@@ -316,13 +316,13 @@ implementing a second class-comparison.
 
 ## 10. Acceptance, on h
 
-1. `vizzy component ~/code/h -o h-components.html` renders ~29 components in
+1. `vizzle component ~/code/h -o h-components.html` renders ~29 components in
    4 groups; `@h/core` is visibly the most-depended-on node; the page opens
    settled, zooms, pans, filters.
-2. `vizzy component ~/code/h -o h-components.mmd` produces valid Mermaid 11
+2. `vizzle component ~/code/h -o h-components.mmd` produces valid Mermaid 11
    (`mmdc` renders it without error).
 3. Adding `import { x } from "@h/git-core"` to an app that didn't use it, then
-   `vizzy diff ~/code/h --type component`, shows exactly one green edge (and
+   `vizzle diff ~/code/h --type component`, shows exactly one green edge (and
    the app marked modified) — no other rewiring noise.
 4. Whole-repo generation stays well under a second in the Rust core, matching
    the class diagram's budget.

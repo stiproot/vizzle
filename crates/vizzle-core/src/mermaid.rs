@@ -145,7 +145,7 @@ pub fn render(graph: &CodeGraph, opts: &RenderOptions) -> String {
 
     let _ = writeln!(
         out,
-        "%% vizzy: {} classes, {} relations",
+        "%% vizzle: {} classes, {} relations",
         graph.classes.len(),
         relation_count
     );
@@ -244,7 +244,7 @@ mod tests {
         let head = parse_file("m.py", "class A:\n    pass\nclass B:\n    pass\n").unwrap();
         let merged = crate::diff::diff_graphs(&base, &head);
         let out = render(&merged, &RenderOptions::default());
-        assert!(out.contains("classDef vizzyAdded"));
-        assert!(out.contains("cssClass \"m_B\" vizzyAdded"));
+        assert!(out.contains("classDef vizzleAdded"));
+        assert!(out.contains("cssClass \"m_B\" vizzleAdded"));
     }
 }

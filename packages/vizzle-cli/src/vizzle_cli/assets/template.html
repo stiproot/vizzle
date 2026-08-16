@@ -29,13 +29,13 @@ __VIZ_CORE_CSS__
 "use strict";
 const graph = JSON.parse(document.getElementById("graph-data").textContent);
 const config = JSON.parse(document.getElementById("config-data").textContent);
-const { classBoxLayout, drawClassBox, relationStyle, nodeTransform, linkPath } = vizzy;
-const { draggableNodes, externalStub, buildLinks, gridCells, arrowMarker } = vizzy;
+const { classBoxLayout, drawClassBox, relationStyle, nodeTransform, linkPath } = vizzle;
+const { draggableNodes, externalStub, buildLinks, gridCells, arrowMarker } = vizzle;
 
 const DIFF = graph.stats.diff;
 
 // ---- nodes -------------------------------------------------------------
-const CHAR_W = vizzy.BOX.charWidth, PAD_X = vizzy.BOX.padX, HEADER_H = vizzy.BOX.headerH;
+const CHAR_W = vizzle.BOX.charWidth, PAD_X = vizzle.BOX.padX, HEADER_H = vizzle.BOX.headerH;
 
 function buildNode(c) {
   const box = classBoxLayout(c, { showMembers: config.showMembers });
@@ -119,12 +119,12 @@ function updateEdges() {
 }
 updateEdges();
 
-vizzy.attachViewport(svg, view, { fitButton: "fit" });
+vizzle.attachViewport(svg, view, { fitButton: "fit" });
 
 const matches = (n, query) => n.cls.qualified.toLowerCase().includes(query);
-vizzy.attachFilter("search", { nodes: node, edges: edge, matches });
+vizzle.attachFilter("search", { nodes: node, edges: edge, matches });
 
-vizzy.setHeader(`${graph.stats.classes} classes · ${graph.stats.relations} relations`, DIFF);
+vizzle.setHeader(`${graph.stats.classes} classes · ${graph.stats.relations} relations`, DIFF);
 </script>
 </body>
 </html>

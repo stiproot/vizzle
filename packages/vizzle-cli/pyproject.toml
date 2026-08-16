@@ -3,22 +3,22 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "vizzy"
+name = "vizzle"
 description = "UML visualization for git: Mermaid class diagrams from code, with diff highlighting"
 version = "0.1.0"
 requires-python = ">=3.10"
 license = "MIT"
 dependencies = [
     "click>=8.1",
-    "vizzy-core",
+    "vizzle-core",
     "watchfiles>=1.0",
 ]
 
 [project.scripts]
-vizzy = "vizzy_cli.cli:main"
+vizzle = "vizzle_cli.cli:main"
 
 [dependency-groups]
 dev = ["pytest>=8"]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/vizzy_cli"]
+packages = ["src/vizzle_cli"]

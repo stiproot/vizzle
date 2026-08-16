@@ -33,9 +33,9 @@ __VIZ_CORE_CSS__
 "use strict";
 const graph = JSON.parse(document.getElementById("graph-data").textContent);
 const config = JSON.parse(document.getElementById("config-data").textContent);
-const { colorsFor, inkFor, mark, nodeTransform, linkPath, edgePoint } = vizzy;
-const { classBoxLayout, drawClassBox, relationStyle } = vizzy;
-const { draggableNodes, externalStub, buildLinks, gridCells, arrowMarker } = vizzy;
+const { colorsFor, inkFor, mark, nodeTransform, linkPath, edgePoint } = vizzle;
+const { classBoxLayout, drawClassBox, relationStyle } = vizzle;
+const { draggableNodes, externalStub, buildLinks, gridCells, arrowMarker } = vizzle;
 
 const DIFF = graph.stats.diff;
 const CHAR_W = 7.25, PAD_X = 14;
@@ -386,7 +386,7 @@ function drawNode(sel) {
   sel.each(function (d) {
     const g = d3.select(this);
     g.selectAll("*").remove();
-    const colors = d.external ? vizzy.PALETTE.external : colorsFor(d.comp.change, DIFF);
+    const colors = d.external ? vizzle.PALETTE.external : colorsFor(d.comp.change, DIFF);
     const ink = d.external ? "var(--muted)" : inkFor(d.comp.change, DIFF);
 
     g.append("title").text(d.external ? d.comp.name : d.comp.path || "(repo root)");
@@ -538,16 +538,16 @@ if (!expandable.length) {
 syncToggleButton();
 
 // Handlers registered above only run after load, so binding here is safe.
-const viewport = vizzy.attachViewport(svg, view, { fitButton: "fit" });
+const viewport = vizzle.attachViewport(svg, view, { fitButton: "fit" });
 
 const matches = (n, query) =>
   n.comp.name.toLowerCase().includes(query) ||
   n.comp.path.toLowerCase().includes(query) ||
   n.comp.group.toLowerCase().includes(query) ||
   n.classes.some((c) => c.name.toLowerCase().includes(query));
-vizzy.attachFilter("search", { nodes: node, edges: edge, matches });
+vizzle.attachFilter("search", { nodes: node, edges: edge, matches });
 
-vizzy.setHeader(
+vizzle.setHeader(
   `${graph.stats.components} components · ${links.length} dependencies` +
     (graph.stats.classes ? ` · ${graph.stats.classes} classes` : ""),
   DIFF

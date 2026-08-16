@@ -1,4 +1,4 @@
-# vizzy
+# vizzle
 
 UML visualization for git: parse a codebase (or a git diff) and render UML
 diagrams — as Mermaid text or as an interactive d3-powered HTML page — with
@@ -10,13 +10,13 @@ diff means, and the modelling decisions behind it (e.g. why aggregation and
 composition diamonds are a convention rather than an inference:
 `docs/diagram-types/class.md` §5.4).
 
-- **Rust core** (`crates/vizzy-core`): tree-sitter parsing (Python +
+- **Rust core** (`crates/vizzle-core`): tree-sitter parsing (Python +
   TypeScript), a language-neutral class graph + import graph, a component
   detector (manifest-driven), graph diff engines, and Mermaid renderers.
   Parses ~200 classes in well under a second.
-- **PyO3 bindings** (`crates/vizzy-py`): exposed to Python as `vizzy_core`,
+- **PyO3 bindings** (`crates/vizzle-py`): exposed to Python as `vizzle_core`,
   built with maturin.
-- **Click CLI** (`packages/vizzy-cli`): the `vizzy` command. Python owns the
+- **Click CLI** (`packages/vizzle-cli`): the `vizzle` command. Python owns the
   git orchestration; Rust owns everything hot.
 
 ## Setup
@@ -32,7 +32,7 @@ uv sync   # builds the Rust extension via maturin and installs the CLI
 Full class diagram of a codebase:
 
 ```sh
-uv run vizzy class ~/code/repo/h -o h-classes.mmd
+uv run vizzle class ~/code/repo/h -o h-classes.mmd
 ```
 
 Component diagram — one box per build-level module (workspace package, app,
@@ -41,8 +41,8 @@ service; any directory with a `package.json`/`pyproject.toml`/`Cargo.toml`/
 (spec: `docs/diagram-types/component.md`):
 
 ```sh
-uv run vizzy component ~/code/repo/h -o h-components.mmd --weights
-uv run vizzy component ~/code/repo/h -o h-components.html   # interactive
+uv run vizzle component ~/code/repo/h -o h-components.mmd --weights
+uv run vizzle component ~/code/repo/h -o h-components.html   # interactive
 ```
 
 In the HTML view each app/package gets a labelled box you can **drag as a
@@ -58,19 +58,19 @@ yellow ✱; unchanged classes in touched files render as context):
 
 ```sh
 # working tree vs HEAD
-uv run vizzy diff ~/code/repo/h
+uv run vizzle diff ~/code/repo/h
 
 # between two revisions
-uv run vizzy diff ~/code/repo/h --base HEAD~20 --head HEAD -o changes.mmd
+uv run vizzle diff ~/code/repo/h --base HEAD~20 --head HEAD -o changes.mmd
 
 # did the change rewire the application? (parses both full revisions;
 # added/removed dependency edges render loudest)
-uv run vizzy diff ~/code/repo/h --type component
+uv run vizzle diff ~/code/repo/h --type component
 ```
 
 ### Interactive HTML (d3)
 
-Write to a `.html` file (or pass `--format html`) and vizzy emits a fully
+Write to a `.html` file (or pass `--format html`) and vizzle emits a fully
 self-contained page — d3 v7 is inlined, no network needed — that renders the
 class graph as SVG with **zoom** (scroll), **pan** (drag the background),
 draggable class boxes, a fit-to-view button, and a live filter box. Diff
@@ -78,8 +78,8 @@ pages color whole classes *and* individual member rows (removed members are
 struck through):
 
 ```sh
-uv run vizzy class ~/code/repo/h -o h-classes.html
-uv run vizzy diff ~/code/repo/h --base HEAD~20 --head HEAD -o changes.html
+uv run vizzle class ~/code/repo/h -o h-classes.html
+uv run vizzle diff ~/code/repo/h --base HEAD~20 --head HEAD -o changes.html
 open changes.html
 ```
 
@@ -93,32 +93,32 @@ Both views are built from one shared core (`assets/viz-core.{css,js}`, inlined
 into every page): the palette, geometry, viewport, filter, and header. A
 template only describes what its own nodes look like.
 
-**Comprehension first.** Nothing here needs a git diff: `vizzy class` and
-`vizzy component` are for reading unfamiliar code. The diff is a *lens* laid
+**Comprehension first.** Nothing here needs a git diff: `vizzle class` and
+`vizzle component` are for reading unfamiliar code. The diff is a *lens* laid
 over the same diagram — under it, unchanged elements fade to neutral context
 and only what changed keeps saturated color, so the change reads instantly
 without losing its surroundings.
 
 ### Live server with hot reload
 
-`vizzy serve` hosts the diagram and watches the source tree; every save
+`vizzle serve` hosts the diagram and watches the source tree; every save
 re-parses and pushes a reload to connected browsers (stdlib http.server +
 server-sent events + watchfiles — no web framework). Your zoom/pan position
 survives reloads.
 
 ```sh
-uv run vizzy serve ~/code/repo/h                  # live class diagram
-uv run vizzy serve ~/code/repo/h --diff --open    # watch your working-tree
+uv run vizzle serve ~/code/repo/h                  # live class diagram
+uv run vizzle serve ~/code/repo/h --diff --open    # watch your working-tree
                                                   # changes vs HEAD reshape
                                                   # the UML as you edit
-uv run vizzy serve ~/code/repo/h --type component --diff   # live rewiring view
+uv run vizzle serve ~/code/repo/h --type component --diff   # live rewiring view
 ```
 
 Defaults to http://127.0.0.1:8499/; see `--port`, `--host`, `--base`.
 
 Useful flags (both commands): `--no-members`, `--group` (mermaid namespace
 blocks per module), `--externals` (edges to types outside the parsed set),
-`--direction LR` (mermaid), `-I/-E` include/exclude globs (`vizzy class`),
+`--direction LR` (mermaid), `-I/-E` include/exclude globs (`vizzle class`),
 `--title`, `-f/--format mermaid|html`.
 
 Render the `.mmd` output with mermaid-cli:
@@ -129,7 +129,7 @@ npx -y @mermaid-js/mermaid-cli -i changes.mmd -o changes.svg
 
 ## How the diff works
 
-`vizzy diff` asks git for the changed files (`git diff --name-status -M -z`),
+`vizzle diff` asks git for the changed files (`git diff --name-status -M -z`),
 pulls the base-revision contents via `git show`, and hands both revisions to
 the Rust core. The core parses each side into a class graph, diffs the graphs
 (classes keyed by qualified name, members fingerprinted by signature), and
@@ -146,9 +146,9 @@ status.
 uv sync                                  # also installs dev tools (ruff, pre-commit)
 uv run pre-commit install                # one-time: enable the git hook
 
-cargo test -p vizzy-core                 # core unit tests
-uv run pytest packages/vizzy-cli/tests   # CLI end-to-end tests
-uv sync --reinstall-package vizzy-core   # rebuild after Rust changes
+cargo test -p vizzle-core                 # core unit tests
+uv run pytest packages/vizzle-cli/tests   # CLI end-to-end tests
+uv sync --reinstall-package vizzle-core   # rebuild after Rust changes
 ```
 
 Formatting and linting run on every commit via pre-commit: `ruff format` +

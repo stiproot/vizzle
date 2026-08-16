@@ -748,12 +748,12 @@ pub fn render_mermaid(graph: &ComponentGraph, opts: &ComponentRenderOptions) -> 
     for (id, label) in &externals {
         let _ = writeln!(
             out,
-            "    {id}([\"{}\"]):::vizzyExternal",
+            "    {id}([\"{}\"]):::vizzleExternal",
             escape_label(label)
         );
     }
     if !externals.is_empty() {
-        out.push_str("    classDef vizzyExternal fill:#ffffff,stroke:#656d76,stroke-dasharray:4 3,color:#656d76\n");
+        out.push_str("    classDef vizzleExternal fill:#ffffff,stroke:#656d76,stroke-dasharray:4 3,color:#656d76\n");
     }
 
     if diff_mode {
@@ -789,7 +789,7 @@ pub fn render_mermaid(graph: &ComponentGraph, opts: &ComponentRenderOptions) -> 
 
     let _ = writeln!(
         out,
-        "%% vizzy: {} components, {} dependencies",
+        "%% vizzle: {} components, {} dependencies",
         graph.components.len(),
         edge_count
     );
@@ -1113,7 +1113,7 @@ mod tests {
         assert!(out.contains("c_apps_svc[\"«component»<br/><b>svc</b>\"]"));
         assert!(out.contains("c_apps_svc -.-> c_packages_core"));
         assert!(!out.contains("fastify")); // externals off by default
-        assert!(out.contains("%% vizzy: 4 components, 2 dependencies"));
+        assert!(out.contains("%% vizzle: 4 components, 2 dependencies"));
     }
 
     #[test]

@@ -4,8 +4,8 @@ requires-python = ">=3.10"
 
 [manifest]
 members = [
-    "vizzy",
-    "vizzy-core",
+    "vizzle",
+    "vizzle-core",
 ]
 
 [manifest.dependency-groups]
@@ -375,12 +375,12 @@ wheels = [
 ]
 
 [[package]]
-name = "vizzy"
+name = "vizzle"
 version = "0.1.0"
-source = { editable = "packages/vizzy-cli" }
+source = { editable = "packages/vizzle-cli" }
 dependencies = [
     { name = "click" },
-    { name = "vizzy-core" },
+    { name = "vizzle-core" },
     { name = "watchfiles" },
 ]
 
@@ -392,7 +392,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "click", specifier = ">=8.1" },
-    { name = "vizzy-core", editable = "crates/vizzy-py" },
+    { name = "vizzle-core", editable = "crates/vizzle-py" },
     { name = "watchfiles", specifier = ">=1.0" },
 ]
 
@@ -400,9 +400,9 @@ requires-dist = [
 dev = [{ name = "pytest", specifier = ">=8" }]
 
 [[package]]
-name = "vizzy-core"
+name = "vizzle-core"
 version = "0.1.0"
-source = { editable = "crates/vizzy-py" }
+source = { editable = "crates/vizzle-py" }
 
 [[package]]
 name = "watchfiles"

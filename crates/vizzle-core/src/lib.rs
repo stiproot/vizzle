@@ -1,4 +1,4 @@
-//! vizzy-core: parse source code into a class graph and render Mermaid
+//! vizzle-core: parse source code into a class graph and render Mermaid
 //! class diagrams, with git-diff-aware change highlighting.
 //!
 //! The typical flow:

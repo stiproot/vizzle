@@ -1,4 +1,4 @@
-"""vizzy command-line interface."""
+"""vizzle command-line interface."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 import click
-import vizzy_core
+import vizzle_core
 
 from . import git
 from .html import build_component_html, build_html, summarize, summarize_components
@@ -51,8 +51,8 @@ def _emit(content: str, output: Path | None, summary: str) -> None:
 
 
 def _emit_mermaid(diagram: str, output: Path | None) -> None:
-    marker = next((line for line in diagram.splitlines() if line.startswith("%% vizzy:")), "")
-    _emit(diagram, output, marker.removeprefix("%% vizzy: "))
+    marker = next((line for line in diagram.splitlines() if line.startswith("%% vizzle:")), "")
+    _emit(diagram, output, marker.removeprefix("%% vizzle: "))
 
 
 def _compose(*options):
@@ -121,7 +121,7 @@ render_options = _compose(
 
 
 @click.group()
-@click.version_option(package_name="vizzy")
+@click.version_option(package_name="vizzle")
 def main() -> None:
     """UML visualization for git: class diagrams from code, as Mermaid or interactive HTML."""
 
@@ -146,7 +146,7 @@ def class_diagram(
     """Generate a class diagram for the codebase at PATH."""
     resolved_fmt = _resolve_format(fmt, output)
     if resolved_fmt == "html":
-        graph_json = vizzy_core.graph_json_from_dir(
+        graph_json = vizzle_core.graph_json_from_dir(
             str(path), include=list(include), exclude=list(exclude), langs=list(lang)
         )
         page = build_html(
@@ -158,7 +158,7 @@ def class_diagram(
         _emit(page, output, summarize(graph_json))
         return
 
-    diagram = vizzy_core.class_diagram_from_dir(
+    diagram = vizzle_core.class_diagram_from_dir(
         str(path),
         include=list(include),
         exclude=list(exclude),
@@ -210,7 +210,7 @@ def component_diagram(
     """
     resolved_fmt = _resolve_format(fmt, output)
     if resolved_fmt == "html":
-        graph_json = vizzy_core.component_json_from_dir(
+        graph_json = vizzle_core.component_json_from_dir(
             str(path), include=list(include), exclude=list(exclude), langs=list(lang), classes=classes
         )
         page = build_component_html(
@@ -221,7 +221,7 @@ def component_diagram(
         _emit(page, output, summarize_components(graph_json))
         return
 
-    diagram = vizzy_core.component_diagram_from_dir(
+    diagram = vizzle_core.component_diagram_from_dir(
         str(path),
         include=list(include),
         exclude=list(exclude),
@@ -332,13 +332,13 @@ def diff_diagram(
         base_files, base_manifests, head_files, head_manifests = _collect_component_diff(path, base, head)
         resolved_title = title or f"changes vs {base}"
         if _resolve_format(fmt, output) == "html":
-            graph_json = vizzy_core.component_json_diff(
+            graph_json = vizzle_core.component_json_diff(
                 base_files, base_manifests, head_files, head_manifests, classes=True
             )
             page = build_component_html(graph_json, title=resolved_title, include_externals=externals)
             _emit(page, output, summarize_components(graph_json))
             return
-        diagram = vizzy_core.component_diagram_diff(
+        diagram = vizzle_core.component_diagram_diff(
             base_files,
             base_manifests,
             head_files,
@@ -356,7 +356,7 @@ def diff_diagram(
 
     resolved_title = title or f"changes vs {base}"
     if _resolve_format(fmt, output) == "html":
-        graph_json = vizzy_core.graph_json_diff(base_files, head_files)
+        graph_json = vizzle_core.graph_json_diff(base_files, head_files)
         page = build_html(
             graph_json,
             title=resolved_title,
@@ -366,7 +366,7 @@ def diff_diagram(
         _emit(page, output, summarize(graph_json))
         return
 
-    diagram = vizzy_core.class_diagram_diff(
+    diagram = vizzle_core.class_diagram_diff(
         base_files,
         head_files,
         **_render_kwargs(members, group, externals, direction, resolved_title),
@@ -428,22 +428,22 @@ def serve_command(
         if diagram_type == "component":
             if diff_mode:
                 base_files, base_manifests, head_files, head_manifests = _collect_component_diff(path, base, head)
-                graph_json = vizzy_core.component_json_diff(
+                graph_json = vizzle_core.component_json_diff(
                     base_files, base_manifests, head_files, head_manifests, classes=True
                 )
                 page_title = title or f"changes vs {base} (live)"
             else:
-                graph_json = vizzy_core.component_json_from_dir(
+                graph_json = vizzle_core.component_json_from_dir(
                     str(path), include=list(include), exclude=list(exclude), langs=list(lang)
                 )
                 page_title = title or f"{path.resolve().name} — component diagram (live)"
             return build_component_html(graph_json, title=page_title, include_externals=externals)
         if diff_mode:
             base_files, head_files = _collect_diff_files(path, base, head)
-            graph_json = vizzy_core.graph_json_diff(base_files, head_files)
+            graph_json = vizzle_core.graph_json_diff(base_files, head_files)
             page_title = title or f"changes vs {base} (live)"
         else:
-            graph_json = vizzy_core.graph_json_from_dir(
+            graph_json = vizzle_core.graph_json_from_dir(
                 str(path), include=list(include), exclude=list(exclude), langs=list(lang)
             )
             page_title = title or f"{path.resolve().name} — class diagram (live)"

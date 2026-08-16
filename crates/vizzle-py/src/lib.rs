@@ -1,9 +1,9 @@
-//! Python bindings for vizzy-core.
+//! Python bindings for vizzle-core.
 
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
-use ::vizzy_core as vc;
+use ::vizzle_core as vc;
 use vc::{ComponentRenderOptions, RenderOptions, SelectOptions};
 
 fn to_py_err(err: anyhow::Error) -> PyErr {
@@ -290,8 +290,8 @@ fn graph_json_diff(
 }
 
 #[pymodule]
-#[pyo3(name = "vizzy_core")]
-fn vizzy_core_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
+#[pyo3(name = "vizzle_core")]
+fn vizzle_core_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(class_diagram_from_dir, m)?)?;
     m.add_function(wrap_pyfunction!(class_diagram_from_files, m)?)?;
     m.add_function(wrap_pyfunction!(class_diagram_diff, m)?)?;

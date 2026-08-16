@@ -1,5 +1,5 @@
 [package]
-name = "vizzy-core"
+name = "vizzle-core"
 description = "Parse source code into a class graph and render Mermaid class diagrams, with git-diff awareness"
 version.workspace = true
 edition.workspace = true

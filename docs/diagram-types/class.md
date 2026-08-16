@@ -1,12 +1,12 @@
 # Class diagram
 
 **Status:** implemented, except where §5.4 marks a decision as pending.
-**Command:** `vizzy class <repo>` (+ `vizzy diff`, `vizzy serve`), and the
+**Command:** `vizzle class <repo>` (+ `vizzle diff`, `vizzle serve`), and the
 per-component drill-down in the [component diagram](component.md#53-drill-down-the-class-diagram-inside-a-component).
 
 The class diagram answers *"what is the shape of the code?"* — the types a
 codebase defines, what they hold, and how they relate. It is the most
-zoomed-in of vizzy's diagram types, and the one the component diagram renders
+zoomed-in of vizzle's diagram types, and the one the component diagram renders
 inside an exploded component.
 
 This document was written after the implementation rather than before it (the
@@ -16,9 +16,9 @@ code has *not* yet acted on.
 
 ## 1. Two lenses, comprehension first
 
-Same rule as every diagram type: **comprehension is primary**. `vizzy class`
+Same rule as every diagram type: **comprehension is primary**. `vizzle class`
 needs no git, no base revision, no repository even — just source files.
-`vizzy diff` layers a change annotation over the identical diagram, fading
+`vizzle diff` layers a change annotation over the identical diagram, fading
 unchanged elements to context so the change carries the eye. See
 [component.md §1.1](component.md#11-two-lenses-comprehension-first).
 
@@ -74,7 +74,7 @@ consumes; a class graph and an import graph come out of one parse.
 
 A type named in source is resolved to a class in the graph by looking in the
 same module first, then for a globally unique name. **Ambiguous names resolve
-to nothing.** vizzy has no symbol table and no imports-to-definitions map, so a
+to nothing.** vizzle has no symbol table and no imports-to-definitions map, so a
 name matching three classes could point at any of them.
 
 > The standing rule for every resolver in this codebase: **a wrong edge is
@@ -127,7 +127,7 @@ what make the diagram informative there, which is why they exist.
 - **Relation labels** (role names). Available in principle from the field
   name; omitted because a label on every edge costs more legibility than it
   buys at 200 classes.
-- **Call graphs.** vizzy draws structure, not behaviour.
+- **Call graphs.** vizzle draws structure, not behaviour.
 
 ### 5.4 Decision: aggregation and composition diamonds
 
@@ -136,7 +136,7 @@ what make the diagram informative there, which is why they exist.
 UML distinguishes a plain association from **aggregation** (hollow diamond at
 the owner: "has-a", shared, independent lifetime) and **composition** (filled
 diamond: the owner controls the object's lifetime). The question is whether
-vizzy can put a diamond on an edge honestly.
+vizzle can put a diamond on an edge honestly.
 
 **The rendering is not the problem.** Mermaid has native syntax (`*--`, `o--`),
 the d3 view needs a diamond marker at the container end, and the model needs
@@ -147,9 +147,9 @@ two more `RelationKind` variants. That is an hour of work.
 - Languages that encode ownership *in the type system* — Rust's `Foo` versus
   `&Foo`/`Rc<Foo>`, C++'s by-value member versus `unique_ptr` versus
   `shared_ptr`/raw pointer — make the distinction **derivable**. The compiler
-  already knows; vizzy would just read it. **vizzy parses neither language
+  already knows; vizzle would just read it. **vizzle parses neither language
   today.**
-- TypeScript and Python — the two vizzy does parse — hold every field by
+- TypeScript and Python — the two vizzle does parse — hold every field by
   reference. **No syntax distinguishes owning from borrowing.** The only
   available signal is behavioural: does the owner *construct* the object
   (`this.x = new Foo()`, `self.x = Foo()`, a dataclass `field(default_factory=Foo)`)
@@ -180,7 +180,7 @@ in accuracy. This lights up roughly 24 edges on h instead of 3.
 **Consequences.**
 
 - The spec, the legend, and the `--help` text must call aggregation a
-  convention. If a reader believes vizzy *inferred* shared ownership, the
+  convention. If a reader believes vizzle *inferred* shared ownership, the
   diagram has lied to them.
 - Composition requires new extraction: constructor bodies and field
   initialisers (`this.x = new T()`, `self.x = T()` in `__init__`/`__post_init__`,
@@ -209,7 +209,7 @@ and a viewport that survives live-reload. The box itself is drawn by
 the component diagram's exploded view, so a class looks the same wherever you
 meet it.
 
-Change colors come from vizzy-core's palette in both formats (see
+Change colors come from vizzle-core's palette in both formats (see
 [component.md §9.1](component.md#91-implementation-notes)).
 
 ## 7. Diff semantics
@@ -224,16 +224,16 @@ bases, stereotype and language; members are fingerprinted over their signature.
 Removed members are re-attached to the class so the diagram can show them
 struck through. Unchanged classes in touched files render as context.
 
-`vizzy diff` parses only the files git reports as changed — unlike the
+`vizzle diff` parses only the files git reports as changed — unlike the
 component diff, which needs both revisions in full.
 
 ## 8. CLI surface
 
 ```sh
-vizzy class <repo> [-o out.mmd|out.html] [-I glob] [-E glob] [-l python|typescript]
+vizzle class <repo> [-o out.mmd|out.html] [-I glob] [-E glob] [-l python|typescript]
                    [--no-members] [--group] [--externals] [--direction LR] [--title]
-vizzy diff <repo> [--base REV] [--head REV]          # --type class is the default
-vizzy serve <repo> [--diff]
+vizzle diff <repo> [--base REV] [--head REV]          # --type class is the default
+vizzle serve <repo> [--diff]
 ```
 
 ## 9. Out of scope

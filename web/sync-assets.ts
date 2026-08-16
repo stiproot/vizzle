@@ -8,7 +8,7 @@ import { copyFileSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const here = import.meta.dir;
-const assets = join(here, "..", "packages", "vizzy-cli", "src", "vizzy_cli", "assets");
+const assets = join(here, "..", "packages", "vizzle-cli", "src", "vizzle_cli", "assets");
 
 const jobs: Array<[string, string]> = [
   [join(here, "node_modules", "d3", "dist", "d3.min.js"), join(assets, "d3.v7.min.js")],

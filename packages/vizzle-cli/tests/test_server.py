@@ -7,7 +7,7 @@ import urllib.request
 from pathlib import Path
 
 import pytest
-from vizzy_cli import server
+from vizzle_cli import server
 
 
 def test_inject_live_reload() -> None:

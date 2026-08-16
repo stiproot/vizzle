@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "vizzy-web",
+      "name": "vizzle-web",
       "dependencies": {
         "d3": "^7.9.0",
       },

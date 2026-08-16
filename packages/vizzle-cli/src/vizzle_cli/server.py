@@ -1,6 +1,6 @@
 """Lightweight live-reload server: stdlib http.server + SSE + watchfiles.
 
-`vizzy serve` regenerates the diagram on every page load and pushes a
+`vizzle serve` regenerates the diagram on every page load and pushes a
 reload event to connected browsers whenever a watched source file changes.
 """
 
@@ -14,7 +14,7 @@ from pathlib import Path
 
 from .git import is_source
 
-# Vendored and generated trees hold no source vizzy parses, but dominate the
+# Vendored and generated trees hold no source vizzle parses, but dominate the
 # directory count (on a mid-size monorepo: ~10k dirs vs ~400 without them).
 PRUNED_DIR_NAMES = frozenset(
     {
@@ -116,7 +116,7 @@ def make_server(
 
 
 def is_watched_source(path: str) -> bool:
-    """A change is worth a reload exactly when vizzy would parse the file."""
+    """A change is worth a reload exactly when vizzle would parse the file."""
     return is_source(path)
 
 
@@ -127,7 +127,7 @@ def source_watch_dirs(root: Path, limit: int = MAX_WATCH_DIRS) -> list[Path]:
     letting it recurse from `root`, for two reasons: an unreadable directory
     anywhere in the tree (a container's root-owned state dir, say) otherwise
     takes the whole watch down with it, and vendored trees like node_modules
-    would swamp the watch with directories holding nothing vizzy parses.
+    would swamp the watch with directories holding nothing vizzle parses.
     """
     dirs = [root]
     stack = [root]
@@ -185,7 +185,7 @@ def start_watcher(
             if on_error is not None:
                 on_error(f"live reload disabled: {type(err).__name__}: {err}")
 
-    thread = threading.Thread(target=run, daemon=True, name="vizzy-watcher")
+    thread = threading.Thread(target=run, daemon=True, name="vizzle-watcher")
     thread.start()
     return thread
 

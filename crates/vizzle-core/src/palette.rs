@@ -51,12 +51,12 @@ pub fn colors_for(change: ChangeKind) -> Option<&'static ChangeColors> {
     CHANGE_COLORS.iter().find(|c| c.name == name)
 }
 
-/// Mermaid class name for a change, e.g. `vizzyAdded`.
+/// Mermaid class name for a change, e.g. `vizzleAdded`.
 pub fn mermaid_class(change: ChangeKind) -> Option<String> {
     colors_for(change).map(|c| {
         let mut name = c.name.to_owned();
         name[..1].make_ascii_uppercase();
-        format!("vizzy{name}")
+        format!("vizzle{name}")
     })
 }
 
@@ -68,7 +68,7 @@ pub fn mermaid_classdefs() -> String {
     CHANGE_COLORS
         .iter()
         .map(|c| {
-            let class = format!("vizzy{}{}", c.name[..1].to_uppercase(), &c.name[1..]);
+            let class = format!("vizzle{}{}", c.name[..1].to_uppercase(), &c.name[1..]);
             format!(
                 "    classDef {class} fill:{},stroke:{},stroke-width:2px,color:{}{}\n",
                 c.fill, c.stroke, c.stroke, c.mermaid_extra
@@ -108,11 +108,11 @@ mod tests {
             assert!(mermaid.contains(colors.stroke));
             assert!(css.contains(colors.stroke));
         }
-        assert!(mermaid.contains("classDef vizzyAdded"));
+        assert!(mermaid.contains("classDef vizzleAdded"));
         assert!(css.contains("--added-fill: #dafbe1;"));
         assert_eq!(
             mermaid_class(ChangeKind::Modified).as_deref(),
-            Some("vizzyModified")
+            Some("vizzleModified")
         );
         assert_eq!(mermaid_class(ChangeKind::Unchanged), None);
     }

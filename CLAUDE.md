@@ -1,4 +1,4 @@
-# vizzy — working agreement
+# vizzle — working agreement
 
 Make visualizing code as fast and as easy as possible. Two audiences for every
 diagram: someone trying to **understand** unfamiliar code, and someone trying to
@@ -7,9 +7,9 @@ see **what a change did**. Comprehension is the primary one.
 ## The shape of the system
 
 ```
-crates/vizzy-core/     Rust. Parse → graph → diff → render. Everything hot.
-crates/vizzy-py/       PyO3 bindings. A thin, dumb translation layer.
-packages/vizzy-cli/    Click CLI. Git orchestration, file I/O, page assembly.
+crates/vizzle-core/     Rust. Parse → graph → diff → render. Everything hot.
+crates/vizzle-py/       PyO3 bindings. A thin, dumb translation layer.
+packages/vizzle-cli/    Click CLI. Git orchestration, file I/O, page assembly.
   └── assets/          viz-core.{css,js} (shared) + one template per diagram type.
 docs/diagram-types/    One spec per diagram type. Written before the code.
 ```
@@ -27,7 +27,7 @@ is wrong, not the layer.
    **Modelling decisions go in the spec, with their evidence** — what was
    measured, what was chosen, what would change it. A decision recorded only in
    a commit message is a decision the next reader will silently reverse.
-2. Model + detection + render + JSON export in `vizzy-core`, as its own module.
+2. Model + detection + render + JSON export in `vizzle-core`, as its own module.
 3. Bindings, then CLI command, then a template.
 4. A new diagram type means **a new template, never a copied page**. If you are
    about to copy from an existing template, that code belongs in `viz-core.js`.
@@ -73,7 +73,7 @@ contort them into one.
   a helper before an export.
 - Options structs carry rendering choices; do not thread six booleans through
   five call sites.
-- Frontend: shared behaviour is a function on `window.vizzy` taking the
+- Frontend: shared behaviour is a function on `window.vizzle` taking the
   selections it operates on. It must not reach for a global the template owns.
 
 ## Clean code, as practiced here
@@ -96,10 +96,10 @@ contort them into one.
 Nothing is "done" on the strength of it compiling.
 
 ```sh
-cargo test -p vizzy-core                 # core
-uv run pytest packages/vizzy-cli/tests   # CLI + server
+cargo test -p vizzle-core                 # core
+uv run pytest packages/vizzle-cli/tests   # CLI + server
 uv run pre-commit run --all-files        # ruff, cargo fmt, clippy -D warnings
-uv sync --reinstall-package vizzy-core   # after Rust changes, before CLI tests
+uv sync --reinstall-package vizzle-core   # after Rust changes, before CLI tests
 ```
 
 - **Run it against a real repo**, not just fixtures. `~/code/h` is the standing

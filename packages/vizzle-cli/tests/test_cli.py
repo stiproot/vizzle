@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 from click.testing import CliRunner
-from vizzy_cli.cli import main
+from vizzle_cli.cli import main
 
 
 def git(cwd: Path, *args: str) -> None:
@@ -53,8 +53,8 @@ def test_class_diagram(repo: Path) -> None:
 def test_diff_diagram(repo: Path) -> None:
     result = CliRunner().invoke(main, ["diff", str(repo)])
     assert result.exit_code == 0, result.output
-    assert 'cssClass "app_Fresh" vizzyAdded' in result.output
-    assert 'cssClass "app_Old" vizzyRemoved' in result.output
+    assert 'cssClass "app_Fresh" vizzleAdded' in result.output
+    assert 'cssClass "app_Old" vizzleRemoved' in result.output
     # classDef statements must trail the attachments (mermaid 11 quirk).
     assert result.output.rindex("classDef") > result.output.rindex("cssClass")
 
@@ -122,7 +122,7 @@ def test_component_diagram(workspace: Path) -> None:
     assert "«component»<br/><b>svc</b>" in result.output
     assert "c_apps_svc -.-> c_packages_core" in result.output
     assert "c_packages_util" in result.output  # present even with no edges
-    assert "%% vizzy: 3 components, 1 dependencies" in result.output
+    assert "%% vizzle: 3 components, 1 dependencies" in result.output
 
 
 def test_component_html(workspace: Path, tmp_path: Path) -> None:
@@ -165,7 +165,7 @@ def test_pages_inline_the_shared_core(workspace: Path, tmp_path: Path, command: 
     result = CliRunner().invoke(main, [*command, str(workspace), "-o", str(out)])
     assert result.exit_code == 0, result.output
     page = out.read_text()
-    assert "window.vizzy" in page  # shared JS
+    assert "window.vizzle" in page  # shared JS
     assert "--context-fill" in page  # shared palette
     assert "attachViewport" in page and "focus" in page  # shared viewport API
     assert not re.search(r"__[A-Z0-9_]+__", page)

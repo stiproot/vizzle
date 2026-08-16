@@ -1,4 +1,4 @@
-"""Thin wrapper around the git CLI used by `vizzy diff`."""
+"""Thin wrapper around the git CLI used by `vizzle diff`."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from pathlib import Path
 
 SUPPORTED_SUFFIXES = (".py", ".ts", ".tsx", ".mts", ".cts")
 
-# Keep in sync with MANIFEST_NAMES in vizzy-core's component.rs.
+# Keep in sync with MANIFEST_NAMES in vizzle-core's component.rs.
 MANIFEST_NAMES = ("package.json", "pyproject.toml", "Cargo.toml", "go.mod")
 
 
@@ -59,7 +59,7 @@ def changed_files(root: Path, base: str, head: str | None, pathspec: str | None)
 
 
 def is_source(path: str) -> bool:
-    """Whether vizzy parses this file. The single definition of "source file"."""
+    """Whether vizzle parses this file. The single definition of "source file"."""
     return path.endswith(SUPPORTED_SUFFIXES) and not path.endswith(".d.ts")
 
 
