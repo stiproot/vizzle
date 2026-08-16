@@ -14,5 +14,5 @@ crate-type = ["cdylib"]
 
 [dependencies]
 anyhow = { workspace = true }
-pyo3 = { version = "0.26", features = ["abi3-py310"] }
+pyo3 = { version = "0.29", features = ["abi3-py310"] }
 vizzle-core = { path = "../vizzle-core" }
