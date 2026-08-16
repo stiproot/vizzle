@@ -15,6 +15,11 @@ docs/diagram-types/    One spec per diagram type. Written before the code.
 docs/distribution.md   How vizzle reaches other repos, and why.
 ```
 
+Three source layers, **one shipped distribution**: `packages/vizzle-cli/` is the
+maturin project root, and the bindings compile into it as the private extension
+`vizzle_cli._core`. There is no importable `vizzle_core`, and no second package
+whose version could drift from this one (`docs/distribution.md` §4).
+
 Each layer has one job. The Rust core never shells out to git and never knows
 about HTML; the CLI never parses source; the bindings contain no logic beyond
 argument translation. If you find yourself reaching across a layer, the design
@@ -105,7 +110,7 @@ Nothing is "done" on the strength of it compiling.
 cargo test -p vizzle-core                 # core
 uv run pytest packages/vizzle-cli/tests   # CLI + server
 uv run pre-commit run --all-files        # ruff, cargo fmt, clippy -D warnings
-uv sync --reinstall-package vizzle-core   # after Rust changes, before CLI tests
+uv sync --reinstall-package vizzle       # after Rust changes, before CLI tests
 ```
 
 - **Run it against a real repo**, not just fixtures. `~/code/h` is the standing

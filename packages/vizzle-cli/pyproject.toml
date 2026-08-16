@@ -1,16 +1,17 @@
 [build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+requires = ["maturin>=1.7,<2"]
+build-backend = "maturin"
 
 [project]
 name = "vizzle"
 description = "UML visualization for git: Mermaid class diagrams from code, with diff highlighting"
-version = "0.1.0"
+# Derived from the Cargo workspace version by maturin, so the version is stated
+# once for the whole project (docs/distribution.md §4).
+dynamic = ["version"]
 requires-python = ">=3.10"
 license = "MIT"
 dependencies = [
     "click>=8.1",
-    "vizzle-core",
     "watchfiles>=1.0",
 ]
 
@@ -20,5 +21,9 @@ vizzle = "vizzle_cli.cli:main"
 [dependency-groups]
 dev = ["pytest>=8"]
 
-[tool.hatch.build.targets.wheel]
-packages = ["src/vizzle_cli"]
+# One distribution: the Rust extension and the Python CLI ship in the same wheel,
+# so a user can never land on a mismatched pair (docs/distribution.md §4).
+[tool.maturin]
+module-name = "vizzle_cli._core"
+manifest-path = "../../crates/vizzle-py/Cargo.toml"
+python-source = "src"

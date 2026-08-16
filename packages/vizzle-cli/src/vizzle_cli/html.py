@@ -6,7 +6,7 @@ import html as html_escape
 import json
 from importlib import resources
 
-import vizzle_core
+from . import _core
 
 
 def _fill(template_name: str, graph_json: str, title: str, config: dict) -> str:
@@ -23,7 +23,7 @@ def _fill(template_name: str, graph_json: str, title: str, config: dict) -> str:
     # A literal "</script>" inside embedded JSON would end the script block early.
     safe_json = graph_json.replace("</", "<\\/")
     # The change palette is owned by vizzle-core so HTML and Mermaid agree.
-    core_css = read("viz-core.css").replace("__PALETTE_CSS__", vizzle_core.diff_palette_css())
+    core_css = read("viz-core.css").replace("__PALETTE_CSS__", _core.diff_palette_css())
     return (
         read(template_name)
         .replace("__TITLE__", html_escape.escape(title))

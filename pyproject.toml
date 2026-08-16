@@ -1,8 +1,5 @@
 [tool.uv.workspace]
-members = ["crates/vizzle-py", "packages/vizzle-cli"]
-
-[tool.uv.sources]
-vizzle-core = { workspace = true }
+members = ["packages/vizzle-cli"]
 
 [dependency-groups]
 dev = [

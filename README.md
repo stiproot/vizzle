@@ -14,10 +14,13 @@ composition diamonds are a convention rather than an inference:
   TypeScript), a language-neutral class graph + import graph, a component
   detector (manifest-driven), graph diff engines, and Mermaid renderers.
   Parses ~200 classes in well under a second.
-- **PyO3 bindings** (`crates/vizzle-py`): exposed to Python as `vizzle_core`,
-  built with maturin.
+- **PyO3 bindings** (`crates/vizzle-py`): built with maturin into the private
+  extension module `vizzle_cli._core`.
 - **Click CLI** (`packages/vizzle-cli`): the `vizzle` command. Python owns the
   git orchestration; Rust owns everything hot.
+
+Three source layers ship as **one wheel** — `pip install vizzle` gets the CLI
+and the compiled core together, so their versions cannot drift apart.
 
 ## Setup
 
@@ -153,7 +156,7 @@ uv run pre-commit install                # one-time: enable the git hook
 
 cargo test -p vizzle-core                 # core unit tests
 uv run pytest packages/vizzle-cli/tests   # CLI end-to-end tests
-uv sync --reinstall-package vizzle-core   # rebuild after Rust changes
+uv sync --reinstall-package vizzle       # rebuild after Rust changes
 ```
 
 Formatting and linting run on every commit via pre-commit: `ruff format` +

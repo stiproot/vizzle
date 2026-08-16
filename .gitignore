@@ -2,6 +2,12 @@
 /target
 **/*.rs.bk
 
+# The compiled extension, which maturin writes into the Python source tree
+# alongside vizzle_cli/ on every editable build. 5MB, and never ours to commit.
+*.so
+*.pyd
+*.dylib
+
 # Python
 .venv/
 __pycache__/

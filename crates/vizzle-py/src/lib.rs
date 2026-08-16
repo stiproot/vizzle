@@ -290,7 +290,7 @@ fn graph_json_diff(
 }
 
 #[pymodule]
-#[pyo3(name = "vizzle_core")]
+#[pyo3(name = "_core")]
 fn vizzle_core_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(class_diagram_from_dir, m)?)?;
     m.add_function(wrap_pyfunction!(class_diagram_from_files, m)?)?;

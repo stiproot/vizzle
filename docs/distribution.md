@@ -188,10 +188,10 @@ names — `viz` was never the brand.
 
 ## 4. Decision: one distribution, not two
 
-**Decided 2026-08-16. Not yet implemented.**
+**Decided and implemented 2026-08-16.**
 
-Today there are two: `vizzle-core` (maturin, native, PyO3) and `vizzle`
-(hatchling, pure Python, depends on the former).
+There were two: `vizzle-core` (maturin, native, PyO3) and `vizzle` (hatchling,
+pure Python, depending on the former).
 
 **The failure mode that decides it.** Two distributions means two releases in
 lockstep and two version numbers a user can land between. The binding surface —
@@ -201,9 +201,38 @@ A user with `vizzle` 0.3 resolving against a cached `vizzle-core` 0.2 gets an
 is one fact (the binding contract) expressed in two independently-versioned
 places, which is exactly the duplication CLAUDE.md says to hunt.
 
-**What is chosen.** maturin's mixed layout (`python-source`), putting
-`vizzle_cli/` inside the native wheel. One distribution, one version, one
-release, no skew possible.
+**What is chosen.** maturin's mixed layout: `packages/vizzle-cli/` is the
+project root, with `python-source = "src"` and `manifest-path` reaching back to
+`crates/vizzle-py/Cargo.toml`. One distribution, one version, one release, no
+skew possible.
+
+**Where the extension lives, and why it moved.** maturin requires the compiled
+module to sit *inside* a Python package — `module-name` must resolve to a
+directory under `python-source`. So the extension is now `vizzle_cli._core`, and
+there is no importable top-level `vizzle_core` at all.
+
+That constraint pushed toward the more honest structure rather than away from
+it: the bindings were only ever imported by the CLI, and the underscore now says
+so. The shipped wheel holds exactly one top-level name:
+
+```
+vizzle_cli/{__init__,cli,git,html,server}.py
+vizzle_cli/_core.abi3.so
+vizzle_cli/assets/…
+```
+
+Consequences: `crates/vizzle-py/Cargo.toml` sets `[lib] name = "_core"`, the
+`#[pymodule]` is named `_core`, and the Python side does `from . import _core`.
+
+**Verified**, not assumed — the layout has two failure modes worth testing, and
+both were:
+
+- **The sdist reaches outside its project directory.** `manifest-path` points up
+  two levels, so the sdist must carry `crates/` and the workspace `Cargo.toml`
+  or it cannot build. `uv build` produces a 151 KB sdist containing both, and
+  builds a wheel *from that sdist* in a temp directory.
+- **The wheel is self-contained.** Installed into an empty venv on a machine
+  path with no repo and no Rust toolchain, `vizzle component ~/code/h` renders.
 
 **What it costs.** Every release rebuilds native wheels even for a
 Python-only fix; and a contributor touching only Python still needs a Rust
@@ -214,12 +243,14 @@ today — and the first is CI time, not human time.
 library. No such consumer exists, and the Rust crate is the better library
 surface for anyone who does (§10).
 
-**Versioning.** `0.1.0` is currently declared in *three* independent places —
-the Cargo workspace (inherited by both crates via `version.workspace = true`),
-`packages/vizzle-cli/pyproject.toml`, and `crates/vizzle-py/pyproject.toml`.
-That is the same duplication as the paragraph above, one level down. Merging to
-one distribution removes one of the three; the release process must derive the
-remaining Python version from the Cargo workspace rather than restating it.
+**Versioning — fixed at the same time.** `0.1.0` had been declared in *three*
+independent places: the Cargo workspace, `packages/vizzle-cli/pyproject.toml`,
+and `crates/vizzle-py/pyproject.toml`. The same duplication as above, one level
+down. Deleting the second distribution removed one, and the survivor now
+declares `dynamic = ["version"]`, which maturin fills from the Cargo workspace.
+
+**The version is now stated exactly once**, in the root `Cargo.toml`. A release
+is a single number to bump.
 
 ## 5. The build matrix
 

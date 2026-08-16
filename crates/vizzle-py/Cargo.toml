@@ -6,8 +6,10 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 
+# Built as `vizzle_cli._core`: maturin requires the extension to live inside a
+# Python package, and nothing outside the CLI imports it (docs/distribution.md §4).
 [lib]
-name = "vizzle_core"
+name = "_core"
 crate-type = ["cdylib"]
 
 [dependencies]
