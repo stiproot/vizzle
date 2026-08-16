@@ -6,7 +6,7 @@ members = ["crates/vizzle-core", "crates/vizzle-py"]
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
-repository = "https://github.com/stiproot/vizzy"
+repository = "https://github.com/stiproot/vizzle"
 
 [workspace.dependencies]
 anyhow = "1"
