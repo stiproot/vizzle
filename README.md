@@ -22,18 +22,37 @@ composition diamonds are a convention rather than an inference:
 Three source layers ship as **one wheel** — `pip install vizzle` gets the CLI
 and the compiled core together, so their versions cannot drift apart.
 
-## Setup
+## Install
 
-From a clone — requires [uv](https://docs.astral.sh/uv/) and a Rust toolchain:
+Nothing to install — run it straight from PyPI, with nothing added to the repo
+you are looking at:
+
+```sh
+uvx vizzle component ~/code/some-repo
+```
+
+Or keep it around: `uv tool install vizzle` (or `pipx install vizzle`). Needs
+Python ≥ 3.10 and `git` on PATH; on Linux, glibc ≥ 2.28. Why it is distributed
+this way is in [`docs/distribution.md`](docs/distribution.md).
+
+### For coding agents
+
+vizzle ships a Claude Code plugin, so an agent knows to reach for a diagram
+instead of reading the repo file by file — a component diagram of a 358-file
+codebase costs about **1.5k tokens**:
+
+```sh
+claude plugin marketplace add stiproot/vizzle
+claude plugin install vizzle@vizzle-marketplace
+```
+
+### From a clone
+
+For development — requires [uv](https://docs.astral.sh/uv/) and a Rust toolchain:
 
 ```sh
 uv sync   # builds the Rust extension via maturin and installs the CLI
 ```
-
-vizzle is **not published yet**, so there is no `uvx vizzle` today. Once it is,
-that becomes the way to use it — no clone, no toolchain, nothing added to the
-repo you are looking at. The plan, and the reasoning behind it, is in
-[`docs/distribution.md`](docs/distribution.md).
 
 ## Usage
 

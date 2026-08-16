@@ -1,0 +1,6 @@
+{
+  "name": "vizzle",
+  "description": "Teaches an agent to orient in a codebase with vizzle: a component diagram of a 358-file repository costs about 1.5k tokens and replaces reading it. Carries the token economics, the component-before-class ladder, and the repos vizzle cannot see.",
+  "version": "0.1.0",
+  "author": { "name": "stiproot" }
+}

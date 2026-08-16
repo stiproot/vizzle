@@ -1,8 +1,8 @@
 # Distribution
 
 **Status:** §3 (the name), §4 (one distribution), §5 and §6 (the release
-pipeline) are implemented; §2.6 (the agent plugin) is next, after the first
-release. §8 is a standing rejection with trigger conditions; §10 is deferred.
+pipeline) and §2.6 (the agent plugin) are implemented; `vizzle 0.1.0` is on
+PyPI. §8 is a standing rejection with trigger conditions; §10 is deferred.
 **Measured on:** 2026-08-16, against `~/code/h` (358 parsed source files) on Linux.
 
 The spec for how vizzle reaches the repos that use it. Diagram-type specs answer
@@ -137,6 +137,39 @@ the skill with the code it documents.
 invoke the tool, so the plugin is worth no more than its install line. Built
 before publishing, that line is "clone it and install a Rust toolchain"; built
 after, it is `uvx vizzle component .`.
+
+**Implemented 2026-08-16**: `.claude-plugin/marketplace.json` + `plugins/vizzle/`,
+carrying the single skill `vizzle-diagrams`. Every command the skill documents
+was run against the published `vizzle@0.1.0` before shipping — the lying-spec
+guard, applied literally.
+
+The skill's most load-bearing paragraph is not the token table but the
+*precondition*: vizzle parses Python and TypeScript only, and component
+detection drops any module with no `.py`/`.ts` in it (component.md §3.1 rule
+4). A Rust or Go repository therefore yields a near-empty diagram from
+manifests that were found perfectly well. Without that warning up front an
+agent burns a call and, worse, may report the emptiness as a finding about the
+architecture.
+
+### 2.6.1 What the evaluation showed
+
+Tested by installing the plugin and prompting a real agent, which is the only
+way to learn whether a skill fires:
+
+- **"Understand the module dependency structure of h — what depends on what?"**
+  → ran `uvx vizzle component --weights`, and carried the spec's own caution
+  into its answer: *"vizzle prefers a missing edge to a wrong one, so absent
+  edges are weak evidence."* The skill changed both the method and the
+  epistemics of the result.
+- **"Give me an architectural overview of h"** → read `ARCHITECTURE.md`
+  instead, and did not reach for vizzle at all.
+
+The second is **left as-is deliberately.** When a repository has a
+hand-written architecture document, reading it really is better than
+generating a diagram, and a description tuned hard enough to beat that would
+fire on everything. The skill wins where it should: structure and dependency
+questions, and repos with nothing written down. Revisit only if it turns out
+to under-fire on repos that have no docs.
 
 ## 3. Decision: the distribution name is `vizzle`
 

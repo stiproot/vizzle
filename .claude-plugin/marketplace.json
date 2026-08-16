@@ -1,0 +1,11 @@
+{
+  "name": "vizzle-marketplace",
+  "owner": { "name": "stiproot" },
+  "plugins": [
+    {
+      "name": "vizzle",
+      "source": "./plugins/vizzle",
+      "description": "Read an unfamiliar codebase as a diagram instead of file by file, and see what a change did to its shape."
+    }
+  ]
+}
