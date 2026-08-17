@@ -70,7 +70,10 @@ fn collect(
                 }
             }
             "lexical_declaration" => {
-                if scope.module_level && scope.exported {
+                if scope.module_level
+                    && scope.exported
+                    && !extract_schema_struct(child, src, module, graph)
+                {
                     extract_module_const(child, src, module_fns);
                 }
             }
@@ -313,6 +316,158 @@ fn union_arms(node: Node, src: &str) -> Vec<String> {
     arms
 }
 
+/// `export const X = Schema.Struct({ field: Schema.String, … })`.
+///
+/// This is the one framework-specific extraction in the parser, and it earns
+/// the exception on evidence: h declares 73 of them, and 7 of the 16 entries in
+/// a real curated diagram are `kind: "schema"` — without this, that document
+/// cannot be regenerated at all (curated-diagrams.md §4.2). Effect Schema
+/// builds a type from a call expression, so no amount of general type-alias
+/// handling reaches it.
+fn extract_schema_struct(node: Node, src: &str, module: &str, graph: &mut CodeGraph) -> bool {
+    let Some(decl) = first_child_of_kind(node, "variable_declarator") else {
+        return false;
+    };
+    let (Some(name_node), Some(value)) = (
+        decl.child_by_field_name("name"),
+        decl.child_by_field_name("value"),
+    ) else {
+        return false;
+    };
+    if value.kind() != "call_expression" {
+        return false;
+    }
+    let callee = value.child_by_field_name("function").map(|f| text(f, src));
+    if callee.as_deref() != Some("Schema.Struct") {
+        return false;
+    }
+    let Some(args) = value.child_by_field_name("arguments") else {
+        return false;
+    };
+
+    // The fields are either an inline object literal or — twice in h — a
+    // reference to a sibling `const XFields = { … }` in the same file.
+    let mut cursor = args.walk();
+    let literal = args
+        .named_children(&mut cursor)
+        .find_map(|arg| match arg.kind() {
+            "object" => Some(arg),
+            "identifier" => find_object_const(node, src, &text(arg, src)),
+            _ => None,
+        });
+    let Some(literal) = literal else {
+        return false;
+    };
+
+    let name = text(name_node, src);
+    graph.classes.push(Class {
+        qualified: qualified(module, &name),
+        module: module.to_owned(),
+        annotation: Some("schema".to_owned()),
+        bases: Vec::new(),
+        members: schema_fields(literal, src),
+        lang: Language::TypeScript,
+        change: ChangeKind::Unchanged,
+        name,
+    });
+    true
+}
+
+/// The object literal bound to `name` elsewhere at the top level of this file.
+fn find_object_const<'a>(from: Node<'a>, src: &str, name: &str) -> Option<Node<'a>> {
+    let root = {
+        let mut node = from;
+        while let Some(parent) = node.parent() {
+            node = parent;
+        }
+        node
+    };
+    let mut stack = vec![root];
+    while let Some(node) = stack.pop() {
+        let mut cursor = node.walk();
+        for child in node.named_children(&mut cursor) {
+            if child.kind() == "variable_declarator"
+                && child
+                    .child_by_field_name("name")
+                    .map(|n| text(n, src))
+                    .as_deref()
+                    == Some(name)
+            {
+                let value = child.child_by_field_name("value")?;
+                return match value.kind() {
+                    "object" => Some(value),
+                    // `{ … } as const`
+                    "as_expression" => first_child_of_kind(value, "object"),
+                    _ => None,
+                };
+            }
+            stack.push(child);
+        }
+    }
+    None
+}
+
+fn first_child_of_kind<'a>(node: Node<'a>, kind: &str) -> Option<Node<'a>> {
+    let mut cursor = node.walk();
+    let found = node.named_children(&mut cursor).find(|c| c.kind() == kind);
+    found
+}
+
+/// One member per key, typed by reading the schema combinator rather than the
+/// checker: `Schema.optional(Schema.String)` is `string?`.
+fn schema_fields(object: Node, src: &str) -> Vec<Member> {
+    let mut members = Vec::new();
+    let mut cursor = object.walk();
+    for pair in object.named_children(&mut cursor) {
+        if pair.kind() != "pair" {
+            continue;
+        }
+        let (Some(key), Some(value)) = (
+            pair.child_by_field_name("key"),
+            pair.child_by_field_name("value"),
+        ) else {
+            continue;
+        };
+        let detail = schema_type(&text(value, src));
+        members.push(Member {
+            name: text(key, src).trim_matches(['"', '\'']).to_owned(),
+            type_refs: vec![detail.clone()],
+            detail,
+            ..Default::default()
+        });
+    }
+    members
+}
+
+/// Effect Schema combinators, rendered as the type they describe. Anything
+/// unrecognised keeps its own text — honest, if wordy.
+fn schema_type(expr: &str) -> String {
+    let expr = expr.split_whitespace().collect::<Vec<_>>().join(" ");
+    let inner = |prefix: &str| {
+        expr.strip_prefix(prefix)
+            .and_then(|rest| rest.strip_suffix(')'))
+            .map(str::to_owned)
+    };
+    if let Some(rest) = inner("Schema.optional(") {
+        return format!("{}?", schema_type(&rest));
+    }
+    if let Some(rest) = inner("Schema.Array(") {
+        return format!("{}[]", schema_type(&rest));
+    }
+    if let Some(rest) = inner("Schema.NullOr(") {
+        return format!("{} | null", schema_type(&rest));
+    }
+    let simple = match expr.as_str() {
+        "Schema.String" => Some("string"),
+        "Schema.Number" => Some("number"),
+        "Schema.Boolean" => Some("boolean"),
+        "Schema.Unknown" => Some("unknown"),
+        "Schema.Any" => Some("any"),
+        _ => None,
+    };
+    clean_type(simple.map(str::to_owned).unwrap_or(expr).as_str())
+}
+
 /// An exported module-level `const NAME: Type = …`, kept as a field carrying
 /// its declared type. Curated diagrams turn that type into a realization edge
 /// (curated-diagrams.md §4), which is the only reason it is worth recording.
@@ -552,6 +707,47 @@ mod tests {
 
     fn parse_src(src: &str) -> CodeGraph {
         parse("web.src.app", src).unwrap()
+    }
+
+    #[test]
+    fn effect_schema_structs_become_boxes() {
+        let g = parse_src(
+            r#"
+export const WatchRow = Schema.Struct({
+  instanceId: Schema.String,
+  epoch: Schema.Number,
+  reason: Schema.optional(Schema.String),
+  steps: Schema.Array(WorkflowStep),
+});
+
+const TriggerFields = { key: Schema.optional(Schema.String) } as const;
+export const Trigger = Schema.Struct(TriggerFields);
+"#,
+        );
+        let by_name = |n: &str| g.classes.iter().find(|c| c.name == n).unwrap();
+
+        let row = by_name("WatchRow");
+        assert_eq!(row.annotation.as_deref(), Some("schema"));
+        let fields: Vec<(&str, &str)> = row
+            .members
+            .iter()
+            .map(|m| (m.name.as_str(), m.detail.as_str()))
+            .collect();
+        assert_eq!(
+            fields,
+            vec![
+                ("instanceId", "string"),
+                ("epoch", "number"),
+                ("reason", "string?"),
+                ("steps", "WorkflowStep[]"),
+            ]
+        );
+
+        // `Schema.Struct(Ident)` follows the reference within the same file.
+        let trigger = by_name("Trigger");
+        assert_eq!(trigger.annotation.as_deref(), Some("schema"));
+        assert_eq!(trigger.members.len(), 1);
+        assert_eq!(trigger.members[0].name, "key");
     }
 
     #[test]

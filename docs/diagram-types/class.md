@@ -34,7 +34,7 @@ dataclasses, and the structural type aliases of §2.3.
 | `name` | Bare name (`AgentRunner`); nested classes read `Outer.Inner` |
 | `qualified` | Unique key, `<module>.<name>` |
 | `module` | Dotted path derived from the file path |
-| `annotation` | UML stereotype: `interface`, `abstract`, `enumeration`, `dataclass`, `type`, `union`, `module` |
+| `annotation` | UML stereotype: `interface`, `abstract`, `enumeration`, `dataclass`, `type`, `union`, `schema`, `module` |
 | `members` | Fields and methods (§2.2) |
 | `change` | `ChangeKind`, shared with every other diagram type |
 
@@ -44,7 +44,7 @@ Stereotypes are inferred from the source, not declared: a Python `Protocol` or
 `interface` and `abstract class` map directly. On h: 74 interfaces, 15
 dataclasses, 1 enumeration, 112 plain classes.
 
-**One element type, more stereotypes.** §2.3 and §2.4 add new *kinds* of box,
+**One element type, more stereotypes.** §2.3, §2.4 and §2.5 add new *kinds* of box,
 not new kinds of element: they are `Class` values carrying a different
 `annotation`. That is deliberate — the relation extraction (§5), the diff
 (§7), `export::class_json`, and both renderers then work on them unchanged,
@@ -120,7 +120,18 @@ element is worse than a missing one.
 or `type X = …` declarations across 124 files. The parser accepts them for
 symmetry when they are object-shaped, and nothing more.
 
-### 2.4 Module-level functions, and why they are opt-in
+### 2.4 Effect Schema structs
+
+**Implemented 2026-08-17.** `export const X = Schema.Struct({ … })` declares a
+named type with fields, so it draws as one — stereotype `schema`, fields typed
+by reading the combinator (`Schema.optional(Schema.String)` → `string?`).
+
+This is the parser's **only framework-specific branch**, and the exception is
+argued in `curated-diagrams.md` §4.2 rather than here: 73 declarations in h, and
+without it a real curated document cannot be regenerated. On h it adds 75 boxes,
+taking the class diagram to 427.
+
+### 2.5 Module-level functions, and why they are opt-in
 
 **Implemented 2026-08-17.**
 
@@ -138,7 +149,7 @@ lives in.
 Measured on h once built: **177 module boxes**, taking the diagram from 330
 classes to 507 and the Mermaid from 111 KB to 201 KB.
 
-**Opt-in, behind `--modules`.** Unlike §2.3, these are not named types, and
+**Opt-in, behind `--modules`.** Unlike §2.3 and §2.4, these are not named types, and
 177 extra boxes changes every existing diagram and nearly doubles what an
 agent pays to read one (§2.6 of `docs/distribution.md`). The
 default stays "named types"; `--modules` says "and the functions too".
@@ -314,7 +325,7 @@ component diff, which needs both revisions in full.
 ```sh
 vizzle class <repo> [-o out.mmd|out.html] [-I glob] [-E glob] [-l python|typescript]
                    [--no-members] [--group] [--externals] [--direction LR] [--title]
-                   [--modules]                        # §2.4, off by default
+                   [--modules]                        # §2.5, off by default
 vizzle diff <repo> [--base REV] [--head REV]          # --type class is the default
 vizzle serve <repo> [--diff]
 ```

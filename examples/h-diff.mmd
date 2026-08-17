@@ -132,6 +132,22 @@ classDiagram
         +data : Record~string, unknown~
         +runs : ReadonlyArray~ChainMemberRun~
     }
+    class packages_js_local_runtime_src_domain_models_ChainJob["packages.js.local-runtime.src.domain.models.ChainJob"] {
+        <<schema>>
+        +kind : Schema.Literalchain
+        +members : LocalChainMember[]
+        +data : Schema.Record key: Schema.String, value…?
+        +strategy : Schema.Literalsequential, loop-until-cl…
+        +loop : Schema.Struct startCursor: Schema.Numbe…?
+        +group : string
+        +runsDir : string
+        +timeoutMs : number
+        +budgetMs : number?
+        +worktreeRoot : string
+        +repoPath : string
+        +withSetup : boolean?
+        +journal : JournalConfig?
+    }
     class packages_js_local_runtime_src_domain_models_ChainMemberRun["packages.js.local-runtime.src.domain.models.ChainMemberRun"] {
         <<type>>
         +member : string
@@ -150,12 +166,43 @@ classDiagram
         +group : string
         +runs : ReadonlyArray~AgentRunReport~
     }
+    class packages_js_local_runtime_src_domain_models_DelegateJob["packages.js.local-runtime.src.domain.models.DelegateJob"] {
+        <<schema>>
+        +kind : Schema.Literaldelegate
+        +task : string
+        +agents : string[]
+        +cwd : string
+        +timeoutMs : number
+        +runsDir : string
+        +group : string
+        +model : string?
+        +systemPrompt : string?
+        +permissionMode : Schema.Literalplan?
+        +worktree : WorktreePlan?
+    }
+    class packages_js_local_runtime_src_domain_models_JournalConfig["packages.js.local-runtime.src.domain.models.JournalConfig"] {
+        <<schema>>
+        +url : string
+        +resume : boolean?
+        +group : string?
+    }
     class packages_js_local_runtime_src_domain_models_JournalRecord["packages.js.local-runtime.src.domain.models.JournalRecord"] {
         <<union>>
         + seq: number type: meta kind: workflow …
         + seq: number type: stage /** The stage …
         + seq: number type: step /** A workflow …
         + seq: number type: terminal status: com…
+    }
+    class packages_js_local_runtime_src_domain_models_LocalChainMember["packages.js.local-runtime.src.domain.models.LocalChainMember"] {
+        <<schema>>
+        +kind : Schema.Literal...CHAIN_MEMBER_KINDS
+        +steps : WorkflowStep[]
+        +params : WorkflowParams?
+        +stage : number?
+        +id : string?
+        +captures : Schema.Record key: Schema.String, value…?
+        +inputs : Schema.Record key: Schema.String, value…?
+        +until : Schema.Struct path: Schema.String, equa…?
     }
     class packages_js_local_runtime_src_domain_models_RegistryEnvelope["packages.js.local-runtime.src.domain.models.RegistryEnvelope"] {
         <<type>>
@@ -174,12 +221,36 @@ classDiagram
         +failedStep : string
         +error : string
     }
+    class packages_js_local_runtime_src_domain_models_WorkflowJob["packages.js.local-runtime.src.domain.models.WorkflowJob"] {
+        <<schema>>
+        +kind : Schema.Literalworkflow
+        +steps : WorkflowStep[]
+        +params : WorkflowParams?
+        +group : string
+        +runsDir : string
+        +timeoutMs : number
+        +budgetMs : number?
+        +worktreeRoot : string
+        +repoPath : string
+        +withSetup : boolean?
+        +journal : JournalConfig?
+        +wf : Schema.Struct repo: Schema.String, slug…?
+        +parent : Schema.Record key: Schema.String, value…?
+        +armCron : Schema.Struct cadence: Schema.String, w…?
+    }
     class packages_js_local_runtime_src_domain_models_WorkflowRunRef["packages.js.local-runtime.src.domain.models.WorkflowRunRef"] {
         <<type>>
         +step : string
         +agent : string
         +runId : string
         +costUsd : number
+    }
+    class packages_js_local_runtime_src_domain_models_WorktreePlan["packages.js.local-runtime.src.domain.models.WorktreePlan"] {
+        <<schema>>
+        +repoPath : string
+        +root : string
+        +branchPrefix : string
+        +remoteBase : string?
     }
     class packages_js_local_runtime_src_domain_models_WorktreeSpec["packages.js.local-runtime.src.domain.models.WorktreeSpec"] {
         <<type>>
@@ -190,12 +261,16 @@ classDiagram
     packages_js_local_runtime_src_domain_activities_Refusal --> packages_js_local_runtime_src_domain_activities_RefusalClass
     packages_js_local_runtime_src_domain_engines_LeasePort --> packages_js_local_runtime_src_domain_engines_EngineLease
     packages_js_local_runtime_src_domain_models_ChainEnvelope --> packages_js_local_runtime_src_domain_models_ChainMemberRun
+    packages_js_local_runtime_src_domain_models_ChainJob --> packages_js_local_runtime_src_domain_models_JournalConfig
+    packages_js_local_runtime_src_domain_models_ChainJob --> packages_js_local_runtime_src_domain_models_LocalChainMember
     packages_js_local_runtime_src_domain_models_DelegateEnvelope --> packages_js_local_runtime_src_domain_models_AgentRunReport
+    packages_js_local_runtime_src_domain_models_DelegateJob --> packages_js_local_runtime_src_domain_models_WorktreePlan
     packages_js_local_runtime_src_domain_models_WorkflowEnvelope --> packages_js_local_runtime_src_domain_models_WorkflowRunRef
+    packages_js_local_runtime_src_domain_models_WorkflowJob --> packages_js_local_runtime_src_domain_models_JournalConfig
     packages_js_local_runtime_src_domain_models_WorktreeSpec --> packages_js_local_runtime_src_domain_models_CheckoutSpec
     cssClass "packages_js_engine_core_src_discover_scan_DiscoverArmInput" vizzleAdded
     cssClass "packages_js_local_runtime_src_domain_engines_TickReport" vizzleModified
     classDef vizzleAdded fill:#dafbe1,stroke:#1a7f37,stroke-width:2px,color:#1a7f37
     classDef vizzleRemoved fill:#ffebe9,stroke:#cf222e,stroke-width:2px,color:#cf222e,stroke-dasharray:6 4
     classDef vizzleModified fill:#fff1c2,stroke:#bf8700,stroke-width:2px,color:#bf8700
-%% vizzle: 27 classes, 16 relations
+%% vizzle: 33 classes, 20 relations

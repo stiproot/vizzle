@@ -61,22 +61,6 @@ fn is_curated_only(kind: &str) -> bool {
     matches!(kind, "const" | "external")
 }
 
-/// Kinds this parser cannot serve, with the reason and the way round it. Say so
-/// plainly: the alternative is a resolution error that blames a rename for what
-/// is really a missing type checker.
-fn unsupported(entry: &Entry) -> Option<String> {
-    match entry.kind.as_str() {
-        "schema" => Some(format!(
-            "entry `{}` is kind `schema`: an Effect Schema struct's fields are computed by the \
-             TypeScript checker, and vizzle parses syntax only (class.md §9). Either give it \
-             `\"kind\": \"const\"` with a `note` describing the shape, or wait for the \
-             compiler-backed extractor (curated-diagrams.md §4)",
-            entry.id
-        )),
-        _ => None,
-    }
-}
-
 /// The graph key an entry points at. A `module` entry addresses the module box
 /// itself; everything else addresses a declaration inside it.
 fn qualified_for(entry: &Entry) -> Result<String> {
@@ -110,6 +94,9 @@ fn stereotype(entry: &Entry) -> Option<String> {
             Some(format!("module {base}"))
         }
         "external" => None,
+        // Match the wording the managed documents already carry, so adopting
+        // vizzle does not churn every stereotype line.
+        "schema" => Some("Effect Schema struct".to_owned()),
         other => Some(other.to_owned()),
     }
 }
@@ -153,9 +140,6 @@ pub fn render(manifest: &Manifest, graph: &CodeGraph) -> Result<String> {
     }
 
     for entry in &manifest.classes {
-        if let Some(why) = unsupported(entry) {
-            bail!(why);
-        }
         let _ = writeln!(out, "  class {} {{", entry.id);
         if let Some(stereotype) = stereotype(entry) {
             let _ = writeln!(out, "    <<{stereotype}>>");

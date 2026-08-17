@@ -74,7 +74,7 @@ and the file it looked in.
 | `module` | the entry's `functions` list, filtered from vizzle's `«module»` box | class.md §2.4 |
 | `const` | **nothing** for the body — the curated `note` is it — but its declared type becomes a `..\|>` edge | see below |
 | `external` | **nothing** — fully curated | a peer service, a binary |
-| `schema` | **unsupported**, and says so | see §4.2 |
+| `schema` | the `Schema.Struct` object literal, read syntactically | see §4.2 |
 
 **Realization edges are derived, not curated.** `export const claudeStrategy:
 AgentStrategy = …` realizes `AgentStrategy`, and the edge is drawn when that
@@ -117,24 +117,45 @@ must not become a limit on what it can *find*.** Anything the manifest can
 name, vizzle must be able to extract — and here that turned out to cost 22
 boxes, not an architecture.
 
-### 4.2 `schema` needs a checker, and says so
+### 4.2 Decision: `schema` is syntactic after all
 
-h's `workflow-svc-class.md` carries `{"id": "Trigger", "kind": "schema"}`, an
-Effect Schema struct:
+**Decided 2026-08-17, after measuring rather than assuming.** This section
+first said an Effect Schema struct needed the TypeScript checker and could not
+be served. That was wrong, and the correction matters because it removed the
+only hard blocker to replacing the existing toolkit.
+
+**Why it looked impossible.** `Trigger` is built by a call, not a declaration:
 
 ```ts
+export const TriggerFields = { key: Schema.optional(Schema.String), … } as const;
 export const Trigger = Schema.Struct(TriggerFields);
 export type Trigger = Schema.Schema.Type<typeof Trigger>;
 ```
 
-Neither form is reachable syntactically — the fields live in a separate const
-of `Schema.optional(…)` calls, and the alias is a checker-computed type query.
-This is the concrete case for a compiler-backed extractor.
+No type alias handling reaches that, and the alias is a checker-computed type
+query.
 
-Until then vizzle **fails with the reason**, naming the kind and offering the
-way round it (`"kind": "const"` with a `note`). The alternative — a resolution
-error blaming a rename — sends the reader to look for a symbol that never
-moved.
+**What was measured.** Across h: **73** declarations of the form
+`export const X = Schema.Struct({ … })` with the literal inline, and **2** using
+the indirection above. The field expressions are dominated by a handful —
+`Schema.String` (264), `Schema.optional` (233), `Schema.Number` (80),
+`Schema.Literal` (50).
+
+**So it is syntax.** The keys are in an object literal; the combinators map to
+the types they describe (`Schema.optional(Schema.String)` → `string?`); and the
+indirection is a same-file lookup, not a symbol table. Compared field-for-field
+against the compiler-API output for `WatchRow`, the syntactic reading produces
+**the same eleven fields with the same types in the same order**.
+
+**What it cost.** One framework-specific branch in a language-neutral parser —
+the first in vizzle, and worth naming as such. It is justified by 7 of 16
+entries in a real curated document and 73 declarations in a real repo, not by
+Effect being popular. A second framework wanting the same treatment should have
+to clear the same bar.
+
+**What would change it.** A schema whose fields are genuinely computed —
+spread from another struct, built in a loop. Those would need the checker, and
+then §9's compiler-backed extractor becomes the answer rather than a wish.
 
 ## 5. The managed document
 
