@@ -49,10 +49,21 @@ classDiagram
         +errors : string[]
         +disabled : boolean
     }
+    class packages_js_local_runtime_src_domain_activities_ActivityKind["packages.js.local-runtime.src.domain.activities.ActivityKind"] {
+        <<union>>
+        + readonly kind: agent readonly agent: L…
+        + readonly kind: builtin readonly name: …
+        + readonly kind: refused readonly reason…
+    }
     class packages_js_local_runtime_src_domain_activities_Refusal["packages.js.local-runtime.src.domain.activities.Refusal"] {
         <<type>>
         +why : RefusalClass
         +reason : string
+    }
+    class packages_js_local_runtime_src_domain_activities_RefusalClass["packages.js.local-runtime.src.domain.activities.RefusalClass"] {
+        <<union>>
+        +pending
+        +permanent
     }
     class packages_js_local_runtime_src_domain_activities_RefusedActivityError["packages.js.local-runtime.src.domain.activities.RefusedActivityError"]
     class packages_js_local_runtime_src_domain_activities_UnknownActivityError["packages.js.local-runtime.src.domain.activities.UnknownActivityError"]
@@ -69,8 +80,8 @@ classDiagram
     }
     class packages_js_local_runtime_src_domain_engines_LeasePort["packages.js.local-runtime.src.domain.engines.LeasePort"] {
         <<interface>>
-        +read :  =~ Effect.Effect~ lease: EngineLease r…
-        +write : lease: EngineLease, revision: number =~…
+        +read : => Effect.Effect~ lease: EngineLease r…
+        +write : lease: EngineLease, revision: number =>…
     }
     class packages_js_local_runtime_src_domain_engines_TickReport["packages.js.local-runtime.src.domain.engines.TickReport ✱"] {
         <<type>>
@@ -94,7 +105,7 @@ classDiagram
         +model : string
         +costUsd : number
         +costPartial : boolean
-        +tokens :  input: number output: number 
+        +tokens : input: number output: number
         +turns : number
         +sessionId : string
         +runId : string
@@ -128,11 +139,23 @@ classDiagram
         +group : string
         +iteration : number
     }
+    class packages_js_local_runtime_src_domain_models_CheckoutSpec["packages.js.local-runtime.src.domain.models.CheckoutSpec"] {
+        <<union>>
+        + kind: branch branch?: string baseRef?:…
+        + kind: detached ref: string fetch?: re…
+    }
     class packages_js_local_runtime_src_domain_models_DelegateEnvelope["packages.js.local-runtime.src.domain.models.DelegateEnvelope"] {
         <<type>>
         +ok : boolean
         +group : string
         +runs : ReadonlyArray~AgentRunReport~
+    }
+    class packages_js_local_runtime_src_domain_models_JournalRecord["packages.js.local-runtime.src.domain.models.JournalRecord"] {
+        <<union>>
+        + seq: number type: meta kind: workflow …
+        + seq: number type: stage /** The stage …
+        + seq: number type: step /** A workflow …
+        + seq: number type: terminal status: com…
     }
     class packages_js_local_runtime_src_domain_models_RegistryEnvelope["packages.js.local-runtime.src.domain.models.RegistryEnvelope"] {
         <<type>>
@@ -164,13 +187,15 @@ classDiagram
         +worktreePath : string
         +checkout : CheckoutSpec
     }
+    packages_js_local_runtime_src_domain_activities_Refusal --> packages_js_local_runtime_src_domain_activities_RefusalClass
     packages_js_local_runtime_src_domain_engines_LeasePort --> packages_js_local_runtime_src_domain_engines_EngineLease
     packages_js_local_runtime_src_domain_models_ChainEnvelope --> packages_js_local_runtime_src_domain_models_ChainMemberRun
     packages_js_local_runtime_src_domain_models_DelegateEnvelope --> packages_js_local_runtime_src_domain_models_AgentRunReport
     packages_js_local_runtime_src_domain_models_WorkflowEnvelope --> packages_js_local_runtime_src_domain_models_WorkflowRunRef
+    packages_js_local_runtime_src_domain_models_WorktreeSpec --> packages_js_local_runtime_src_domain_models_CheckoutSpec
     cssClass "packages_js_engine_core_src_discover_scan_DiscoverArmInput" vizzleAdded
     cssClass "packages_js_local_runtime_src_domain_engines_TickReport" vizzleModified
     classDef vizzleAdded fill:#dafbe1,stroke:#1a7f37,stroke-width:2px,color:#1a7f37
     classDef vizzleRemoved fill:#ffebe9,stroke:#cf222e,stroke-width:2px,color:#cf222e,stroke-dasharray:6 4
     classDef vizzleModified fill:#fff1c2,stroke:#bf8700,stroke-width:2px,color:#bf8700
-%% vizzle: 23 classes, 14 relations
+%% vizzle: 27 classes, 16 relations

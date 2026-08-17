@@ -79,8 +79,7 @@ the diagram, so the question is which.
 | Shape | Count | Drawn? |
 |---|---|---|
 | `type X = { … }` — object literal with members | **61** | yes, `<<type>>` |
-| `type X = A \| B \| C` — union of *named* types | **7** | yes, `<<union>>` |
-| any other union (arms are literals, primitives, generics) | 11 | no |
+| `type X = A \| B \| C` — any union | **18** | yes, `<<union>>` |
 | references a named type but has no drawable structure | ~100 | no |
 | opens neither a literal nor a union | rest | no |
 
@@ -92,26 +91,25 @@ parser can actually see:
    in all but keyword, and h has 61 of them against 73 interfaces. Drawing one
    and not the other is a distinction no reader cares about, and omitting them
    was the single biggest hole in the class model.
-2. **A union whose arms are named types** gets a `<<union>>` box, arms as
-   members, and each arm that resolves to a drawn class becomes a dependency
-   edge. These are the domain unions — `PiEvent = PiSessionEvent |
-   PiToolExecutionEvent | PiOtherEvent | RawLineEvent` — and they carry real
-   graph information.
+2. **Every union** gets a `<<union>>` box with its arms as members — including
+   `StopReason = "completed" | "timeout"`, which is an enumeration in all but
+   keyword. **But only a *named* arm becomes an edge.** Measured on h: drawing
+   every union costs 22 boxes, while pointing a dependency at every arm would
+   add 83 edges to literals and primitives. A box is cheap; a wrong edge
+   violates §4.
 3. **Everything else is skipped.** `type Env = Effect<A, B, C>`, mapped types,
    conditionals, `keyof` — resolving those needs a type checker, and §9 says
    we do not have one. A box with a truncated type string in it is noise.
 
-**This is a rendering rule, not a parsing one** (`curated-diagrams.md` §4.1).
-A literal union like `StopReason = "completed" | "timeout"` is dropped here
-because 183 of them would drown the diagram — but a curated diagram that names
-it has already made that judgment, and must still be able to get it. vizzle's
-opinion about what to *show* must never limit what it can *find*.
+Case 3 is the only exclusion, and it is a limit of the parser rather than a
+density judgment — which matters, because `curated-diagrams.md` §4.1 requires
+that anything a manifest can *name*, vizzle can *find*.
 
-**What it produced.** 117 new boxes on h — 100 `<<type>>` and 17 `<<union>>` —
-taking the class diagram from 213 boxes to 330 and its relations from 156 to
-264. More than the 68 the table predicts, because the table counted only
-`export`ed aliases while the parser draws unexported ones too, exactly as it
-already does for interfaces.
+**What it produced.** 139 new boxes on h — 100 `<<type>>` and 39 `<<union>>` —
+taking the class diagram from 213 boxes to 352 and its relations from 156 to
+277. More than the table predicts, because the table counted only `export`ed
+aliases while the parser draws unexported ones too, exactly as it already does
+for interfaces.
 
 **What would change it.** A JSON input path fed by the TypeScript compiler
 (§9) would resolve cases 3 exactly, at which point the selection rule can
@@ -133,7 +131,7 @@ of a functional codebase that shows none of them is describing a minority of
 the code.
 
 They are modelled as **one `<<module>>` box per module**, its public
-module-level functions as members — not one box per function, which would add
+module-level functions *and exported typed consts* as members — not one box per function, which would add
 295 boxes rather than 177, and would say nothing about which file a function
 lives in.
 

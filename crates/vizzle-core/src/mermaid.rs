@@ -202,7 +202,7 @@ fn write_class(
     let _ = writeln!(out, "{indent}}}");
 }
 
-fn member_row(member: &Member, diff_mode: bool) -> String {
+pub(crate) fn member_row(member: &Member, diff_mode: bool) -> String {
     let vis = member.visibility.sigil();
     let classifier = if member.is_abstract {
         "*"
@@ -227,27 +227,57 @@ fn member_row(member: &Member, diff_mode: bool) -> String {
     } else {
         format!("{vis}{} : {}{classifier}", member.name, member.detail)
     };
-    format!("{}{marker}", balanced(&row))
+    format!("{}{marker}", mermaid_safe(&one_line(&row)))
 }
 
-/// Mermaid parses a classDiagram member line with unbalanced `(`/`{` as a
-/// broken member and fails the whole diagram. Truncated parameter lists (a
-/// destructured object, a 40-char cap landing mid-expression) can produce one,
-/// so the last thing every row passes through is a balance check.
-fn balanced(row: &str) -> String {
-    let ok = |open: char, close: char| row.matches(open).count() == row.matches(close).count();
-    if ok('(', ')') && ok('{', '}') {
-        return row.to_owned();
+/// A member is one line by definition. A destructured parameter carries the
+/// source's newlines and indentation into the signature, which mermaid reads as
+/// the end of the member and the start of nonsense.
+fn one_line(row: &str) -> String {
+    row.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// The last thing every member line passes through, because mermaid fails the
+/// *whole diagram* on a malformed one. Two distinct hazards:
+///
+/// - A brace is structural inside a class body — mermaid reads `{` as
+///   OPEN_IN_STRUCT and stops, however balanced it is. A destructured parameter
+///   (`buildInvocationResult({ events, stderr }: Opts)`) puts one there.
+/// - Parens must balance, which a truncated parameter list can break.
+fn mermaid_safe(row: &str) -> String {
+    let row: String = row.chars().filter(|c| !matches!(c, '{' | '}')).collect();
+    if row.matches('(').count() == row.matches(')').count() {
+        return row;
     }
-    row.chars()
-        .filter(|c| !matches!(c, '(' | ')' | '{' | '}'))
-        .collect()
+    row.chars().filter(|c| !matches!(c, '(' | ')')).collect()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::parse::parse_file;
+
+    #[test]
+    fn a_member_is_always_one_line_and_keeps_its_arrows() {
+        let graph = crate::parse::parse_file(
+            "web/src/app.ts",
+            "export interface I {\n  handler: (a: string) => void;\n  go({\n    a,\n    b,\n  }: Opts): void;\n}\n",
+        )
+        .unwrap();
+        let out = render(&graph, &RenderOptions::default());
+        for line in out.lines().filter(|l| l.trim_start().starts_with('+')) {
+            assert!(
+                !line.contains("=~"),
+                "`=>` must survive the generic rewrite: {line}"
+            );
+        }
+        // A destructured parameter must not spill the source's newlines.
+        let members: Vec<&str> = out
+            .lines()
+            .filter(|l| l.trim_start().starts_with('+'))
+            .collect();
+        assert_eq!(members.len(), 2, "one line per member, got:\n{out}");
+    }
 
     #[test]
     fn member_rows_never_leave_a_delimiter_unbalanced() {

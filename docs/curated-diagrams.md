@@ -1,7 +1,7 @@
 # Curated diagrams
 
-**Status:** specified, not yet built.
-**Command:** `vizzle doc <paths|--dir>` and `vizzle doc --check` (proposed).
+**Status:** implemented 2026-08-17.
+**Command:** `vizzle doc <paths|--dir>`, `vizzle doc --check`.
 
 Every other spec here describes an **exhaustive** diagram: vizzle parses what
 is there and draws all of it. This one describes the opposite mode — a diagram
@@ -72,11 +72,25 @@ and the file it looked in.
 | `interface`, `class` | vizzle's parsed members | §2.1 of class.md |
 | `union` | the arms | needs class.md §2.3, shipped 2026-08-17 |
 | `module` | the entry's `functions` list, filtered from vizzle's `«module»` box | class.md §2.4 |
-| `const` | **nothing** — the curated `note` is the whole body | no parser involvement |
+| `const` | **nothing** for the body — the curated `note` is it — but its declared type becomes a `..\|>` edge | see below |
 | `external` | **nothing** — fully curated | a peer service, a binary |
+| `schema` | **unsupported**, and says so | see §4.2 |
+
+**Realization edges are derived, not curated.** `export const claudeStrategy:
+AgentStrategy = …` realizes `AgentStrategy`, and the edge is drawn when that
+type is also a box in the diagram. Dropping these silently cost h's
+`agent-cli-class.md` four edges on the first regeneration — the four strategies
+implementing the interface, which is most of what that diagram says. The
+annotation is plain syntax, so vizzle now records exported module-level consts
+with their declared type for exactly this purpose.
 
 Two of those five need no parsing at all, which is why this mode was never
 blocked on parser fidelity.
+
+`module` is the interesting one: vizzle's `«module»` box lists *every* public
+function, and a curated entry lists the three that matter. The manifest
+selects; vizzle supplies signatures for the selection. A named function that
+vizzle cannot find is the §3 error.
 
 ### 4.1 Decision: curated mode ignores the density heuristics
 
@@ -90,20 +104,37 @@ drawing every literal union would drown a 330-box diagram.
 In a diagram about classifying stops, those four outcomes *are* the story. The
 manifest asked for it by name.
 
-**So the §2.3 rule is a rendering decision, not a parsing one.** The parser
-keeps every structural type alias; exhaustive mode applies the density rule
-when rendering, and curated mode ignores it — because scope has already been
-chosen by a person, and a heuristic protecting a reader from 330 boxes has
-nothing to protect in a diagram of 14.
+**The fix turned out simpler than a parse/render split.** Measuring first
+showed the cost was never the boxes: drawing every union adds 22 boxes to 330,
+but pointing a dependency edge at every arm adds **83 edges to string literals
+and primitives**. So class.md §2.3 now draws every union and only makes an
+*edge* for a named arm — a box is cheap, a wrong edge violates §4. Literal
+unions exist in the graph, so a manifest can name one, and no mode-dependent
+filtering is needed at all.
 
 The general form, worth holding onto: **vizzle's judgment about what to *show*
 must not become a limit on what it can *find*.** Anything the manifest can
-name, vizzle must be able to extract.
+name, vizzle must be able to extract — and here that turned out to cost 22
+boxes, not an architecture.
 
-`module` is the interesting one: vizzle's `«module»` box lists *every* public
-function, and a curated entry lists the three that matter. The manifest
-selects; vizzle supplies signatures for the selection. A named function that
-vizzle cannot find is the §3 error.
+### 4.2 `schema` needs a checker, and says so
+
+h's `workflow-svc-class.md` carries `{"id": "Trigger", "kind": "schema"}`, an
+Effect Schema struct:
+
+```ts
+export const Trigger = Schema.Struct(TriggerFields);
+export type Trigger = Schema.Schema.Type<typeof Trigger>;
+```
+
+Neither form is reachable syntactically — the fields live in a separate const
+of `Schema.optional(…)` calls, and the alias is a checker-computed type query.
+This is the concrete case for a compiler-backed extractor.
+
+Until then vizzle **fails with the reason**, naming the kind and offering the
+way round it (`"kind": "const"` with a `note`). The alternative — a resolution
+error blaming a rename — sends the reader to look for a symbol that never
+moved.
 
 ## 5. The managed document
 

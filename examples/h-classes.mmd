@@ -115,7 +115,7 @@ classDiagram
     }
     class apps_dapr_mcp_src_presentation_http_mcp_router_test_ObjectSchema["apps.dapr-mcp.src.presentation.http.mcp.router.test.ObjectSchema"] {
         <<type>>
-        +properties : Record~string,  description?: string ~
+        +properties : Record~string, description?: string ~
         +required : string[]
     }
     class apps_kimi_agent_src_infrastructure_kimi_runner_KimiRunnerConfig["apps.kimi-agent.src.infrastructure.kimi-runner.KimiRunnerConfig"] {
@@ -195,12 +195,12 @@ classDiagram
     class apps_obs_mcp_src_domain_ports_IObservabilityService_ObservabilityService["apps.obs-mcp.src.domain.ports.IObservabilityService.ObservabilityService"]
     class apps_obs_mcp_src_domain_ports_IObservabilityService_ObservabilityServiceShape["apps.obs-mcp.src.domain.ports.IObservabilityService.ObservabilityServiceShape"] {
         <<interface>>
-        +traceSearch :  params: TraceSearchParams,  =~ Effect.…
-        +traceGet : traceId: string =~ Effect.Effect~Option…
-        +logsQuery : params: LogsQueryParams =~ Effect.Effec…
-        +runsList : params: RunsListParams =~ Effect.Effect…
-        +runGet : runId: string =~ Effect.Effect~RunDetai…
-        +systemOverview :  =~ Effect.Effect~SystemOverview, Obser…
+        +traceSearch : params: TraceSearchParams, => Effect.…
+        +traceGet : traceId: string => Effect.Effect~Option…
+        +logsQuery : params: LogsQueryParams => Effect.Effec…
+        +runsList : params: RunsListParams => Effect.Effect…
+        +runGet : runId: string => Effect.Effect~RunDetai…
+        +systemOverview : => Effect.Effect~SystemOverview, Obser…
     }
     class apps_obs_mcp_src_domain_ports_IObservabilityService_RunDetail["apps.obs-mcp.src.domain.ports.IObservabilityService.RunDetail"] {
         <<type>>
@@ -240,12 +240,12 @@ classDiagram
         +traceId : string
         +name : string
         +duration : number
-        +localEndpoint :  serviceName?: string 
+        +localEndpoint : serviceName?: string
         +tags : Record~string, string~
     }
     class apps_obs_mcp_src_presentation_http_mcp_router_ToolResult["apps.obs-mcp.src.presentation.http.mcp.router.ToolResult"] {
         <<type>>
-        +content :  type: text text: string []
+        +content : type: text text: string []
         +isError : true
     }
     class apps_openhands_agent_src_infrastructure_mcp_config_OhMcpConfig["apps.openhands-agent.src.infrastructure.mcp-config.OhMcpConfig"] {
@@ -327,7 +327,7 @@ classDiagram
     }
     class apps_workflow_mcp_src_presentation_http_mcp_router_test_ObjectSchema["apps.workflow-mcp.src.presentation.http.mcp.router.test.ObjectSchema"] {
         <<type>>
-        +properties : Record~string,  description?: string it…
+        +properties : Record~string, description?: string it…
         +required : string[]
     }
     class apps_workflow_svc_src_infrastructure_activities_clone_repo_activity_Input["apps.workflow-svc.src.infrastructure.activities.clone-repo.activity.Input"] {
@@ -354,7 +354,7 @@ classDiagram
         +workflowInstanceId : string
         +workspaceId : string
         +clonePath : string
-        +checkout :  kind: branch | detached branch?: strin…
+        +checkout : kind: branch | detached branch?: strin…
         +auth : string
         +agentId : string
         +traceparent : string
@@ -384,6 +384,11 @@ classDiagram
         +dryRun : unknown
         +agentId : string
         +traceparent : string
+    }
+    class apps_workflow_svc_src_infrastructure_activities_register_cron_activity_RegisterCronResult["apps.workflow-svc.src.infrastructure.activities.register-cron.activity.RegisterCronResult"] {
+        <<union>>
+        + armed: true cron: string
+        + armed: false reason: string
     }
     class apps_workflow_svc_src_infrastructure_activities_register_discover_activity_Input["apps.workflow-svc.src.infrastructure.activities.register-discover.activity.Input"] {
         <<type>>
@@ -447,6 +452,14 @@ classDiagram
         +skip : boolean
         +skipReason : string
         +traceparent : string
+    }
+    class apps_workflow_svc_src_infrastructure_activities_run_itest_activity_ItestClass["apps.workflow-svc.src.infrastructure.activities.run-itest.activity.ItestClass"] {
+        <<union>>
+        +passed
+        +assertion
+        +infra
+        +timeout
+        +skipped
     }
     class apps_workflow_svc_src_infrastructure_activities_run_itest_activity_ItestResult["apps.workflow-svc.src.infrastructure.activities.run-itest.activity.ItestResult"] {
         <<type>>
@@ -635,6 +648,13 @@ classDiagram
         +resultEventText : string
         +rateLimitRetries : number
     }
+    class packages_js_agent_cli_src_agents_classify_stop_StopReason["packages.js.agent-cli.src.agents.classify-stop.StopReason"] {
+        <<union>>
+        +completed
+        +usage-limited
+        +timeout
+        +failed
+    }
     class packages_js_agent_cli_src_agents_codex_CodexEvent["packages.js.agent-cli.src.agents.codex.CodexEvent"] {
         <<union>>
         +CodexThreadStartedEvent
@@ -650,7 +670,7 @@ classDiagram
     class packages_js_agent_cli_src_agents_codex_CodexItemCompletedEvent["packages.js.agent-cli.src.agents.codex.CodexItemCompletedEvent"] {
         <<interface>>
         +type : item.completed
-        +item :  type?: string role?: string text?: str…
+        +item : type?: string role?: string text?: str…
     }
     class packages_js_agent_cli_src_agents_codex_CodexThreadStartedEvent["packages.js.agent-cli.src.agents.codex.CodexThreadStartedEvent"] {
         <<interface>>
@@ -660,7 +680,7 @@ classDiagram
     class packages_js_agent_cli_src_agents_codex_CodexTurnCompletedEvent["packages.js.agent-cli.src.agents.codex.CodexTurnCompletedEvent"] {
         <<interface>>
         +type : turn.completed
-        +usage :  prompt_tokens?: number cached_tokens?:…
+        +usage : prompt_tokens?: number cached_tokens?:…
     }
     class packages_js_agent_cli_src_agents_event_shape_EventShape["packages.js.agent-cli.src.agents.event-shape.EventShape"] {
         <<interface>>
@@ -698,7 +718,7 @@ classDiagram
     class packages_js_agent_cli_src_agents_openhands_OpenhandsMessageEvent["packages.js.agent-cli.src.agents.openhands.OpenhandsMessageEvent"] {
         <<interface>>
         +kind : MessageEvent
-        +llm_message :  content?:  type?: string text?: string…
+        +llm_message : content?: type?: string text?: string…
     }
     class packages_js_agent_cli_src_agents_parse_stream_BuildInvocationResultOptions["packages.js.agent-cli.src.agents.parse-stream.BuildInvocationResultOptions"] {
         <<interface>>
@@ -720,6 +740,12 @@ classDiagram
     class packages_js_agent_cli_src_agents_pi_PiEventBase["packages.js.agent-cli.src.agents.pi.PiEventBase"] {
         <<interface>>
         +type : string
+    }
+    class packages_js_agent_cli_src_agents_pi_PiProvider["packages.js.agent-cli.src.agents.pi.PiProvider"] {
+        <<union>>
+        +deepseek
+        +anthropic
+        +openai
     }
     class packages_js_agent_cli_src_agents_pi_PiSessionEvent["packages.js.agent-cli.src.agents.pi.PiSessionEvent"] {
         <<interface>>
@@ -772,6 +798,13 @@ classDiagram
         +parseLine(line: string, events: StreamEvent[], onEvent: AgentEventCallback) void
     }
     class packages_js_agent_cli_src_agents_types_AgentTimeoutError["packages.js.agent-cli.src.agents.types.AgentTimeoutError"]
+    class packages_js_agent_cli_src_agents_types_AgentType["packages.js.agent-cli.src.agents.types.AgentType"] {
+        <<union>>
+        +claude
+        +codex
+        +openhands
+        +pi
+    }
     class packages_js_agent_cli_src_agents_types_InvocationResult["packages.js.agent-cli.src.agents.types.InvocationResult"] {
         <<interface>>
         +success : boolean
@@ -780,7 +813,7 @@ classDiagram
         +exitCode : number
         +stopReason : StopReason
         +resultEventText : string
-        +tokenUsage :  input: number output: number 
+        +tokenUsage : input: number output: number
         +model : string
         +modelUsage : Record~string, ModelUsage~
         +costUsd : number
@@ -816,9 +849,9 @@ classDiagram
         +command : string
         +args : string[]
         +stdinInput : string
-        +shouldFilterEvent : event: StreamEvent =~ boolean
+        +shouldFilterEvent : event: StreamEvent => boolean
         +streamParser : AgentStreamParser
-        +cleanup :  =~ void | Promise~void~
+        +cleanup : => void | Promise~void~
     }
     class packages_js_agent_cli_src_agents_types_RawLineEvent["packages.js.agent-cli.src.agents.types.RawLineEvent"] {
         <<interface>>
@@ -834,9 +867,9 @@ classDiagram
         +num_turns : number
         +is_error : boolean
         +result : string
-        +message :  /** The API message id — several strea…
-        +usage :  input_tokens?: number output_tokens?: …
-        +stats :  total_tokens?: number input_tokens?: n…
+        +message : /** The API message id — several strea…
+        +usage : input_tokens?: number output_tokens?: …
+        +stats : total_tokens?: number input_tokens?: n…
         +modelUsage : Record~string, StreamEventModelUsage~
         +total_cost_usd : number
         +session_id : string
@@ -874,12 +907,12 @@ classDiagram
     class packages_js_agent_cli_src_invoker_AgentInvoker["packages.js.agent-cli.src.invoker.AgentInvoker"]
     class packages_js_agent_cli_src_invoker_AgentInvokerService["packages.js.agent-cli.src.invoker.AgentInvokerService"] {
         <<interface>>
-        +invoke : params: AgentInvokeParams =~ Effect.Eff…
+        +invoke : params: AgentInvokeParams => Effect.Eff…
     }
     class packages_js_agent_server_src_agent_routes_AgentRoutesEffectConfig["packages.js.agent-server.src.agent-routes.AgentRoutesEffectConfig"] {
         <<interface>>
         +runtime : ManagedRuntime.ManagedRuntime~AgentRout…
-        +resolveWorkspaceDir : workspaceKey: string =~ string
+        +resolveWorkspaceDir : workspaceKey: string => string
         +ledger : ActivityLedgerConfig
     }
     class packages_js_agent_server_src_agent_routes_AgentRoutesEffectEnv["packages.js.agent-server.src.agent-routes.AgentRoutesEffectEnv"] {
@@ -895,7 +928,7 @@ classDiagram
     class packages_js_agent_server_src_clone_route_CloneRouteEffectConfig["packages.js.agent-server.src.clone-route.CloneRouteEffectConfig"] {
         <<interface>>
         +runtime : ManagedRuntime.ManagedRuntime~CloneRout…
-        +resolveWorkspaceDir : workspaceKey: string =~ string
+        +resolveWorkspaceDir : workspaceKey: string => string
         +ledger : ActivityLedgerConfig
     }
     class packages_js_agent_server_src_clone_route_CloneRouteEffectEnv["packages.js.agent-server.src.clone-route.CloneRouteEffectEnv"] {
@@ -937,7 +970,7 @@ classDiagram
         +workflowAppId : string
         +defaultPolicy : BabysitPolicy
         +fetchImpl : typeof fetch
-        +onLog : msg: string =~ void
+        +onLog : msg: string => void
     }
     class packages_js_agent_server_src_workflow_babysitter_Trigger["packages.js.agent-server.src.workflow-babysitter.Trigger"] {
         <<interface>>
@@ -952,13 +985,13 @@ classDiagram
         <<interface>>
         +maxDurationMs : number
         +unknownStreakLimit : number
-        +retry :  maxAttempts: number fresh?: boolean on…
-        +escalate :  onOutcome: string[] key: string params…
+        +retry : maxAttempts: number fresh?: boolean on…
+        +escalate : onOutcome: string[] key: string params…
     }
     class packages_js_agent_server_src_workflow_babysitter_WorkflowBabysitter["packages.js.agent-server.src.workflow-babysitter.WorkflowBabysitter"] {
         -cfg : Required~Omit~BabysitterConfig, fetchIm…
         -fetchImpl : typeof fetch
-        -onLog : msg: string =~ void
+        -onLog : msg: string => void
         -invokeUrl(method: string) string
         +submit(submit: WorkflowSubmit) Promise~ instanceId: string watching: b…
         +list() Promise~unknown~
@@ -1010,16 +1043,16 @@ classDiagram
     }
     class packages_js_core_dapr_src_actors_actor_client_GenericActorClientService["packages.js.core-dapr.src.actors.actor-client.GenericActorClientService"] {
         <<interface>>
-        +invoke :  actorId: string, method: string, paylo…
-        +getState :  actorId: string, key: string,  =~ Effe…
-        +setState :  actorId: string, key: string, value: u…
-        +removeState :  actorId: string, key: string,  =~ Effe…
-        +listStateKeys : actorId: string =~ Effect.Effect~string…
-        +registerReminder :  actorId: string, name: string, dueTime…
-        +unregisterReminder :  actorId: string, name: string,  =~ Eff…
-        +registerTimer :  actorId: string, name: string, dueTime…
-        +unregisterTimer : actorId: string, name: string =~ Effect…
-        +listActiveActors :  =~ Effect.Effect~object, DaprActorErro…
+        +invoke : actorId: string, method: string, paylo…
+        +getState : actorId: string, key: string, => Effe…
+        +setState : actorId: string, key: string, value: u…
+        +removeState : actorId: string, key: string, => Effe…
+        +listStateKeys : actorId: string => Effect.Effect~string…
+        +registerReminder : actorId: string, name: string, dueTime…
+        +unregisterReminder : actorId: string, name: string, => Eff…
+        +registerTimer : actorId: string, name: string, dueTime…
+        +unregisterTimer : actorId: string, name: string => Effect…
+        +listActiveActors : => Effect.Effect~object, DaprActorErro…
     }
     class packages_js_core_dapr_src_actors_actor_client_GenericActorClientTag["packages.js.core-dapr.src.actors.actor-client.GenericActorClientTag"]
     class packages_js_core_dapr_src_actors_actor_host_ActorHostOptions["packages.js.core-dapr.src.actors.actor-host.ActorHostOptions"] {
@@ -1067,13 +1100,13 @@ classDiagram
     class packages_js_core_dapr_src_actors_wait_for_sidecar_DaprSidecarError["packages.js.core-dapr.src.actors.wait-for-sidecar.DaprSidecarError"]
     class packages_js_core_dapr_src_invoker_DaprInvokerService["packages.js.core-dapr.src.invoker.DaprInvokerService"] {
         <<interface>>
-        +invoke :  appId: string, method: string, body: A…
+        +invoke : appId: string, method: string, body: A…
     }
     class packages_js_core_dapr_src_invoker_DaprInvokerTag["packages.js.core-dapr.src.invoker.DaprInvokerTag"]
     class packages_js_core_dapr_src_publisher_DaprPubSubError["packages.js.core-dapr.src.publisher.DaprPubSubError"]
     class packages_js_core_dapr_src_publisher_DaprPublisherService["packages.js.core-dapr.src.publisher.DaprPublisherService"] {
         <<interface>>
-        +publish :  pubsubName: string, topic: string, dat…
+        +publish : pubsubName: string, topic: string, dat…
     }
     class packages_js_core_dapr_src_publisher_DaprPublisherTag["packages.js.core-dapr.src.publisher.DaprPublisherTag"]
     class packages_js_core_vercel_src_llm_client_LlmClient["packages.js.core-vercel.src.llm-client.LlmClient"]
@@ -1081,12 +1114,12 @@ classDiagram
     class packages_js_core_vercel_src_llm_client_LlmGeneration["packages.js.core-vercel.src.llm-client.LlmGeneration"] {
         <<interface>>
         +text : string
-        +usage :  readonly input: number readonly output…
+        +usage : readonly input: number readonly output…
         +model : string
     }
     class packages_js_core_vercel_src_llm_client_LlmService["packages.js.core-vercel.src.llm-client.LlmService"] {
         <<interface>>
-        +generate :  input: string, systemPrompt?: string, …
+        +generate : input: string, systemPrompt?: string, …
     }
     class packages_js_core_vercel_src_llm_client_LlmTimeoutError["packages.js.core-vercel.src.llm-client.LlmTimeoutError"]
     class packages_js_core_vercel_src_vercel_ai_LlmConfigError["packages.js.core-vercel.src.vercel-ai.LlmConfigError"]
@@ -1106,12 +1139,28 @@ classDiagram
         <<type>>
         +mcpServers : Record~string, unknown~
     }
+    class packages_js_engine_core_src_chain_engine_ChainDecision["packages.js.engine-core.src.chain-engine.ChainDecision"] {
+        <<union>>
+        + readonly kind: wait readonly row: Chai…
+        +/** Every member of the stage is done a…
+        + readonly kind: advance readonly row: C…
+        +/** Stage/chain done, or a member faile…
+        + readonly kind: finalize readonly row: …
+        +/** Chain wall-clock budget breached wh…
+        + readonly kind: budget-terminate readon…
+    }
     class packages_js_engine_core_src_chain_engine_MemberObservation["packages.js.engine-core.src.chain-engine.MemberObservation"] {
         <<type>>
         +index : number
         +runtimeStatus : string
         +done : boolean
         +failed : boolean
+    }
+    class packages_js_engine_core_src_chain_scan_Activation["packages.js.engine-core.src.chain-scan.Activation"] {
+        <<union>>
+        + readonly kind: hold readonly parentAbs…
+        + readonly kind: fire readonly seed?: Ch…
+        + readonly kind: abort readonly note: st…
     }
     class packages_js_engine_core_src_chain_scan_ChainRegistration["packages.js.engine-core.src.chain-scan.ChainRegistration"] {
         <<type>>
@@ -1120,7 +1169,7 @@ classDiagram
         +data : ChainData
         +defaultData : ChainData
         +strategy : ChainStrategy
-        +loop :  readonly startCursor: number readonly …
+        +loop : readonly startCursor: number readonly …
         +budgetMs : number
         +meta : ChainData
         +after : string
@@ -1145,6 +1194,11 @@ classDiagram
         +errors : string[]
         +disabled : boolean
     }
+    class packages_js_engine_core_src_chain_scan_DisarmChainError["packages.js.engine-core.src.chain-scan.DisarmChainError"] {
+        <<union>>
+        + readonly _tag: NotFound
+        +WorkflowError
+    }
     class packages_js_engine_core_src_chain_scan_MemberRead["packages.js.engine-core.src.chain-scan.MemberRead"] {
         <<type>>
         +index : number
@@ -1162,6 +1216,19 @@ classDiagram
         +heartbeats : ChainHeartbeat[]
         +runRecords : Map~string, number | null~
     }
+    class packages_js_engine_core_src_cron_engine_CronDecision["packages.js.engine-core.src.cron-engine.CronDecision"] {
+        <<union>>
+        + readonly kind: wait
+        +/** Due, not in-flight, not resolved, u…
+        + readonly kind: fire
+        +/** Terminal: deactivate the cron goal …
+        + readonly kind: deactivate readonly out…
+    }
+    class packages_js_engine_core_src_cron_scan_CronPlan["packages.js.engine-core.src.cron-scan.CronPlan"] {
+        <<union>>
+        + armed: false reason: string
+        + armed: true registration: CronRegistra…
+    }
     class packages_js_engine_core_src_cron_scan_CronRegistration["packages.js.engine-core.src.cron-scan.CronRegistration"] {
         <<type>>
         +identity : WfIdentity
@@ -1169,7 +1236,7 @@ classDiagram
         +source : CronSource
         +budget : CronBudget
         +instanceId : string
-        +initial :  readonly firedAt: string 
+        +initial : readonly firedAt: string
     }
     class packages_js_engine_core_src_cron_scan_CronScanEnv["packages.js.engine-core.src.cron-scan.CronScanEnv"] {
         <<union>>
@@ -1186,6 +1253,11 @@ classDiagram
         +errors : string[]
         +disabled : boolean
     }
+    class packages_js_engine_core_src_cron_scan_DisarmCronError["packages.js.engine-core.src.cron-scan.DisarmCronError"] {
+        <<union>>
+        + readonly _tag: NotFound
+        +WorkflowError
+    }
     class packages_js_engine_core_src_cron_scan_RegisterCronInput["packages.js.engine-core.src.cron-scan.RegisterCronInput"] {
         <<type>>
         +workflow : string
@@ -1200,6 +1272,17 @@ classDiagram
         +steps : ReadonlyArray~WorkflowStep~
         +workspaceId : string
         +traceparent : string
+    }
+    class packages_js_engine_core_src_cron_scan_RegisterCronResult["packages.js.engine-core.src.cron-scan.RegisterCronResult"] {
+        <<union>>
+        + armed: true cron: string
+        + armed: false reason: string
+    }
+    class packages_js_engine_core_src_discover_engine_DiscoverDecision["packages.js.engine-core.src.discover-engine.DiscoverDecision"] {
+        <<union>>
+        + readonly kind: wait
+        +/** Due, not in-flight, under the daily…
+        + readonly kind: discover
     }
     class packages_js_engine_core_src_discover_scan_DiscoverArmInput["packages.js.engine-core.src.discover-scan.DiscoverArmInput"] {
         <<type>>
@@ -1254,50 +1337,50 @@ classDiagram
     class packages_js_engine_core_src_ports_IChainStore_ChainStore["packages.js.engine-core.src.ports.IChainStore.ChainStore"]
     class packages_js_engine_core_src_ports_IChainStore_ChainStoreService["packages.js.engine-core.src.ports.IChainStore.ChainStoreService"] {
         <<interface>>
-        +getRow : chainId: string =~ Effect.Effect~Option…
-        +listRows :  =~ Effect.Effect~readonly ChainRow[], …
-        +saveRow : row: ChainRow =~ Effect.Effect~void, Wo…
-        +deleteRow : chainId: string =~ Effect.Effect~void, …
-        +getConfig :  =~ Effect.Effect~Option.Option~ChainCo…
-        +getHeartbeat :  =~ Effect.Effect~Option.Option~ChainHe…
-        +heartbeat : beat: ChainHeartbeat =~ Effect.Effect~v…
-        +getLedger : date: string =~ Effect.Effect~ChainLedg…
-        +bumpLedger :  date: string, delta: Partial~ChainLedg…
-        +listRunKeys :  =~ Effect.Effect~readonly string[], Wo…
-        +getRunMeta : key: string =~ Effect.Effect~RunMirrorM…
+        +getRow : chainId: string => Effect.Effect~Option…
+        +listRows : => Effect.Effect~readonly ChainRow[], …
+        +saveRow : row: ChainRow => Effect.Effect~void, Wo…
+        +deleteRow : chainId: string => Effect.Effect~void, …
+        +getConfig : => Effect.Effect~Option.Option~ChainCo…
+        +getHeartbeat : => Effect.Effect~Option.Option~ChainHe…
+        +heartbeat : beat: ChainHeartbeat => Effect.Effect~v…
+        +getLedger : date: string => Effect.Effect~ChainLedg…
+        +bumpLedger : date: string, delta: Partial~ChainLedg…
+        +listRunKeys : => Effect.Effect~readonly string[], Wo…
+        +getRunMeta : key: string => Effect.Effect~RunMirrorM…
     }
     class packages_js_engine_core_src_ports_ICronStore_CronStore["packages.js.engine-core.src.ports.ICronStore.CronStore"]
     class packages_js_engine_core_src_ports_ICronStore_CronStoreService["packages.js.engine-core.src.ports.ICronStore.CronStoreService"] {
         <<interface>>
-        +getRow : cronId: string =~ Effect.Effect~Option.…
-        +listRows :  =~ Effect.Effect~readonly CronRow[], W…
-        +saveRow : row: CronRow =~ Effect.Effect~void, Wor…
-        +deleteRow : cronId: string =~ Effect.Effect~void, W…
-        +getDiscoverRow : id: string =~ Effect.Effect~Option.Opti…
-        +listDiscoverRows :  =~ Effect.Effect~readonly DiscoverRow[…
-        +saveDiscoverRow : row: DiscoverRow =~ Effect.Effect~void,…
-        +deleteDiscoverRow : id: string =~ Effect.Effect~void, Workf…
-        +getSchedRow : id: string =~ Effect.Effect~Option.Opti…
-        +listSchedRows :  =~ Effect.Effect~readonly SchedRow[], …
-        +saveSchedRow : row: SchedRow =~ Effect.Effect~void, Wo…
-        +deleteSchedRow : id: string =~ Effect.Effect~void, Workf…
-        +getConfig :  =~ Effect.Effect~Option.Option~CronCon…
-        +getHeartbeat :  =~ Effect.Effect~Option.Option~CronHea…
-        +heartbeat : beat: CronHeartbeat =~ Effect.Effect~vo…
-        +getLedger : date: string =~ Effect.Effect~CronLedge…
-        +bumpLedger :  date: string, delta: Partial~CronLedge…
+        +getRow : cronId: string => Effect.Effect~Option.…
+        +listRows : => Effect.Effect~readonly CronRow[], W…
+        +saveRow : row: CronRow => Effect.Effect~void, Wor…
+        +deleteRow : cronId: string => Effect.Effect~void, W…
+        +getDiscoverRow : id: string => Effect.Effect~Option.Opti…
+        +listDiscoverRows : => Effect.Effect~readonly DiscoverRow[…
+        +saveDiscoverRow : row: DiscoverRow => Effect.Effect~void,…
+        +deleteDiscoverRow : id: string => Effect.Effect~void, Workf…
+        +getSchedRow : id: string => Effect.Effect~Option.Opti…
+        +listSchedRows : => Effect.Effect~readonly SchedRow[], …
+        +saveSchedRow : row: SchedRow => Effect.Effect~void, Wo…
+        +deleteSchedRow : id: string => Effect.Effect~void, Workf…
+        +getConfig : => Effect.Effect~Option.Option~CronCon…
+        +getHeartbeat : => Effect.Effect~Option.Option~CronHea…
+        +heartbeat : beat: CronHeartbeat => Effect.Effect~vo…
+        +getLedger : date: string => Effect.Effect~CronLedge…
+        +bumpLedger : date: string, delta: Partial~CronLedge…
     }
     class packages_js_engine_core_src_ports_IEventPublisher_EventPublishError["packages.js.engine-core.src.ports.IEventPublisher.EventPublishError"]
     class packages_js_engine_core_src_ports_IEventPublisher_EventPublisher["packages.js.engine-core.src.ports.IEventPublisher.EventPublisher"]
     class packages_js_engine_core_src_ports_IEventPublisher_EventPublisherService["packages.js.engine-core.src.ports.IEventPublisher.EventPublisherService"] {
         <<interface>>
-        +publish : topic: string, data: unknown =~ Effect.…
+        +publish : topic: string, data: unknown => Effect.…
     }
     class packages_js_engine_core_src_ports_IExecPolicyStore_ExecPolicyStore["packages.js.engine-core.src.ports.IExecPolicyStore.ExecPolicyStore"]
     class packages_js_engine_core_src_ports_IExecPolicyStore_ExecPolicyStoreService["packages.js.engine-core.src.ports.IExecPolicyStore.ExecPolicyStoreService"] {
         <<interface>>
-        +get :  =~ Effect.Effect~Option.Option~ExecPol…
-        +save : policy: ExecPolicy =~ Effect.Effect~voi…
+        +get : => Effect.Effect~Option.Option~ExecPol…
+        +save : policy: ExecPolicy => Effect.Effect~voi…
     }
     class packages_js_engine_core_src_ports_ISourceReader_SourceItem["packages.js.engine-core.src.ports.ISourceReader.SourceItem"] {
         <<type>>
@@ -1308,44 +1391,57 @@ classDiagram
     class packages_js_engine_core_src_ports_ISourceReader_SourceReader["packages.js.engine-core.src.ports.ISourceReader.SourceReader"]
     class packages_js_engine_core_src_ports_ISourceReader_SourceReaderService["packages.js.engine-core.src.ports.ISourceReader.SourceReaderService"] {
         <<interface>>
-        +listOpenIssues : opts:  repo: string label: string  =~ E…
+        +listOpenIssues : opts: repo: string label: string => E…
     }
     class packages_js_engine_core_src_ports_IWatchStore_WatchStore["packages.js.engine-core.src.ports.IWatchStore.WatchStore"]
     class packages_js_engine_core_src_ports_IWatchStore_WatchStoreService["packages.js.engine-core.src.ports.IWatchStore.WatchStoreService"] {
         <<interface>>
-        +getRow : instanceId: string =~ Effect.Effect~Opt…
-        +listRows :  =~ Effect.Effect~readonly WatchRow[], …
-        +saveRow : row: WatchRow =~ Effect.Effect~void, Wo…
-        +deleteRow : instanceId: string =~ Effect.Effect~voi…
-        +getConfig :  =~ Effect.Effect~Option.Option~WatchCo…
-        +getHeartbeat :  =~ Effect.Effect~Option.Option~WatchHe…
-        +heartbeat : beat: WatchHeartbeat =~ Effect.Effect~v…
-        +getLedger : date: string =~ Effect.Effect~WatchLedg…
-        +bumpLedger :  date: string, delta: Partial~WatchLedg…
-        +listRunKeys :  =~ Effect.Effect~readonly string[], Wo…
-        +getRunMeta : key: string =~ Effect.Effect~RunMirrorM…
+        +getRow : instanceId: string => Effect.Effect~Opt…
+        +listRows : => Effect.Effect~readonly WatchRow[], …
+        +saveRow : row: WatchRow => Effect.Effect~void, Wo…
+        +deleteRow : instanceId: string => Effect.Effect~voi…
+        +getConfig : => Effect.Effect~Option.Option~WatchCo…
+        +getHeartbeat : => Effect.Effect~Option.Option~WatchHe…
+        +heartbeat : beat: WatchHeartbeat => Effect.Effect~v…
+        +getLedger : date: string => Effect.Effect~WatchLedg…
+        +bumpLedger : date: string, delta: Partial~WatchLedg…
+        +listRunKeys : => Effect.Effect~readonly string[], Wo…
+        +getRunMeta : key: string => Effect.Effect~RunMirrorM…
     }
     class packages_js_engine_core_src_ports_IWfStore_WfStore["packages.js.engine-core.src.ports.IWfStore.WfStore"]
     class packages_js_engine_core_src_ports_IWfStore_WfStoreService["packages.js.engine-core.src.ports.IWfStore.WfStoreService"] {
         <<interface>>
-        +getRun : instanceId: string =~ Effect.Effect~Opt…
-        +saveRow : row: WfRow =~ Effect.Effect~void, Workf…
+        +getRun : instanceId: string => Effect.Effect~Opt…
+        +saveRow : row: WfRow => Effect.Effect~void, Workf…
     }
     class packages_js_engine_core_src_ports_IWorkflowInvoker_WorkflowInvoker["packages.js.engine-core.src.ports.IWorkflowInvoker.WorkflowInvoker"]
     class packages_js_engine_core_src_ports_IWorkflowInvoker_WorkflowInvokerService["packages.js.engine-core.src.ports.IWorkflowInvoker.WorkflowInvokerService"] {
         <<interface>>
-        +invoke : input: WorkflowRequest =~ Effect.Effect…
-        +getStatus : instanceId: string =~ Effect.Effect~Wor…
-        +terminate : instanceId: string =~ Effect.Effect~voi…
+        +invoke : input: WorkflowRequest => Effect.Effect…
+        +getStatus : instanceId: string => Effect.Effect~Wor…
+        +terminate : instanceId: string => Effect.Effect~voi…
     }
     class packages_js_engine_core_src_ports_IWorkflowStore_WorkflowStore["packages.js.engine-core.src.ports.IWorkflowStore.WorkflowStore"]
     class packages_js_engine_core_src_ports_IWorkflowStore_WorkflowStoreService["packages.js.engine-core.src.ports.IWorkflowStore.WorkflowStoreService"] {
         <<interface>>
         +save : key: string, workflow: StoredWorkflow =…
-        +get : key: string =~ Effect.Effect~Option.Opt…
-        +list :  =~ Effect.Effect~readonly string[], Wo…
-        +listScheduled :  =~ Effect.Effect~ ReadonlyArray~ key: …
-        +markRun : key: string, lastRunAt: string =~ Effec…
+        +get : key: string => Effect.Effect~Option.Opt…
+        +list : => Effect.Effect~readonly string[], Wo…
+        +listScheduled : => Effect.Effect~ ReadonlyArray~ key: …
+        +markRun : key: string, lastRunAt: string => Effec…
+    }
+    class packages_js_engine_core_src_schedule_engine_SchedDecision["packages.js.engine-core.src.schedule-engine.SchedDecision"] {
+        <<union>>
+        + readonly kind: wait
+        +/** fireAt reached and no expired deadl…
+        + readonly kind: fire
+        +/** notAfter passed before fireAt was r…
+        + readonly kind: expire
+    }
+    class packages_js_engine_core_src_schedule_scan_DisarmSchedError["packages.js.engine-core.src.schedule-scan.DisarmSchedError"] {
+        <<union>>
+        + readonly _tag: NotFound
+        +WorkflowError
     }
     class packages_js_engine_core_src_schedule_scan_SchedRegistration["packages.js.engine-core.src.schedule-scan.SchedRegistration"] {
         <<type>>
@@ -1371,6 +1467,16 @@ classDiagram
         +expired : string[]
         +errors : string[]
         +disabled : boolean
+    }
+    class packages_js_engine_core_src_watch_engine_WatchDecision["packages.js.engine-core.src.watch-engine.WatchDecision"] {
+        <<union>>
+        + readonly kind: wait readonly row: Watc…
+        +/** Wall-clock budget breached while no…
+        + readonly kind: budget-terminate readon…
+        +/** Terminal or unknown-streak exhauste…
+        + readonly kind: finalize readonly row: …
+        +/** Terminal with a matching retry poli…
+        + readonly kind: retry readonly row: Wat…
     }
     class packages_js_engine_core_src_watch_scan_CostTally["packages.js.engine-core.src.watch-scan.CostTally"] {
         <<interface>>
@@ -1425,6 +1531,16 @@ classDiagram
         +depth : number
         +token : string
         +auth : GitAuth
+    }
+    class packages_js_git_core_src_git_client_GitAuth["packages.js.git-core.src.git-client.GitAuth"] {
+        <<union>>
+        + kind: pat token?: string
+        + kind: ssh keyPath?: string
+    }
+    class packages_js_git_core_src_git_client_GitCheckout["packages.js.git-core.src.git-client.GitCheckout"] {
+        <<union>>
+        + kind: branch // Branch to put the work…
+        + kind: detached // The commit-ish to ch…
     }
     class packages_js_git_core_src_git_client_GitClient["packages.js.git-core.src.git-client.GitClient"]
     class packages_js_git_core_src_git_client_GitCloneError["packages.js.git-core.src.git-client.GitCloneError"] {
@@ -1493,10 +1609,21 @@ classDiagram
         +path : string
         +branch : string
     }
+    class packages_js_local_runtime_src_domain_activities_ActivityKind["packages.js.local-runtime.src.domain.activities.ActivityKind"] {
+        <<union>>
+        + readonly kind: agent readonly agent: L…
+        + readonly kind: builtin readonly name: …
+        + readonly kind: refused readonly reason…
+    }
     class packages_js_local_runtime_src_domain_activities_Refusal["packages.js.local-runtime.src.domain.activities.Refusal"] {
         <<type>>
         +why : RefusalClass
         +reason : string
+    }
+    class packages_js_local_runtime_src_domain_activities_RefusalClass["packages.js.local-runtime.src.domain.activities.RefusalClass"] {
+        <<union>>
+        +pending
+        +permanent
     }
     class packages_js_local_runtime_src_domain_activities_RefusedActivityError["packages.js.local-runtime.src.domain.activities.RefusedActivityError"]
     class packages_js_local_runtime_src_domain_activities_UnknownActivityError["packages.js.local-runtime.src.domain.activities.UnknownActivityError"]
@@ -1534,8 +1661,8 @@ classDiagram
     }
     class packages_js_local_runtime_src_domain_engines_LeasePort["packages.js.local-runtime.src.domain.engines.LeasePort"] {
         <<interface>>
-        +read :  =~ Effect.Effect~ lease: EngineLease r…
-        +write : lease: EngineLease, revision: number =~…
+        +read : => Effect.Effect~ lease: EngineLease r…
+        +write : lease: EngineLease, revision: number =>…
     }
     class packages_js_local_runtime_src_domain_engines_TickReport["packages.js.local-runtime.src.domain.engines.TickReport"] {
         <<type>>
@@ -1557,7 +1684,7 @@ classDiagram
         <<type>>
         +agentRuns : AgentRunRequest[]
         +worktrees : WorktreeSpec[]
-        +provisioned :  cwd: string commands: ReadonlyArray~ c…
+        +provisioned : cwd: string commands: ReadonlyArray~ c…
         +progress : string[]
         +journal : Map~string, JournalRecord[]~
     }
@@ -1574,7 +1701,7 @@ classDiagram
         +model : string
         +costUsd : number
         +costPartial : boolean
-        +tokens :  input: number output: number 
+        +tokens : input: number output: number
         +turns : number
         +sessionId : string
         +runId : string
@@ -1608,11 +1735,23 @@ classDiagram
         +group : string
         +iteration : number
     }
+    class packages_js_local_runtime_src_domain_models_CheckoutSpec["packages.js.local-runtime.src.domain.models.CheckoutSpec"] {
+        <<union>>
+        + kind: branch branch?: string baseRef?:…
+        + kind: detached ref: string fetch?: re…
+    }
     class packages_js_local_runtime_src_domain_models_DelegateEnvelope["packages.js.local-runtime.src.domain.models.DelegateEnvelope"] {
         <<type>>
         +ok : boolean
         +group : string
         +runs : ReadonlyArray~AgentRunReport~
+    }
+    class packages_js_local_runtime_src_domain_models_JournalRecord["packages.js.local-runtime.src.domain.models.JournalRecord"] {
+        <<union>>
+        + seq: number type: meta kind: workflow …
+        + seq: number type: stage /** The stage …
+        + seq: number type: step /** A workflow …
+        + seq: number type: terminal status: com…
     }
     class packages_js_local_runtime_src_domain_models_RegistryEnvelope["packages.js.local-runtime.src.domain.models.RegistryEnvelope"] {
         <<type>>
@@ -1664,10 +1803,10 @@ classDiagram
         <<interface>>
         +get : ~A, I~ bucket: BucketName, id: string, …
         +getVersioned : ~A, I~ bucket: BucketName, id: string, …
-        +put :  bucket: BucketName, id: string, value:…
-        +putFenced :  bucket: BucketName, id: string, value:…
-        +delete : bucket: BucketName, id: string =~ Effec…
-        +ids :  bucket: BucketName, prefix?: string,  …
+        +put : bucket: BucketName, id: string, value:…
+        +putFenced : bucket: BucketName, id: string, value:…
+        +delete : bucket: BucketName, id: string => Effec…
+        +ids : bucket: BucketName, prefix?: string, …
     }
     class packages_js_local_runtime_src_infrastructure_nats_kv_Versioned["packages.js.local-runtime.src.infrastructure.nats-kv.Versioned"] {
         <<type>>
@@ -1676,7 +1815,7 @@ classDiagram
     }
     class packages_js_local_runtime_src_infrastructure_nats_workflow_invoker_FirePublisher["packages.js.local-runtime.src.infrastructure.nats-workflow-invoker.FirePublisher"] {
         <<interface>>
-        +publish : descriptor: Record~string, unknown~ =~ …
+        +publish : descriptor: Record~string, unknown~ => …
         +control : subject: string, data: Record~string, u…
     }
     class packages_js_logger_src_index_Logger["packages.js.logger.src.index.Logger"] {
@@ -1691,12 +1830,12 @@ classDiagram
     class packages_js_logger_src_layer_LoggerInitError["packages.js.logger.src.layer.LoggerInitError"]
     class packages_js_logger_src_layer_LoggerService["packages.js.logger.src.layer.LoggerService"] {
         <<interface>>
-        +trace : context: LogContext, message: string =~…
-        +debug : context: LogContext, message: string =~…
-        +info : context: LogContext, message: string =~…
-        +warn : context: LogContext, message: string =~…
-        +error : context: LogContext, message: string =~…
-        +child : context: LogContext =~ Effect.Effect~Lo…
+        +trace : context: LogContext, message: string =>…
+        +debug : context: LogContext, message: string =>…
+        +info : context: LogContext, message: string =>…
+        +warn : context: LogContext, message: string =>…
+        +error : context: LogContext, message: string =>…
+        +child : context: LogContext => Effect.Effect~Lo…
     }
     class packages_js_logger_src_layer_LoggerTag["packages.js.logger.src.layer.LoggerTag"]
     class packages_js_run_ledger_src_run_ledger_ActivityLedgerConfig["packages.js.run-ledger.src.run-ledger.ActivityLedgerConfig"] {
@@ -1753,8 +1892,8 @@ classDiagram
         <<type>>
         +dir : string
         +runId : string
-        +onEvent : event: Record~string, unknown~ =~ void
-        +finish : outcome: RunOutcome =~ Effect.Effect~Ru…
+        +onEvent : event: Record~string, unknown~ => void
+        +finish : outcome: RunOutcome => Effect.Effect~Ru…
     }
     class packages_js_run_ledger_src_run_ledger_RunOutcome["packages.js.run-ledger.src.run-ledger.RunOutcome"] {
         <<type>>
@@ -1763,7 +1902,7 @@ classDiagram
         +sessionId : string | null
         +model : string | null
         +turns : number | null
-        +tokens :  input: number output: number  | null
+        +tokens : input: number output: number | null
         +costUsd : number | null
         +costPartial : boolean | null
         +error : string | null
@@ -1779,7 +1918,7 @@ classDiagram
         +status : completed | failed
         +model : string | null
         +turns : number | null
-        +tokens :  input: number output: number  | null
+        +tokens : input: number output: number | null
         +costUsd : number | null
         +costPartial : boolean | null
         +toolCalls : number | null
@@ -1799,11 +1938,11 @@ classDiagram
         +id : string
         +captures : Readonly~Record~string, string~~
         +inputs : Readonly~Record~string, string~~
-        +until :  readonly path: string readonly equals:…
+        +until : readonly path: string readonly equals:…
     }
     class packages_js_workflow_core_src_chain_members_WorkflowContract["packages.js.workflow-core.src.chain-members.WorkflowContract"] {
         <<interface>>
-        +buildParams : data: ChainData =~ Record~string, unkno…
+        +buildParams : data: ChainData => Record~string, unkno…
         +capture : output: string | undefined, data: Chain…
     }
     class packages_js_workflow_core_src_chain_Staged["packages.js.workflow-core.src.chain.Staged"] {
@@ -2019,16 +2158,19 @@ classDiagram
     packages_js_engine_core_src_chain_scan_ChainScanEnv ..> packages_js_engine_core_src_ports_IWfStore_WfStore
     packages_js_engine_core_src_chain_scan_ChainScanEnv ..> packages_js_engine_core_src_ports_ICronStore_CronStore
     packages_js_engine_core_src_chain_scan_ChainScanEnv ..> packages_js_engine_core_src_ports_IEventPublisher_EventPublisher
+    packages_js_engine_core_src_chain_scan_DisarmChainError ..> packages_js_core_src_errors_WorkflowError
     packages_js_engine_core_src_cron_scan_CronScanEnv ..> packages_js_engine_core_src_ports_ICronStore_CronStore
     packages_js_engine_core_src_cron_scan_CronScanEnv ..> packages_js_engine_core_src_ports_IWorkflowInvoker_WorkflowInvoker
     packages_js_engine_core_src_cron_scan_CronScanEnv ..> packages_js_engine_core_src_ports_IWorkflowStore_WorkflowStore
     packages_js_engine_core_src_cron_scan_CronScanEnv ..> packages_js_engine_core_src_ports_IWfStore_WfStore
+    packages_js_engine_core_src_cron_scan_DisarmCronError ..> packages_js_core_src_errors_WorkflowError
     packages_js_engine_core_src_discover_scan_DiscoverScanEnv ..> packages_js_engine_core_src_ports_ICronStore_CronStore
     packages_js_engine_core_src_discover_scan_DiscoverScanEnv ..> packages_js_engine_core_src_ports_IWorkflowInvoker_WorkflowInvoker
     packages_js_engine_core_src_discover_scan_DiscoverScanEnv ..> packages_js_engine_core_src_ports_IWorkflowStore_WorkflowStore
     packages_js_engine_core_src_discover_scan_DiscoverScanEnv ..> packages_js_engine_core_src_ports_IWfStore_WfStore
     packages_js_engine_core_src_discover_scan_DiscoverScanEnv ..> packages_js_engine_core_src_ports_ISourceReader_SourceReader
     packages_js_engine_core_src_discover_scan_DiscoverScanEnv ..> packages_js_engine_core_src_ports_IWatchStore_WatchStore
+    packages_js_engine_core_src_schedule_scan_DisarmSchedError ..> packages_js_core_src_errors_WorkflowError
     packages_js_engine_core_src_schedule_scan_SchedScanEnv ..> packages_js_engine_core_src_ports_ICronStore_CronStore
     packages_js_engine_core_src_schedule_scan_SchedScanEnv ..> packages_js_engine_core_src_ports_IWorkflowInvoker_WorkflowInvoker
     packages_js_engine_core_src_schedule_scan_SchedScanEnv ..> packages_js_engine_core_src_ports_IWorkflowStore_WorkflowStore
@@ -2065,6 +2207,7 @@ classDiagram
     apps_obs_mcp_src_domain_ports_IObservabilityService_SystemOverview --> packages_js_run_ledger_src_run_ledger_RunSummary
     apps_workflow_svc_src_infrastructure_activities_gc_worktrees_activity_GcReport --> apps_workflow_svc_src_infrastructure_activities_gc_worktrees_activity_GcEntry
     apps_workflow_svc_src_infrastructure_activities_register_discover_activity_Input --> packages_js_agent_server_src_workflow_babysitter_WatchPolicy
+    apps_workflow_svc_src_infrastructure_activities_run_itest_activity_ItestResult --> apps_workflow_svc_src_infrastructure_activities_run_itest_activity_ItestClass
     apps_workflow_svc_src_infrastructure_activities_setup_activity_Input --> apps_workflow_svc_src_infrastructure_activities_setup_activity_SetupItem
     cli_h_src_h_cli_infrastructure_chain_expr_ChainExpr --> cli_h_src_h_cli_infrastructure_chain_expr_MemberRef
     cli_h_src_h_cli_infrastructure_chain_expr_ChainExpr --> cli_h_src_h_cli_infrastructure_chain_expr_WorkflowConfig
@@ -2073,10 +2216,12 @@ classDiagram
     packages_js_agent_cli_src_agents_parse_stream_BuildInvocationResultOptions --> packages_js_agent_cli_src_agents_types_StreamEvent
     packages_js_agent_cli_src_agents_types_AgentInvocationRequest --> packages_js_agent_cli_src_agents_types_LlmConfig
     packages_js_agent_cli_src_agents_types_AgentStrategy ..> packages_js_agent_cli_src_agents_types_AgentInvocationRequest
+    packages_js_agent_cli_src_agents_types_AgentStrategy --> packages_js_agent_cli_src_agents_types_AgentType
     packages_js_agent_cli_src_agents_types_AgentStrategy ..> packages_js_agent_cli_src_agents_types_InvocationResult
     packages_js_agent_cli_src_agents_types_AgentStrategy ..> packages_js_agent_cli_src_agents_types_PreparedAgentInvocation
     packages_js_agent_cli_src_agents_types_AgentStrategy ..> packages_js_agent_cli_src_agents_types_StreamEvent
     packages_js_agent_cli_src_agents_types_AgentStreamParser ..> packages_js_agent_cli_src_agents_types_StreamEvent
+    packages_js_agent_cli_src_agents_types_InvocationResult --> packages_js_agent_cli_src_agents_classify_stop_StopReason
     packages_js_agent_cli_src_agents_types_InvocationResult --> packages_js_agent_cli_src_agents_types_ModelUsage
     packages_js_agent_cli_src_agents_types_PreparedAgentInvocation --> packages_js_agent_cli_src_agents_types_AgentStreamParser
     packages_js_agent_cli_src_agents_types_PreparedAgentInvocation --> packages_js_agent_cli_src_agents_types_StreamEvent
@@ -2099,16 +2244,23 @@ classDiagram
     packages_js_engine_core_src_chain_scan_test_MemoryChainStore --> packages_js_engine_core_src_ports_IChainStore_ChainStoreService
     packages_js_engine_core_src_discover_scan_DiscoverArmInput --> packages_js_agent_server_src_workflow_babysitter_WatchPolicy
     packages_js_engine_core_src_watch_scan_test_MemoryWatchStore --> packages_js_engine_core_src_ports_IWatchStore_WatchStoreService
+    packages_js_git_core_src_git_client_CloneOptions --> packages_js_git_core_src_git_client_GitAuth
+    packages_js_git_core_src_git_client_WorktreeOptions --> packages_js_git_core_src_git_client_GitAuth
+    packages_js_git_core_src_git_client_WorktreeOptions --> packages_js_git_core_src_git_client_GitCheckout
     packages_js_git_core_src_worktree_gc_GcReport --> packages_js_git_core_src_worktree_gc_GcEntry
+    packages_js_local_runtime_src_domain_activities_Refusal --> packages_js_local_runtime_src_domain_activities_RefusalClass
     packages_js_local_runtime_src_domain_chain_test_Recorder --> packages_js_local_runtime_src_domain_models_AgentRunRequest
+    packages_js_local_runtime_src_domain_chain_test_Recorder --> packages_js_local_runtime_src_domain_models_JournalRecord
     packages_js_local_runtime_src_domain_delegate_test_Recorder --> packages_js_local_runtime_src_domain_models_AgentRunRequest
     packages_js_local_runtime_src_domain_delegate_test_Recorder --> packages_js_local_runtime_src_domain_models_WorktreeSpec
     packages_js_local_runtime_src_domain_engines_LeasePort --> packages_js_local_runtime_src_domain_engines_EngineLease
     packages_js_local_runtime_src_domain_execute_test_Recorder --> packages_js_local_runtime_src_domain_models_AgentRunRequest
+    packages_js_local_runtime_src_domain_execute_test_Recorder --> packages_js_local_runtime_src_domain_models_JournalRecord
     packages_js_local_runtime_src_domain_execute_test_Recorder --> packages_js_local_runtime_src_domain_models_WorktreeSpec
     packages_js_local_runtime_src_domain_models_ChainEnvelope --> packages_js_local_runtime_src_domain_models_ChainMemberRun
     packages_js_local_runtime_src_domain_models_DelegateEnvelope --> packages_js_local_runtime_src_domain_models_AgentRunReport
     packages_js_local_runtime_src_domain_models_WorkflowEnvelope --> packages_js_local_runtime_src_domain_models_WorkflowRunRef
+    packages_js_local_runtime_src_domain_models_WorktreeSpec --> packages_js_local_runtime_src_domain_models_CheckoutSpec
     packages_js_run_ledger_src_run_ledger_RunLedgerHandle --> packages_js_run_ledger_src_run_ledger_RunOutcome
     packages_js_run_ledger_src_run_ledger_RunSummary --> packages_js_run_ledger_src_run_ledger_ObservedEventShape
     packages_py_agent_core_src_agent_core_llm_openai_OpenAIChatAdapter ..> packages_py_agent_core_src_agent_core_react_loop_LLMTurn
@@ -2122,4 +2274,4 @@ classDiagram
     packages_py_agent_server_src_agent_server_routes_SetupRequest --> packages_py_agent_server_src_agent_server_routes_SetupItem
     packages_py_agent_server_src_agent_server_workflow_route_WorkflowBabysitter ..> packages_py_agent_server_src_agent_server_workflow_route_WorkflowSubmit
     packages_py_agent_server_src_agent_server_workflow_route_WorkflowSubmit --> packages_py_agent_server_src_agent_server_workflow_route_BabysitPolicy
-%% vizzle: 330 classes, 264 relations
+%% vizzle: 352 classes, 277 relations

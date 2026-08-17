@@ -99,7 +99,11 @@ pub(crate) fn clean_type(raw: &str) -> String {
         .collect::<Vec<_>>()
         .join(" ")
         .replace("[]", "\u{1}")
+        // `=>` in a function type is not a generic bracket; protect the arrow
+        // before the angle brackets are rewritten, or `A => B` becomes `A =~ B`.
+        .replace("=>", "\u{2}")
         .replace(['[', ']', '<', '>'], "~")
+        .replace('\u{2}', "=>")
         .replace('\u{1}', "[]")
         .replace(['"', '\'', '{', '}', '(', ')', '`', ';'], "");
     if cleaned.chars().count() > 40 {

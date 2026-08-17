@@ -191,3 +191,67 @@ def test_component_diff_shows_rewiring(workspace: Path) -> None:
     assert "linkStyle" in result.output and "#1a7f37" in result.output
     # The untouched dependency stays uncolored context.
     assert "c_apps_svc -.-> c_packages_core" in result.output
+
+
+DOC = """# A managed diagram
+
+Prose above the fence.
+
+<!-- gen:c4-code {
+  "classes": [
+    {"id": "Shape", "kind": "interface", "file": "src/shape.ts", "symbol": "Shape"},
+    {"id": "redis", "kind": "external", "stereotype": "peer service", "note": "flat keyspace"}
+  ],
+  "relations": [["Shape", "redis", null, "caches in"]]
+} -->
+
+```mermaid
+classDiagram
+  stale content
+```
+
+Prose below the fence.
+"""
+
+
+def _managed_repo(tmp_path):
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "shape.ts").write_text("export interface Shape { area(): number; }\n")
+    doc = tmp_path / "diagram.md"
+    doc.write_text(DOC)
+    return doc
+
+
+def test_doc_regenerates_only_the_fence(tmp_path):
+    doc = _managed_repo(tmp_path)
+    result = CliRunner().invoke(main, ["doc", str(doc), "--root", str(tmp_path)])
+    assert result.exit_code == 0, result.output
+    text = doc.read_text()
+
+    assert "Prose above the fence." in text and "Prose below the fence." in text
+    assert "stale content" not in text
+    assert "<<interface>>" in text and "+area() number" in text
+    # A fully curated entry contributes its note and needs no source.
+    assert "<<peer service>>" in text and "flat keyspace" in text
+    assert "Shape --> redis : caches in" in text
+
+
+def test_doc_check_detects_drift_and_writes_nothing(tmp_path):
+    doc = _managed_repo(tmp_path)
+    before = doc.read_text()
+
+    stale = CliRunner().invoke(main, ["doc", str(doc), "--root", str(tmp_path), "--check"])
+    assert stale.exit_code != 0, "a stale fence must fail --check"
+    assert doc.read_text() == before, "--check must not write"
+
+    CliRunner().invoke(main, ["doc", str(doc), "--root", str(tmp_path)])
+    current = CliRunner().invoke(main, ["doc", str(doc), "--root", str(tmp_path), "--check"])
+    assert current.exit_code == 0, current.output
+
+
+def test_doc_reports_an_entry_that_no_longer_resolves(tmp_path):
+    doc = _managed_repo(tmp_path)
+    (tmp_path / "src" / "shape.ts").write_text("export interface Renamed { area(): number; }\n")
+    result = CliRunner().invoke(main, ["doc", str(doc), "--root", str(tmp_path)])
+    assert result.exit_code != 0
+    assert "Shape" in result.output and "not in the parsed graph" in result.output

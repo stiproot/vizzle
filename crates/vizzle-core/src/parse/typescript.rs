@@ -69,6 +69,11 @@ fn collect(
                     extract_module_function(child, src, module_fns);
                 }
             }
+            "lexical_declaration" => {
+                if scope.module_level && scope.exported {
+                    extract_module_const(child, src, module_fns);
+                }
+            }
             "import_statement" => extract_import(child, src, graph),
             // Unwrap `export class ...`, namespaces, and top-level statements.
             // An export can also be a re-export (`export { x } from "y"`).
@@ -244,9 +249,10 @@ fn extract_type_alias(node: Node, src: &str, module: &str, graph: &mut CodeGraph
             ("type", members, Vec::new())
         }
         "union_type" => {
+            // Every union gets a box, including a union of string literals —
+            // which is an enumeration in all but keyword, and which a curated
+            // diagram may name (curated-diagrams.md §4.1).
             let arms = union_arms(value, src);
-            // Every arm must be a named type, or this is a literal/primitive
-            // union with no graph information in it.
             if arms.is_empty() {
                 return;
             }
@@ -257,8 +263,12 @@ fn extract_type_alias(node: Node, src: &str, module: &str, graph: &mut CodeGraph
                     ..Default::default()
                 })
                 .collect();
+            // ...but only a *named* arm becomes an edge. Pointing a dependency
+            // at `"completed"` or `string` would be 83 wrong edges on h, and a
+            // wrong edge is worse than a missing one (class.md §4).
             let bases = arms
                 .iter()
+                .filter(|arm| is_named_type(arm))
                 .map(|arm| Relation {
                     from: qualified.clone(),
                     to: bare_type_name(arm),
@@ -282,29 +292,51 @@ fn extract_type_alias(node: Node, src: &str, module: &str, graph: &mut CodeGraph
     });
 }
 
-/// The arms of a union, but only if *every* arm is a named type. A single
-/// literal or primitive arm means the union is describing values rather than
-/// relating types, and it is dropped whole.
+/// A type name, as opposed to a literal or a primitive: `PiEvent` yes,
+/// `"completed"` and `string` no. clean_type has already stripped the quotes,
+/// so case is the whole test.
+fn is_named_type(arm: &str) -> bool {
+    arm.chars().next().is_some_and(|c| c.is_ascii_uppercase())
+}
+
+/// Every arm of a union, flattened. Unions nest to the left, so `A | B | C`
+/// arrives as `(A | B) | C`.
 fn union_arms(node: Node, src: &str) -> Vec<String> {
     let mut arms = Vec::new();
     let mut cursor = node.walk();
     for arm in node.named_children(&mut cursor) {
         match arm.kind() {
-            "union_type" => {
-                // Unions nest to the left: `A | B | C` is `(A | B) | C`.
-                let inner = union_arms(arm, src);
-                if inner.is_empty() {
-                    return Vec::new();
-                }
-                arms.extend(inner);
-            }
-            "type_identifier" | "nested_type_identifier" | "generic_type" => {
-                arms.push(clean_type(&text(arm, src)))
-            }
-            _ => return Vec::new(),
+            "union_type" => arms.extend(union_arms(arm, src)),
+            _ => arms.push(clean_type(&text(arm, src))),
         }
     }
     arms
+}
+
+/// An exported module-level `const NAME: Type = …`, kept as a field carrying
+/// its declared type. Curated diagrams turn that type into a realization edge
+/// (curated-diagrams.md §4), which is the only reason it is worth recording.
+fn extract_module_const(node: Node, src: &str, members: &mut Vec<Member>) {
+    let mut cursor = node.walk();
+    for decl in node.named_children(&mut cursor) {
+        if decl.kind() != "variable_declarator" {
+            continue;
+        }
+        let (Some(name), Some(ty)) = (
+            decl.child_by_field_name("name"),
+            decl.child_by_field_name("type"),
+        ) else {
+            continue;
+        };
+        // The grammar's `type` field is the whole annotation, `: Foo`, and the
+        // colon is the renderer's to add.
+        let annotation = text(ty, src);
+        members.push(Member {
+            name: text(name, src),
+            detail: clean_type(annotation.trim_start_matches(':').trim()),
+            ..Default::default()
+        });
+    }
 }
 
 fn extract_module_function(node: Node, src: &str, members: &mut Vec<Member>) {
@@ -520,6 +552,29 @@ mod tests {
 
     fn parse_src(src: &str) -> CodeGraph {
         parse("web.src.app", src).unwrap()
+    }
+
+    #[test]
+    fn literal_unions_get_a_box_but_never_an_edge() {
+        let g = parse_src(
+            r#"
+export type StopReason = "completed" | "usage-limited" | "timeout" | "failed";
+export type Mixed = PiEvent | "raw" | undefined;
+"#,
+        );
+        let by_name = |n: &str| g.classes.iter().find(|c| c.name == n).unwrap();
+
+        // A curated diagram may name this, so it must exist (curated §4.1)...
+        let stop = by_name("StopReason");
+        assert_eq!(stop.annotation.as_deref(), Some("union"));
+        assert_eq!(stop.members.len(), 4);
+        // ...but a dependency on `"completed"` would be a wrong edge.
+        assert!(stop.bases.is_empty(), "literal arms are not edges");
+
+        let mixed = by_name("Mixed");
+        assert_eq!(mixed.members.len(), 3, "every arm is listed");
+        let targets: Vec<&str> = mixed.bases.iter().map(|b| b.to.as_str()).collect();
+        assert_eq!(targets, vec!["PiEvent"], "only the named arm is an edge");
     }
 
     #[test]

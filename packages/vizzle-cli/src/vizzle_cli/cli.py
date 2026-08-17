@@ -7,7 +7,7 @@ from pathlib import Path
 
 import click
 
-from . import _core, git
+from . import _core, git, managed
 from .html import build_component_html, build_html, summarize, summarize_components
 
 
@@ -177,6 +177,81 @@ def class_diagram(
         **_render_kwargs(members, modules, group, externals, direction, title),
     )
     _emit_mermaid(diagram, output)
+
+
+@main.command("doc")
+@click.argument("docs", nargs=-1, type=click.Path(exists=True, dir_okay=False, path_type=Path))
+@click.option(
+    "--dir",
+    "directory",
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+    default=None,
+    help="Regenerate every managed document under this directory.",
+)
+@click.option(
+    "--root",
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+    default=Path("."),
+    show_default=True,
+    help="Repo root that manifest `file` paths resolve against.",
+)
+@click.option("--check", "check", is_flag=True, help="Fail if any document is out of date; write nothing.")
+@select_options
+def doc_command(
+    docs: tuple[Path, ...],
+    directory: Path | None,
+    root: Path,
+    check: bool,
+    include: tuple[str, ...],
+    exclude: tuple[str, ...],
+    lang: tuple[str, ...],
+) -> None:
+    """Regenerate managed diagram documents from their gen:c4-code manifest.
+
+    A managed document is markdown carrying a manifest comment and one mermaid
+    fence; only the fence is rewritten. `--check` reports drift and writes
+    nothing, which is what belongs in a lint chain.
+    Spec: docs/curated-diagrams.md.
+    """
+    if not docs and directory is None:
+        raise click.UsageError("give document paths, or --dir to scan a directory")
+
+    paths = list(docs) + (managed.discover(directory) if directory else [])
+    stale: list[Path] = []
+    written = 0
+    for path in paths:
+        try:
+            doc = managed.read(path)
+        except managed.ManagedDocError as err:
+            raise click.ClickException(str(err)) from err
+        if doc is None:
+            continue
+
+        try:
+            diagram = _core.curated_diagram_from_dir(
+                str(root), doc.manifest, include=list(include), exclude=list(exclude), langs=list(lang)
+            )
+            updated = doc.with_diagram(diagram)
+        except (ValueError, managed.ManagedDocError) as err:
+            raise click.ClickException(f"{path}: {err}") from err
+
+        if updated == doc.text:
+            continue
+        if check:
+            stale.append(path)
+        else:
+            path.write_text(updated, encoding="utf-8")
+            click.echo(f"regenerated {path}", err=True)
+            written += 1
+
+    if check and stale:
+        for path in stale:
+            click.echo(f"out of date: {path}", err=True)
+        raise click.ClickException(f"{len(stale)} document(s) need regenerating; run `vizzle doc`")
+    if check:
+        click.echo(f"{len(paths)} document(s) checked, all current", err=True)
+    elif not written:
+        click.echo("nothing to regenerate", err=True)
 
 
 @main.command("component")

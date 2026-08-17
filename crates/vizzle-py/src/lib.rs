@@ -267,6 +267,24 @@ fn component_json_diff(
     .map_err(to_py_err)
 }
 
+/// Render a curated diagram from a `gen:c4-code` manifest and the sources under `root`.
+#[pyfunction]
+#[pyo3(signature = (root, manifest, *, include = vec![], exclude = vec![], langs = vec![]))]
+fn curated_diagram_from_dir(
+    root: &str,
+    manifest: &str,
+    include: Vec<String>,
+    exclude: Vec<String>,
+    langs: Vec<String>,
+) -> PyResult<String> {
+    let select = SelectOptions {
+        include,
+        exclude,
+        langs,
+    };
+    vc::curated_from_dir(std::path::Path::new(root), &select, manifest).map_err(to_py_err)
+}
+
 /// The diff palette as CSS custom properties, for inlining into an HTML page.
 /// Keeps the HTML views on the same colors as the Mermaid renderer.
 #[pyfunction]
@@ -310,6 +328,7 @@ fn vizzle_core_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(component_json_from_dir, m)?)?;
     m.add_function(wrap_pyfunction!(component_diagram_diff, m)?)?;
     m.add_function(wrap_pyfunction!(component_json_diff, m)?)?;
+    m.add_function(wrap_pyfunction!(curated_diagram_from_dir, m)?)?;
     m.add_function(wrap_pyfunction!(diff_palette_css, m)?)?;
     m.add_function(wrap_pyfunction!(graph_json_from_dir, m)?)?;
     m.add_function(wrap_pyfunction!(graph_json_diff, m)?)?;

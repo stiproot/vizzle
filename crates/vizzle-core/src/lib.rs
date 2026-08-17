@@ -8,6 +8,7 @@
 //! 4. [`mermaid::render`] emits the diagram text.
 
 pub mod component;
+pub mod curated;
 pub mod diff;
 pub mod export;
 pub mod mermaid;
@@ -72,6 +73,14 @@ pub fn diff_diagram(
     let head = parse::parse_files(head_files)?;
     let merged = diff::diff_graphs(&base, &head);
     Ok(mermaid::render(&merged, render))
+}
+
+/// Render a curated diagram (docs/curated-diagrams.md) for the repo at `root`.
+pub fn curated_from_dir(root: &Path, select: &SelectOptions, manifest: &str) -> Result<String> {
+    let files = walk::collect_files(root, &select.include, &select.exclude, &select.languages()?)?;
+    let graph = parse::parse_files(&files)?;
+    let manifest = curated::parse_manifest(manifest)?;
+    curated::render(&manifest, &graph)
 }
 
 /// Export the class graph for every supported source file under `root` as JSON.
