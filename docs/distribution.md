@@ -1,8 +1,10 @@
 # Distribution
 
-**Status:** §3 (the name), §4 (one distribution), §5 and §6 (the release
-pipeline) and §2.6 (the agent plugin) are implemented; `vizzle 0.1.0` is on
-PyPI. §8 is a standing rejection with trigger conditions; §10 is deferred.
+**Status:** implemented — §3 (the name), §4 (one distribution), §5 and §6 (the
+release pipeline), §2.3 (the PR comment) and §2.6 (the agent plugin).
+`vizzle 0.1.0` is on PyPI, which is all §2.1 and §2.2 ever needed. Not built:
+§2.4 (waiting on a `--check` mode) and §2.5 (waiting on a mirror repo), both
+in §10. §8 is a standing rejection with trigger conditions.
 **Measured on:** 2026-08-16, against `~/code/h` (358 parsed source files) on Linux.
 
 The spec for how vizzle reaches the repos that use it. Diagram-type specs answer

@@ -54,12 +54,15 @@ For development — requires [uv](https://docs.astral.sh/uv/) and a Rust toolcha
 uv sync   # builds the Rust extension via maturin and installs the CLI
 ```
 
+Working from a clone, read `uv run vizzle …` wherever the examples below say
+`uvx vizzle …`, so you exercise your build rather than the published one.
+
 ## Usage
 
 Full class diagram of a codebase:
 
 ```sh
-uv run vizzle class ~/code/repo/h -o h-classes.mmd
+uvx vizzle class ~/code/repo/h -o h-classes.mmd
 ```
 
 Component diagram — one box per build-level module (workspace package, app,
@@ -68,8 +71,8 @@ service; any directory with a `package.json`/`pyproject.toml`/`Cargo.toml`/
 (spec: `docs/diagram-types/component.md`):
 
 ```sh
-uv run vizzle component ~/code/repo/h -o h-components.mmd --weights
-uv run vizzle component ~/code/repo/h -o h-components.html   # interactive
+uvx vizzle component ~/code/repo/h -o h-components.mmd --weights
+uvx vizzle component ~/code/repo/h -o h-components.html   # interactive
 ```
 
 In the HTML view each app/package gets a labelled box you can **drag as a
@@ -85,14 +88,14 @@ yellow ✱; unchanged classes in touched files render as context):
 
 ```sh
 # working tree vs HEAD
-uv run vizzle diff ~/code/repo/h
+uvx vizzle diff ~/code/repo/h
 
 # between two revisions
-uv run vizzle diff ~/code/repo/h --base HEAD~20 --head HEAD -o changes.mmd
+uvx vizzle diff ~/code/repo/h --base HEAD~20 --head HEAD -o changes.mmd
 
 # did the change rewire the application? (parses both full revisions;
 # added/removed dependency edges render loudest)
-uv run vizzle diff ~/code/repo/h --type component
+uvx vizzle diff ~/code/repo/h --type component
 ```
 
 ### Interactive HTML (d3)
@@ -105,8 +108,8 @@ pages color whole classes *and* individual member rows (removed members are
 struck through):
 
 ```sh
-uv run vizzle class ~/code/repo/h -o h-classes.html
-uv run vizzle diff ~/code/repo/h --base HEAD~20 --head HEAD -o changes.html
+uvx vizzle class ~/code/repo/h -o h-classes.html
+uvx vizzle diff ~/code/repo/h --base HEAD~20 --head HEAD -o changes.html
 open changes.html
 ```
 
@@ -147,11 +150,11 @@ server-sent events + watchfiles — no web framework). Your zoom/pan position
 survives reloads.
 
 ```sh
-uv run vizzle serve ~/code/repo/h                  # live class diagram
-uv run vizzle serve ~/code/repo/h --diff --open    # watch your working-tree
-                                                  # changes vs HEAD reshape
-                                                  # the UML as you edit
-uv run vizzle serve ~/code/repo/h --type component --diff   # live rewiring view
+uvx vizzle serve ~/code/repo/h                  # live class diagram
+uvx vizzle serve ~/code/repo/h --diff --open    # watch your working-tree
+                                                # changes vs HEAD reshape
+                                                # the UML as you edit
+uvx vizzle serve ~/code/repo/h --type component --diff   # live rewiring view
 ```
 
 Defaults to http://127.0.0.1:8499/; see `--port`, `--host`, `--base`.

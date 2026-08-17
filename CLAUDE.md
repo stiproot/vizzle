@@ -13,6 +13,8 @@ packages/vizzle-cli/    Click CLI. Git orchestration, file I/O, page assembly.
   └── assets/          viz-core.{css,js} (shared) + one template per diagram type.
 docs/diagram-types/    One spec per diagram type. Written before the code.
 docs/distribution.md   How vizzle reaches other repos, and why.
+plugins/vizzle/        Claude Code plugin: one skill teaching agents to use it.
+.github/workflows/     ci, codeql, pr-diagram, and the tag-driven release.
 ```
 
 Three source layers, **one shipped distribution**: `packages/vizzle-cli/` is the
@@ -42,6 +44,11 @@ requirement is **`git` on PATH**. See `docs/distribution.md` §7 and §9.
 3. Bindings, then CLI command, then a template.
 4. A new diagram type means **a new template, never a copied page**. If you are
    about to copy from an existing template, that code belongs in `viz-core.js`.
+5. **Teach the agent skill about it** —
+   `plugins/vizzle/skills/vizzle-diagrams/SKILL.md`. It documents the CLI
+   surface, so a new command it does not mention is a command no agent will
+   ever reach for, and a flag it describes wrongly is the lying spec again.
+   Run every command you add to it before you commit it.
 
 ## DRY, concretely
 
@@ -122,11 +129,31 @@ uv sync --reinstall-package vizzle       # after Rust changes, before CLI tests
 - A test that cannot fail is worth less than no test: when you fix a bug, first
   confirm the new test reproduces it.
 
+`ci.yml` runs the first three on every push, plus `codeql.yml` and
+`cargo audit`. CI is a backstop, not the check — it cannot look at a page.
+
+## Releasing
+
+The version is stated **once**, in the root `Cargo.toml`; maturin derives the
+Python one from it. So a release is: bump it, commit, tag `vX.Y.Z`, push the
+tag. `release.yml` builds four wheels and an sdist, smoke-tests each on a
+clean runner, and publishes to PyPI by Trusted Publishing.
+
+Two ways to break it silently, both learned the hard way (`docs/distribution.md`
+§5.1): renaming `release.yml` voids the PyPI publisher registration, which
+names that file; and `manylinux: auto` builds a Linux wheel that imports with
+`undefined symbol: le16toh`, so the pin to `2_28` is load-bearing.
+
 ## Repo hygiene
 
 - Generated diagrams belong in `examples/` (committed, regenerated
   deliberately) or nowhere. Root-level outputs are gitignored — never
   `git add -A` a diagram into the tree.
+- `*.so` is gitignored: maturin writes the 5MB compiled extension into
+  `packages/vizzle-cli/src/vizzle_cli/` on every editable build.
 - Vendored assets (`assets/d3.*`) are managed via `web/` + bun, then synced.
+- Actions are pinned to commit SHAs, with the tag in a comment beside them.
+  Dependabot moves the pins; do not "tidy" them back to tags.
 - Keep the spec current with the code. A spec that lies is worse than no spec:
   mark shipped sections, and move deferred ideas to the out-of-scope list.
+  This applies to `SKILL.md` too — it is a spec that an agent executes.
