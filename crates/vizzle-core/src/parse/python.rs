@@ -16,30 +16,75 @@ pub fn parse(module: &str, source: &str) -> Result<CodeGraph> {
         .context("tree-sitter failed to parse python source")?;
 
     let mut graph = CodeGraph::default();
-    collect(tree.root_node(), source, module, None, &mut graph);
+    let mut module_fns = Vec::new();
+    collect(
+        tree.root_node(),
+        source,
+        module,
+        None,
+        &mut graph,
+        &mut module_fns,
+    );
+    super::push_module_box(module, module_fns, Language::Python, &mut graph);
     Ok(graph)
 }
 
 /// Walk top-level (and nested) statements, collecting class definitions.
-fn collect(node: Node, src: &str, module: &str, outer: Option<&str>, graph: &mut CodeGraph) {
+fn collect(
+    node: Node,
+    src: &str,
+    module: &str,
+    outer: Option<&str>,
+    graph: &mut CodeGraph,
+    module_fns: &mut Vec<Member>,
+) {
     let mut cursor = node.walk();
     for child in node.named_children(&mut cursor) {
         match child.kind() {
             "class_definition" => extract_class(child, src, module, outer, &[], graph),
+            // Only reached at module level: the walk never descends into a
+            // class body (extract_class owns that) or a function body, so any
+            // definition seen here is module surface (class.md §2.4).
+            "function_definition" => extract_module_function(child, src, &[], module_fns),
             "decorated_definition" => {
                 let decorators = decorator_names(child, src);
                 if let Some(def) = child.child_by_field_name("definition") {
-                    if def.kind() == "class_definition" {
-                        extract_class(def, src, module, outer, &decorators, graph);
+                    match def.kind() {
+                        "class_definition" => {
+                            extract_class(def, src, module, outer, &decorators, graph)
+                        }
+                        "function_definition" => {
+                            extract_module_function(def, src, &decorators, module_fns)
+                        }
+                        _ => {}
                     }
                 }
             }
             "import_statement" | "import_from_statement" => extract_imports(child, src, graph),
             // Classes (and imports) can hide inside `if TYPE_CHECKING:` etc.
-            "if_statement" | "try_statement" | "block" => collect(child, src, module, outer, graph),
+            "if_statement" | "try_statement" | "block" => {
+                collect(child, src, module, outer, graph, module_fns)
+            }
             _ => {}
         }
     }
+}
+
+/// A module-level `def`. Private helpers (leading underscore) are not module
+/// surface and are dropped; the shape is otherwise a method's.
+fn extract_module_function(
+    func: Node,
+    src: &str,
+    decorators: &[String],
+    members: &mut Vec<Member>,
+) {
+    let Some(name_node) = func.child_by_field_name("name") else {
+        return;
+    };
+    if text(name_node, src).starts_with('_') {
+        return;
+    }
+    extract_method(func, src, decorators, members);
 }
 
 /// `import a.b, c` -> targets `a.b`, `c`; `from ..x import y` -> target `..x`
@@ -152,8 +197,10 @@ fn extract_class(
     let mut members = Vec::new();
     if let Some(body) = node.child_by_field_name("body") {
         extract_body(body, src, &mut members);
-        // Nested classes.
-        collect(body, src, module, Some(&local_name), graph);
+        // Nested classes only. The discard buffer is deliberate: this body's
+        // `def`s are methods, already taken by extract_body above, and must not
+        // also land in the module box.
+        collect(body, src, module, Some(&local_name), graph, &mut Vec::new());
     }
 
     let is_abstract = members.iter().any(|m: &Member| m.is_abstract);
@@ -364,6 +411,37 @@ mod tests {
 
     fn parse_src(src: &str) -> CodeGraph {
         parse("pkg.mod", src).unwrap()
+    }
+
+    #[test]
+    fn module_functions_collect_into_one_module_box() {
+        let g = parse_src(
+            r#"
+def build(cfg: Config, retries: int = 3) -> Runner:
+    return Runner()
+
+async def flush(target: str) -> None:
+    pass
+
+def _private_helper() -> None:
+    pass
+
+class NotAFunction:
+    def method(self) -> None: pass
+"#,
+        );
+        let module = g
+            .classes
+            .iter()
+            .find(|c| c.annotation.as_deref() == Some("module"))
+            .expect("a module box for the public module-level functions");
+        let names: Vec<&str> = module.members.iter().map(|m| m.name.as_str()).collect();
+        assert_eq!(names, vec!["build", "flush"], "sorted, public only");
+        assert!(module.members.iter().all(|m| m.is_method));
+        // The class's own method must not leak into the module box.
+        assert!(!names.contains(&"method"));
+        let build = module.members.iter().find(|m| m.name == "build").unwrap();
+        assert_eq!(build.returns.as_deref(), Some("Runner"));
     }
 
     #[test]

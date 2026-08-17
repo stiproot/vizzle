@@ -159,7 +159,8 @@ uvx vizzle serve ~/code/repo/h --type component --diff   # live rewiring view
 
 Defaults to http://127.0.0.1:8499/; see `--port`, `--host`, `--base`.
 
-Useful flags (both commands): `--no-members`, `--group` (mermaid namespace
+Useful flags (both commands): `--no-members`, `--modules` (add a «module»
+box per module holding its public module-level functions), `--group` (mermaid namespace
 blocks per module), `--externals` (edges to types outside the parsed set),
 `--direction LR` (mermaid), `-I/-E` include/exclude globs (`vizzle class`),
 `--title`, `-f/--format mermaid|html`.
@@ -169,6 +170,17 @@ Render the `.mmd` output with mermaid-cli:
 ```sh
 npx -y @mermaid-js/mermaid-cli -i changes.mmd -o changes.svg
 ```
+
+A whole-repo class diagram will exceed Mermaid's default 50,000-character
+`maxTextSize` and render as a small error graphic rather than failing loudly.
+Raise it:
+
+```sh
+echo '{"maxTextSize": 5000000, "maxEdges": 20000}' > mermaid.json
+npx -y @mermaid-js/mermaid-cli -c mermaid.json -i h-classes.mmd -o h-classes.svg
+```
+
+The HTML output has no such limit.
 
 ## How the diff works
 

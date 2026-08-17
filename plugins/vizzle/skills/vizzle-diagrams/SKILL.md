@@ -16,7 +16,7 @@ Measured on a real 358-file repository:
 | What you do | Cost |
 | --- | --- |
 | `vizzle component` — the whole repo's module graph | **~1.5k tokens** |
-| `vizzle class` — every class, unscoped | ~16k tokens |
+| `vizzle class` — every named type, unscoped | ~30k tokens |
 | Reading the repo to learn the same thing | tens of thousands |
 
 A component diagram is cheap enough to run *before* you have a specific
@@ -69,11 +69,18 @@ Useful additions:
 uvx vizzle class <path> -I 'src/the/part/you/care/about/**'
 ```
 
-An unscoped `class` diagram on a large repo is ~16k tokens. **Always scope it
+An unscoped `class` diagram on a large repo is ~30k tokens. **Always scope it
 with `-I`** unless the repo is small or you have budgeted for it. Cheaper still:
 
 - `--no-members` — classes and relations without fields and methods.
 - `-l python` / `-l typescript` — one language only.
+
+The class diagram covers classes, interfaces, enums, dataclasses, and the
+TypeScript `type` aliases that carry structure (an object literal, or a union
+of named types). It does **not** include module-level functions unless you ask:
+`--modules` adds one `«module»` box per module listing its public functions,
+which on a large repo is another ~90 KB, so ask for it only when the functions
+are the question.
 
 ### 3. After making changes: what did they do?
 
@@ -95,8 +102,10 @@ modules; `subgraph` blocks group siblings by parent directory; dashed arrows are
 dependencies pointing from importer to imported.
 
 **Class diagrams** are a Mermaid `classDiagram` with stereotypes
-(`<<interface>>`, `<<dataclass>>`), typed members, and inheritance,
-association, and dependency edges.
+(`<<interface>>`, `<<dataclass>>`, `<<type>>`, `<<union>>`, `<<module>>`),
+typed members, and inheritance, association, and dependency edges. A
+`<<union>>` box lists its arms as members and draws a dependency edge to each
+one it could resolve.
 
 **Diff output** marks every element: `✚` added, `✖` removed, `✱` modified.
 Unchanged elements in touched files appear as context so the change keeps its

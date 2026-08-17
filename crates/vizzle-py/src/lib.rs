@@ -13,6 +13,7 @@ fn to_py_err(err: anyhow::Error) -> PyErr {
 #[allow(clippy::too_many_arguments)]
 fn options(
     show_members: bool,
+    show_modules: bool,
     group_by_module: bool,
     include_externals: bool,
     direction: Option<String>,
@@ -20,6 +21,7 @@ fn options(
 ) -> RenderOptions {
     RenderOptions {
         show_members,
+        show_modules,
         group_by_module,
         include_externals,
         direction,
@@ -36,6 +38,7 @@ fn options(
     exclude = vec![],
     langs = vec![],
     show_members = true,
+    show_modules = false,
     group_by_module = false,
     include_externals = false,
     direction = None,
@@ -48,6 +51,7 @@ fn class_diagram_from_dir(
     exclude: Vec<String>,
     langs: Vec<String>,
     show_members: bool,
+    show_modules: bool,
     group_by_module: bool,
     include_externals: bool,
     direction: Option<String>,
@@ -60,6 +64,7 @@ fn class_diagram_from_dir(
     };
     let render = options(
         show_members,
+        show_modules,
         group_by_module,
         include_externals,
         direction,
@@ -74,6 +79,7 @@ fn class_diagram_from_dir(
     files,
     *,
     show_members = true,
+    show_modules = false,
     group_by_module = false,
     include_externals = false,
     direction = None,
@@ -82,6 +88,7 @@ fn class_diagram_from_dir(
 fn class_diagram_from_files(
     files: Vec<(String, String)>,
     show_members: bool,
+    show_modules: bool,
     group_by_module: bool,
     include_externals: bool,
     direction: Option<String>,
@@ -89,6 +96,7 @@ fn class_diagram_from_files(
 ) -> PyResult<String> {
     let render = options(
         show_members,
+        show_modules,
         group_by_module,
         include_externals,
         direction,
@@ -104,6 +112,7 @@ fn class_diagram_from_files(
     head_files,
     *,
     show_members = true,
+    show_modules = false,
     group_by_module = false,
     include_externals = false,
     direction = None,
@@ -114,6 +123,7 @@ fn class_diagram_diff(
     base_files: Vec<(String, String)>,
     head_files: Vec<(String, String)>,
     show_members: bool,
+    show_modules: bool,
     group_by_module: bool,
     include_externals: bool,
     direction: Option<String>,
@@ -121,6 +131,7 @@ fn class_diagram_diff(
 ) -> PyResult<String> {
     let render = options(
         show_members,
+        show_modules,
         group_by_module,
         include_externals,
         direction,

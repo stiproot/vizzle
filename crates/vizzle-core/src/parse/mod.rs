@@ -6,7 +6,32 @@ mod typescript;
 use anyhow::Result;
 use rayon::prelude::*;
 
-use crate::model::{CodeGraph, Language};
+use crate::model::{ChangeKind, Class, CodeGraph, Language, Member, MODULE_ANNOTATION};
+
+/// One `<<module>>` box per module holding its exported module-level functions
+/// (class.md §2.4). Sorted, because diagram output must be diffable.
+pub(super) fn push_module_box(
+    module: &str,
+    mut members: Vec<Member>,
+    lang: Language,
+    graph: &mut CodeGraph,
+) {
+    if members.is_empty() {
+        return;
+    }
+    members.sort_by(|a, b| a.name.cmp(&b.name));
+    let name = module.rsplit('.').next().unwrap_or(module).to_owned();
+    graph.classes.push(Class {
+        qualified: module.to_owned(),
+        module: module.to_owned(),
+        annotation: Some(MODULE_ANNOTATION.to_owned()),
+        bases: Vec::new(),
+        members,
+        lang,
+        change: ChangeKind::Unchanged,
+        name,
+    });
+}
 
 /// Derive a dotted module path from a repo-relative file path.
 ///
@@ -64,12 +89,17 @@ pub(crate) fn text(node: tree_sitter::Node, src: &str) -> String {
 pub(crate) fn clean_type(raw: &str) -> String {
     // `dict[str, int]` -> `dict~str, int~` (mermaid generics), but keep
     // literal `[]` array suffixes (`string[]` renders fine as-is).
+    //
+    // TypeScript's `Foo<Bar>` needs the same treatment: a raw `<` in a
+    // classDiagram member is read as markup and kills the whole diagram, which
+    // is why every class diagram this tool emitted failed to render in mmdc
+    // until 2026-08-17.
     let mut cleaned: String = raw
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ")
         .replace("[]", "\u{1}")
-        .replace(['[', ']'], "~")
+        .replace(['[', ']', '<', '>'], "~")
         .replace('\u{1}', "[]")
         .replace(['"', '\'', '{', '}', '(', ')', '`', ';'], "");
     if cleaned.chars().count() > 40 {

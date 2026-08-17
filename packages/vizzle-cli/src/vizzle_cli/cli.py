@@ -11,9 +11,12 @@ from . import _core, git
 from .html import build_component_html, build_html, summarize, summarize_components
 
 
-def _render_kwargs(members: bool, group: bool, externals: bool, direction: str | None, title: str | None) -> dict:
+def _render_kwargs(
+    members: bool, modules: bool, group: bool, externals: bool, direction: str | None, title: str | None
+) -> dict:
     return {
         "show_members": members,
+        "show_modules": modules,
         "group_by_module": group,
         "include_externals": externals,
         "direction": direction,
@@ -110,6 +113,11 @@ output_options = _compose(
 render_options = _compose(
     click.option("--members/--no-members", default=True, show_default=True, help="Render fields and methods."),
     click.option(
+        "--modules",
+        is_flag=True,
+        help="Add one «module» box per module holding its public module-level functions.",
+    ),
+    click.option(
         "--group/--no-group",
         "group",
         default=False,
@@ -137,6 +145,7 @@ def class_diagram(
     exclude: tuple[str, ...],
     lang: tuple[str, ...],
     members: bool,
+    modules: bool,
     group: bool,
     externals: bool,
     direction: str | None,
@@ -154,9 +163,10 @@ def class_diagram(
             graph_json,
             title=title or f"{path.resolve().name} — class diagram",
             show_members=members,
+            show_modules=modules,
             include_externals=externals,
         )
-        _emit(page, output, summarize(graph_json))
+        _emit(page, output, summarize(graph_json, show_modules=modules))
         return
 
     diagram = _core.class_diagram_from_dir(
@@ -164,7 +174,7 @@ def class_diagram(
         include=list(include),
         exclude=list(exclude),
         langs=list(lang),
-        **_render_kwargs(members, group, externals, direction, title),
+        **_render_kwargs(members, modules, group, externals, direction, title),
     )
     _emit_mermaid(diagram, output)
 
@@ -314,6 +324,7 @@ def diff_diagram(
     diagram_type: str,
     weights: bool,
     members: bool,
+    modules: bool,
     group: bool,
     externals: bool,
     direction: str | None,
@@ -360,15 +371,16 @@ def diff_diagram(
             graph_json,
             title=resolved_title,
             show_members=members,
+            show_modules=modules,
             include_externals=externals,
         )
-        _emit(page, output, summarize(graph_json))
+        _emit(page, output, summarize(graph_json, show_modules=modules))
         return
 
     diagram = _core.class_diagram_diff(
         base_files,
         head_files,
-        **_render_kwargs(members, group, externals, direction, resolved_title),
+        **_render_kwargs(members, modules, group, externals, direction, resolved_title),
     )
     _emit_mermaid(diagram, output)
 
@@ -390,6 +402,11 @@ def diff_diagram(
 @click.option("-E", "--exclude", multiple=True, help="Glob of relative paths to exclude (class mode, repeatable).")
 @click.option("-l", "--lang", multiple=True, type=click.Choice(["python", "typescript"]), help="Restrict languages.")
 @click.option("--members/--no-members", default=True, show_default=True, help="Render fields and methods.")
+@click.option(
+    "--modules",
+    is_flag=True,
+    help="Add one «module» box per module holding its public module-level functions.",
+)
 @click.option("--externals", is_flag=True, help="Show inheritance edges to types outside the parsed set.")
 @click.option("--title", default=None, help="Diagram title.")
 @click.option("--host", default="127.0.0.1", show_default=True)
@@ -405,6 +422,7 @@ def serve_command(
     exclude: tuple[str, ...],
     lang: tuple[str, ...],
     members: bool,
+    modules: bool,
     externals: bool,
     title: str | None,
     host: str,
@@ -446,7 +464,13 @@ def serve_command(
                 str(path), include=list(include), exclude=list(exclude), langs=list(lang)
             )
             page_title = title or f"{path.resolve().name} — class diagram (live)"
-        return build_html(graph_json, title=page_title, show_members=members, include_externals=externals)
+        return build_html(
+            graph_json,
+            title=page_title,
+            show_members=members,
+            show_modules=modules,
+            include_externals=externals,
+        )
 
     build_page()  # fail fast (bad path, not a git repo, ...) before binding the port
 

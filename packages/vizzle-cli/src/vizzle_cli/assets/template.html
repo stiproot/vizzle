@@ -42,7 +42,12 @@ function buildNode(c) {
   return { id: c.qualified, cls: c, box, w: box.w, h: box.h, external: false };
 }
 
-const nodes = graph.classes.map(buildNode);
+// The graph always carries «module» boxes; the page shows them only when asked,
+// so the page and the mermaid renderer agree (class.md §2.4).
+const drawn = config.showModules
+  ? graph.classes
+  : graph.classes.filter((c) => c.annotation !== "module");
+const nodes = drawn.map(buildNode);
 const byId = new Map(nodes.map((n) => [n.id, n]));
 
 // External bases become small stub nodes (deduped by name).

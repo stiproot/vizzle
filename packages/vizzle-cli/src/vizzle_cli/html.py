@@ -40,9 +40,16 @@ def build_html(
     *,
     title: str,
     show_members: bool = True,
+    show_modules: bool = False,
     include_externals: bool = False,
 ) -> str:
-    config = {"showMembers": show_members, "includeExternals": include_externals}
+    # showModules mirrors the mermaid renderer's show_modules: the graph JSON
+    # always carries the «module» boxes, and the page decides (class.md §2.4).
+    config = {
+        "showMembers": show_members,
+        "showModules": show_modules,
+        "includeExternals": include_externals,
+    }
     return _fill("template.html", graph_json, title, config)
 
 
@@ -56,9 +63,16 @@ def build_component_html(
     return _fill("template-component.html", graph_json, title, config)
 
 
-def summarize(graph_json: str) -> str:
-    stats = json.loads(graph_json)["stats"]
-    return f"{stats['classes']} classes, {stats['relations']} relations"
+def summarize(graph_json: str, *, show_modules: bool = True) -> str:
+    graph = json.loads(graph_json)
+    stats = graph["stats"]
+    if show_modules:
+        return f"{stats['classes']} classes, {stats['relations']} relations"
+    # The JSON always carries the «module» boxes and their edges; the page hides
+    # them, so report what will actually be drawn rather than what was parsed.
+    hidden = {c["qualified"] for c in graph["classes"] if c.get("annotation") == "module"}
+    relations = sum(1 for r in graph["relations"] if r["from"] not in hidden and r["to"] not in hidden)
+    return f"{stats['classes'] - len(hidden)} classes, {relations} relations"
 
 
 def summarize_components(graph_json: str) -> str:

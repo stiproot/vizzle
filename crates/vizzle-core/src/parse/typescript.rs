@@ -16,11 +16,45 @@ pub fn parse(module: &str, source: &str) -> Result<CodeGraph> {
         .context("tree-sitter failed to parse typescript source")?;
 
     let mut graph = CodeGraph::default();
-    collect(tree.root_node(), source, module, &mut graph);
+    let mut module_fns = Vec::new();
+    collect(
+        tree.root_node(),
+        source,
+        module,
+        &mut graph,
+        Scope::module(),
+        &mut module_fns,
+    );
+    super::push_module_box(module, module_fns, Language::TypeScript, &mut graph);
     Ok(graph)
 }
 
-fn collect(node: Node, src: &str, module: &str, graph: &mut CodeGraph) {
+/// Where the walk currently is, so a declaration can tell whether it is
+/// module-level and whether it is exported. Nested and unexported functions are
+/// not module surface (class.md §2.4).
+#[derive(Clone, Copy)]
+struct Scope {
+    module_level: bool,
+    exported: bool,
+}
+
+impl Scope {
+    fn module() -> Self {
+        Self {
+            module_level: true,
+            exported: false,
+        }
+    }
+}
+
+fn collect(
+    node: Node,
+    src: &str,
+    module: &str,
+    graph: &mut CodeGraph,
+    scope: Scope,
+    module_fns: &mut Vec<Member>,
+) {
     let mut cursor = node.walk();
     for child in node.named_children(&mut cursor) {
         match child.kind() {
@@ -29,15 +63,33 @@ fn collect(node: Node, src: &str, module: &str, graph: &mut CodeGraph) {
             }
             "interface_declaration" => extract_interface(child, src, module, graph),
             "enum_declaration" => extract_enum(child, src, module, graph),
+            "type_alias_declaration" => extract_type_alias(child, src, module, graph),
+            "function_declaration" | "function_signature" => {
+                if scope.module_level && scope.exported {
+                    extract_module_function(child, src, module_fns);
+                }
+            }
             "import_statement" => extract_import(child, src, graph),
             // Unwrap `export class ...`, namespaces, and top-level statements.
             // An export can also be a re-export (`export { x } from "y"`).
             "export_statement" => {
                 extract_import(child, src, graph);
-                collect(child, src, module, graph)
+                let inner = Scope {
+                    exported: true,
+                    ..scope
+                };
+                collect(child, src, module, graph, inner, module_fns)
             }
-            "internal_module" | "module" | "statement_block" | "ambient_declaration" => {
-                collect(child, src, module, graph)
+            "internal_module" | "module" | "ambient_declaration" => {
+                collect(child, src, module, graph, scope, module_fns)
+            }
+            // A function inside a block is a local, not module surface.
+            "statement_block" => {
+                let inner = Scope {
+                    module_level: false,
+                    ..scope
+                };
+                collect(child, src, module, graph, inner, module_fns)
             }
             _ => {}
         }
@@ -162,6 +214,111 @@ fn extract_interface(node: Node, src: &str, module: &str, graph: &mut CodeGraph)
         change: ChangeKind::Unchanged,
         name,
     });
+}
+
+/// A `type` alias earns a box only when it carries structure this parser can
+/// see: an object literal, or a union of named types (class.md §2.3). Anything
+/// needing a checker to unfold — generics, mapped and conditional types — is
+/// skipped, because a box holding a truncated type string is noise.
+fn extract_type_alias(node: Node, src: &str, module: &str, graph: &mut CodeGraph) {
+    let (Some(name_node), Some(value)) = (
+        node.child_by_field_name("name"),
+        node.child_by_field_name("value"),
+    ) else {
+        return;
+    };
+    let name = text(name_node, src);
+    let qualified = qualified(module, &name);
+
+    let (annotation, members, bases) = match value.kind() {
+        "object_type" => {
+            let mut members = Vec::new();
+            let mut cursor = value.walk();
+            for item in value.named_children(&mut cursor) {
+                match item.kind() {
+                    "property_signature" => extract_property(item, src, &mut members),
+                    "method_signature" => extract_method(item, src, false, &mut members),
+                    _ => {}
+                }
+            }
+            ("type", members, Vec::new())
+        }
+        "union_type" => {
+            let arms = union_arms(value, src);
+            // Every arm must be a named type, or this is a literal/primitive
+            // union with no graph information in it.
+            if arms.is_empty() {
+                return;
+            }
+            let members = arms
+                .iter()
+                .map(|arm| Member {
+                    name: arm.clone(),
+                    ..Default::default()
+                })
+                .collect();
+            let bases = arms
+                .iter()
+                .map(|arm| Relation {
+                    from: qualified.clone(),
+                    to: bare_type_name(arm),
+                    kind: RelationKind::Dependency,
+                })
+                .collect();
+            ("union", members, bases)
+        }
+        _ => return,
+    };
+
+    graph.classes.push(Class {
+        qualified,
+        module: module.to_owned(),
+        annotation: Some(annotation.to_owned()),
+        bases,
+        members,
+        lang: Language::TypeScript,
+        change: ChangeKind::Unchanged,
+        name,
+    });
+}
+
+/// The arms of a union, but only if *every* arm is a named type. A single
+/// literal or primitive arm means the union is describing values rather than
+/// relating types, and it is dropped whole.
+fn union_arms(node: Node, src: &str) -> Vec<String> {
+    let mut arms = Vec::new();
+    let mut cursor = node.walk();
+    for arm in node.named_children(&mut cursor) {
+        match arm.kind() {
+            "union_type" => {
+                // Unions nest to the left: `A | B | C` is `(A | B) | C`.
+                let inner = union_arms(arm, src);
+                if inner.is_empty() {
+                    return Vec::new();
+                }
+                arms.extend(inner);
+            }
+            "type_identifier" | "nested_type_identifier" | "generic_type" => {
+                arms.push(clean_type(&text(arm, src)))
+            }
+            _ => return Vec::new(),
+        }
+    }
+    arms
+}
+
+fn extract_module_function(node: Node, src: &str, members: &mut Vec<Member>) {
+    let Some(name_node) = node.child_by_field_name("name") else {
+        return;
+    };
+    let mut fns = Vec::new();
+    extract_method(node, src, false, &mut fns);
+    // `extract_method` reads the shared shape (params, return type); only the
+    // name lookup differs between a method and a declaration.
+    if let Some(mut member) = fns.pop() {
+        member.name = text(name_node, src);
+        members.push(member);
+    }
 }
 
 fn extract_enum(node: Node, src: &str, module: &str, graph: &mut CodeGraph) {
@@ -363,6 +520,65 @@ mod tests {
 
     fn parse_src(src: &str) -> CodeGraph {
         parse("web.src.app", src).unwrap()
+    }
+
+    #[test]
+    fn structural_type_aliases_become_boxes() {
+        let g = parse_src(
+            r#"
+export type Config = {
+    retries: number;
+    onDone(result: string): void;
+};
+
+export type PiEvent = PiSessionEvent | PiToolEvent | RawLineEvent;
+
+// Skipped: no structure this parser can see without a checker (class.md §2.3).
+export type Env = Effect<GitClient, RunLedger, never>;
+export type Id = string;
+export type Keys = keyof Config;
+"#,
+        );
+        let by_name = |n: &str| g.classes.iter().find(|c| c.name == n);
+
+        let config = by_name("Config").expect("object-literal alias is a box");
+        assert_eq!(config.annotation.as_deref(), Some("type"));
+        assert_eq!(config.members.len(), 2);
+        let on_done = config.members.iter().find(|m| m.name == "onDone").unwrap();
+        assert!(on_done.is_method);
+
+        let ev = by_name("PiEvent").expect("named-type union is a box");
+        assert_eq!(ev.annotation.as_deref(), Some("union"));
+        assert_eq!(ev.members.len(), 3);
+        // Each arm is a dependency edge, so a union shows what it unifies.
+        assert_eq!(ev.bases.len(), 3);
+        assert!(ev.bases.iter().all(|b| b.kind == RelationKind::Dependency));
+
+        for skipped in ["Env", "Id", "Keys"] {
+            assert!(by_name(skipped).is_none(), "{skipped} should be skipped");
+        }
+    }
+
+    #[test]
+    fn module_functions_collect_into_one_module_box() {
+        let g = parse_src(
+            r#"
+export function parse(input: string): Config { return null as any; }
+export async function merge(a: Config, b: Config): Promise<Config> { return a; }
+function internalHelper(): void {}
+export class NotAFunction {}
+"#,
+        );
+        let module = g
+            .classes
+            .iter()
+            .find(|c| c.annotation.as_deref() == Some("module"))
+            .expect("a module box for the exported functions");
+        assert_eq!(module.name, "app");
+        assert_eq!(module.qualified, "web.src.app");
+        let names: Vec<&str> = module.members.iter().map(|m| m.name.as_str()).collect();
+        assert_eq!(names, vec!["merge", "parse"], "sorted, exported only");
+        assert!(module.members.iter().all(|m| m.is_method));
     }
 
     #[test]

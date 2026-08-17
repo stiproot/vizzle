@@ -11,6 +11,9 @@ use crate::resolve::{resolve_all_relations, Target};
 pub struct RenderOptions {
     /// Render fields and methods inside each class box.
     pub show_members: bool,
+    /// Include the `<<module>>` boxes holding module-level functions
+    /// (class.md §2.4). Off by default: on h they add 124 boxes to 213.
+    pub show_modules: bool,
     /// Group classes into `namespace` blocks per module.
     pub group_by_module: bool,
     /// Emit inheritance edges to types that were not found in the parsed set
@@ -25,6 +28,7 @@ impl Default for RenderOptions {
     fn default() -> Self {
         Self {
             show_members: true,
+            show_modules: false,
             group_by_module: false,
             include_externals: false,
             direction: None,
@@ -49,6 +53,15 @@ pub(crate) fn escape_label(label: &str) -> String {
 }
 
 pub fn render(graph: &CodeGraph, opts: &RenderOptions) -> String {
+    // Filter once, here, so every loop below is unaware of the option.
+    let pruned;
+    let graph = if opts.show_modules {
+        graph
+    } else {
+        pruned = graph.without_module_boxes();
+        &pruned
+    };
+
     let mut out = String::new();
     if let Some(title) = &opts.title {
         let _ = writeln!(out, "---\ntitle: {}\n---", escape_label(title));
@@ -214,13 +227,88 @@ fn member_row(member: &Member, diff_mode: bool) -> String {
     } else {
         format!("{vis}{} : {}{classifier}", member.name, member.detail)
     };
-    format!("{row}{marker}")
+    format!("{}{marker}", balanced(&row))
+}
+
+/// Mermaid parses a classDiagram member line with unbalanced `(`/`{` as a
+/// broken member and fails the whole diagram. Truncated parameter lists (a
+/// destructured object, a 40-char cap landing mid-expression) can produce one,
+/// so the last thing every row passes through is a balance check.
+fn balanced(row: &str) -> String {
+    let ok = |open: char, close: char| row.matches(open).count() == row.matches(close).count();
+    if ok('(', ')') && ok('{', '}') {
+        return row.to_owned();
+    }
+    row.chars()
+        .filter(|c| !matches!(c, '(' | ')' | '{' | '}'))
+        .collect()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::parse::parse_file;
+
+    #[test]
+    fn member_rows_never_leave_a_delimiter_unbalanced() {
+        let graph = crate::parse::parse_file(
+            "web/src/app.ts",
+            "export function buildInvocationResult({ a, b }: Opts, r: Map<string, number>): void {}\n",
+        )
+        .unwrap();
+        let out = render(
+            &graph,
+            &RenderOptions {
+                show_modules: true,
+                ..Default::default()
+            },
+        );
+        for line in out.lines().filter(|l| l.trim_start().starts_with('+')) {
+            assert_eq!(
+                line.matches('(').count(),
+                line.matches(')').count(),
+                "parens: {line}"
+            );
+            assert_eq!(
+                line.matches('{').count(),
+                line.matches('}').count(),
+                "braces: {line}"
+            );
+            assert!(
+                !line.contains('<'),
+                "raw angle bracket kills mermaid: {line}"
+            );
+        }
+    }
+
+    #[test]
+    fn module_boxes_are_opt_in() {
+        let graph = crate::parse::parse_file(
+            "web/src/app.ts",
+            "export function parse(x: string): void {}\nexport class Real {}\n",
+        )
+        .unwrap();
+
+        let hidden = render(&graph, &RenderOptions::default());
+        assert!(hidden.contains("Real"), "real classes always render");
+        assert!(
+            !hidden.contains("module"),
+            "module box hidden by default:\n{hidden}"
+        );
+
+        let shown = render(
+            &graph,
+            &RenderOptions {
+                show_modules: true,
+                ..Default::default()
+            },
+        );
+        assert!(
+            shown.contains("<<module>>"),
+            "shown under show_modules:\n{shown}"
+        );
+        assert!(shown.contains("parse"));
+    }
 
     #[test]
     fn renders_basic_diagram() {

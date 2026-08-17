@@ -140,6 +140,10 @@ pub struct Relation {
     pub kind: RelationKind,
 }
 
+/// The stereotype marking a `<<module>>` box (class.md §2.4). Named once: the
+/// parsers write it, the renderer keys its filter on it.
+pub const MODULE_ANNOTATION: &str = "module";
+
 #[derive(Debug, Clone)]
 pub struct Class {
     /// Bare class name, e.g. `AgentRunner`.
@@ -210,5 +214,22 @@ impl CodeGraph {
         self.imports
             .sort_by(|a, b| (&a.file, &a.target).cmp(&(&b.file, &b.target)));
         self.imports.dedup();
+    }
+}
+
+impl CodeGraph {
+    /// Drop the `<<module>>` boxes (class.md §2.4). Their relations go with
+    /// them, and a kept class naming one simply fails to resolve — §4's
+    /// "ambiguity resolves to nothing" already covers that.
+    pub fn without_module_boxes(&self) -> CodeGraph {
+        CodeGraph {
+            classes: self
+                .classes
+                .iter()
+                .filter(|c| c.annotation.as_deref() != Some(MODULE_ANNOTATION))
+                .cloned()
+                .collect(),
+            ..self.clone()
+        }
     }
 }

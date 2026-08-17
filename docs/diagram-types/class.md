@@ -26,15 +26,15 @@ unchanged elements to context so the change carries the eye. See
 
 ### 2.1 Class
 
-Every named type the parsers recognise: classes, interfaces, enums, and
-dataclasses.
+Every named type the parsers recognise: classes, interfaces, enums,
+dataclasses, and the structural type aliases of §2.3.
 
 | Attribute | Meaning |
 |---|---|
 | `name` | Bare name (`AgentRunner`); nested classes read `Outer.Inner` |
 | `qualified` | Unique key, `<module>.<name>` |
 | `module` | Dotted path derived from the file path |
-| `annotation` | UML stereotype: `interface`, `abstract`, `enumeration`, `dataclass` |
+| `annotation` | UML stereotype: `interface`, `abstract`, `enumeration`, `dataclass`, `type`, `union`, `module` |
 | `members` | Fields and methods (§2.2) |
 | `change` | `ChangeKind`, shared with every other diagram type |
 
@@ -43,6 +43,13 @@ Stereotypes are inferred from the source, not declared: a Python `Protocol` or
 `Enum` subclass is an enumeration, `@dataclass` is a dataclass; a TypeScript
 `interface` and `abstract class` map directly. On h: 74 interfaces, 15
 dataclasses, 1 enumeration, 112 plain classes.
+
+**One element type, more stereotypes.** §2.3 and §2.4 add new *kinds* of box,
+not new kinds of element: they are `Class` values carrying a different
+`annotation`. That is deliberate — the relation extraction (§5), the diff
+(§7), `export::class_json`, and both renderers then work on them unchanged,
+and a diff still keys on `qualified`. A second element type would have meant
+touching all of that twice.
 
 ### 2.2 Member
 
@@ -60,6 +67,77 @@ fields, and from Python's `_protected` / `__private` naming convention.
 Fields include TypeScript constructor parameter properties and Python
 attributes assigned to `self` in `__init__`; `@property` reads as a field, not
 a method. Dunder methods are skipped as noise.
+
+### 2.3 Decision: which type aliases earn a box
+
+**Decided and implemented 2026-08-17.** A TypeScript `type` declaration is a named type, so
+§2.1 always implied it belonged here — but drawing all of them would drown
+the diagram, so the question is which.
+
+**What was measured** — the 183 exported `type` aliases in h:
+
+| Shape | Count | Drawn? |
+|---|---|---|
+| `type X = { … }` — object literal with members | **61** | yes, `<<type>>` |
+| `type X = A \| B \| C` — union of *named* types | **7** | yes, `<<union>>` |
+| any other union (arms are literals, primitives, generics) | 11 | no |
+| references a named type but has no drawable structure | ~100 | no |
+| opens neither a literal nor a union | rest | no |
+
+**What was chosen.** A type alias earns a box when it carries structure this
+parser can actually see:
+
+1. **An object literal** gets a `<<type>>` box with its fields as members. This
+   is the load-bearing case: `type Config = { … }` is an `interface Config`
+   in all but keyword, and h has 61 of them against 73 interfaces. Drawing one
+   and not the other is a distinction no reader cares about, and omitting them
+   was the single biggest hole in the class model.
+2. **A union whose arms are named types** gets a `<<union>>` box, arms as
+   members, and each arm that resolves to a drawn class becomes a dependency
+   edge. These are the domain unions — `PiEvent = PiSessionEvent |
+   PiToolExecutionEvent | PiOtherEvent | RawLineEvent` — and they carry real
+   graph information.
+3. **Everything else is skipped.** `type Env = Effect<A, B, C>`, mapped types,
+   conditionals, `keyof` — resolving those needs a type checker, and §9 says
+   we do not have one. A box with a truncated type string in it is noise.
+
+**What it produced.** 117 new boxes on h — 100 `<<type>>` and 17 `<<union>>` —
+taking the class diagram from 213 boxes to 330 and its relations from 156 to
+264. More than the 68 the table predicts, because the table counted only
+`export`ed aliases while the parser draws unexported ones too, exactly as it
+already does for interfaces.
+
+**What would change it.** A JSON input path fed by the TypeScript compiler
+(§9) would resolve cases 3 exactly, at which point the selection rule can
+loosen. Until then, guessing at them would violate §4's stance: a wrong
+element is worse than a missing one.
+
+**Python** has no equivalent worth drawing today: h has **zero** `TypeAlias`
+or `type X = …` declarations across 124 files. The parser accepts them for
+symmetry when they are object-shaped, and nothing more.
+
+### 2.4 Module-level functions, and why they are opt-in
+
+**Implemented 2026-08-17.**
+
+Neither language puts everything in a class, and h is the proof: **143
+exported TypeScript functions across 80 files, and 152 public Python
+module-level functions across 44 files**, against 213 classes. A class diagram
+of a functional codebase that shows none of them is describing a minority of
+the code.
+
+They are modelled as **one `<<module>>` box per module**, its public
+module-level functions as members — not one box per function, which would add
+295 boxes rather than 177, and would say nothing about which file a function
+lives in.
+
+Measured on h once built: **177 module boxes**, taking the diagram from 330
+classes to 507 and the Mermaid from 111 KB to 201 KB.
+
+**Opt-in, behind `--modules`.** Unlike §2.3, these are not named types, and
+177 extra boxes changes every existing diagram and nearly doubles what an
+agent pays to read one (§2.6 of `docs/distribution.md`). The
+default stays "named types"; `--modules` says "and the functions too".
 
 ## 3. Extraction
 
@@ -232,6 +310,7 @@ component diff, which needs both revisions in full.
 ```sh
 vizzle class <repo> [-o out.mmd|out.html] [-I glob] [-E glob] [-l python|typescript]
                    [--no-members] [--group] [--externals] [--direction LR] [--title]
+                   [--modules]                        # §2.4, off by default
 vizzle diff <repo> [--base REV] [--head REV]          # --type class is the default
 vizzle serve <repo> [--diff]
 ```
@@ -239,8 +318,15 @@ vizzle serve <repo> [--diff]
 ## 9. Out of scope
 
 - Type inference of any kind: no symbol table, no import resolution, no
-  checker. §4 is the ceiling.
+  checker. §4 is the ceiling. This is what bounds §2.3 to type aliases whose
+  structure is *syntactically* visible.
 - Generic parameters as first-class model elements (they are rendered as part
   of the type string, and tokenised for resolution).
 - Languages beyond Python and TypeScript — see §5.4 for why Rust and C++ are
   the most interesting next ones.
+- **A JSON input path.** Accepting a graph built elsewhere — by the TypeScript
+  compiler API, which resolves everything §2.3 case 3 skips — is the obvious
+  way past the ceiling above, and is deliberately not built. A format you
+  *accept* is a promise to everyone who generates it, and there is no second
+  producer yet to shape it; designing one now means guessing. Revisit when a
+  real consumer is pushing against the limit.
