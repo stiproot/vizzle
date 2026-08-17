@@ -60,6 +60,10 @@ fn collect(
                     }
                 }
             }
+            // A module-level UPPER_SNAKE assignment is a constant by Python's
+            // own convention, and the manifest's `consts` list selects from
+            // these (curated-diagrams.md §4).
+            "expression_statement" => extract_module_const(child, src, module_fns),
             "import_statement" | "import_from_statement" => extract_imports(child, src, graph),
             // Classes (and imports) can hide inside `if TYPE_CHECKING:` etc.
             "if_statement" | "try_statement" | "block" => {
@@ -68,6 +72,41 @@ fn collect(
             _ => {}
         }
     }
+}
+
+/// A module-level constant: public, and UPPER_SNAKE, which is how Python says
+/// "constant" and what keeps ordinary module-level assignment out of the box.
+fn extract_module_const(stmt: Node, src: &str, members: &mut Vec<Member>) {
+    let Some(assign) = ({
+        let mut cursor = stmt.walk();
+        let found = stmt
+            .named_children(&mut cursor)
+            .find(|c| c.kind() == "assignment");
+        found
+    }) else {
+        return;
+    };
+    let Some(left) = assign.child_by_field_name("left") else {
+        return;
+    };
+    let name = text(left, src);
+    let is_const = !name.starts_with('_')
+        && name
+            .chars()
+            .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_')
+        && name.chars().any(|c| c.is_ascii_uppercase());
+    if !is_const {
+        return;
+    }
+    let detail = assign
+        .child_by_field_name("type")
+        .map(|ty| clean_type(&text(ty, src)))
+        .unwrap_or_default();
+    members.push(Member {
+        name,
+        detail,
+        ..Default::default()
+    });
 }
 
 /// A module-level `def`. Private helpers (leading underscore) are not module
@@ -299,6 +338,7 @@ fn extract_method(func: Node, src: &str, decorators: &[String], members: &mut Ve
 
     members.push(Member {
         visibility: visibility_of(&name),
+        param_names: params.iter().map(|(n, _)| n.clone()).collect(),
         detail: render_params(&params),
         returns,
         type_refs,

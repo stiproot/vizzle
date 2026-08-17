@@ -14,7 +14,7 @@ use std::fmt::Write;
 use anyhow::{bail, Context, Result};
 use serde::Deserialize;
 
-use crate::mermaid::member_row;
+use crate::mermaid::{member_row, Params};
 use crate::model::{Class, CodeGraph, Member};
 use crate::parse::module_path;
 
@@ -104,9 +104,18 @@ fn stereotype(entry: &Entry) -> Option<String> {
 /// The members to draw for an entry, taken from the parsed class and narrowed
 /// by the manifest where it asks for a subset.
 fn members_for<'a>(entry: &Entry, class: &'a Class) -> Result<Vec<&'a Member>> {
-    let Some(wanted) = entry.functions.as_ref().or(entry.consts.as_ref()) else {
+    // An entry may name both, and the managed documents list constants first.
+    // `.or()` here would silently drop every const on any entry that also names
+    // functions — which is most of them.
+    let wanted: Vec<&String> = entry
+        .consts
+        .iter()
+        .chain(entry.functions.iter())
+        .flatten()
+        .collect();
+    if wanted.is_empty() {
         return Ok(class.members.iter().collect());
-    };
+    }
     let by_name: HashMap<&str, &Member> =
         class.members.iter().map(|m| (m.name.as_str(), m)).collect();
     wanted
@@ -161,7 +170,7 @@ pub fn render(manifest: &Manifest, graph: &CodeGraph) -> Result<String> {
                 )
             })?;
             for member in members_for(entry, class)? {
-                let _ = writeln!(out, "    {}", member_row(member, false));
+                let _ = writeln!(out, "    {}", member_row(member, false, Params::NamesOnly));
             }
             if let Some(note) = &entry.note {
                 let _ = writeln!(out, "    {note}");

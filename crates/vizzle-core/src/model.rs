@@ -77,6 +77,10 @@ pub struct Member {
     /// edges at render time; kept raw so resolution stays a graph-level
     /// decision rather than a parser one.
     pub type_refs: Vec<String>,
+    /// Parameter names alone. `detail` renders them with their types, which is
+    /// right for an exhaustive diagram and unreadable in a curated one — a
+    /// typer command renders 700 characters wide (curated-diagrams.md §5.1).
+    pub param_names: Vec<String>,
     pub is_method: bool,
     pub is_static: bool,
     pub is_abstract: bool,

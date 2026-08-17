@@ -600,6 +600,7 @@ fn extract_method(node: Node, src: &str, is_abstract: bool, members: &mut Vec<Me
     type_refs.extend(returns.clone());
 
     members.push(Member {
+        param_names: params.iter().map(|(n, _)| n.clone()).collect(),
         visibility: visibility_of(node, &name, src),
         detail: render_params(&params),
         returns,

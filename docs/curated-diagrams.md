@@ -157,6 +157,17 @@ to clear the same bar.
 spread from another struct, built in a loop. Those would need the checker, and
 then §9's compiler-backed extractor becomes the answer rather than a wish.
 
+### 4.3 Curated signatures carry names, not types
+
+Measured by regenerating h's `h-cli-class.md`: a typer command rendered with
+typed parameters is **~700 characters** on one line —
+`+run(ctx: typer.Context, slug: Annotated~ str | None, typer.Option hel…, …)`
+— against `+run(ctx, slug, param, local, …)` in the document it replaces.
+
+An exhaustive diagram is scanned by a tool and wants the types. A curated one is
+read by a person and wants the shape. So curated output renders parameter names
+only, which is also the convention the managed documents already use.
+
 ## 5. The managed document
 
 A markdown file containing an HTML-comment manifest and exactly one mermaid

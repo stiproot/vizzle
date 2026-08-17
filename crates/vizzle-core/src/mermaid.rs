@@ -196,13 +196,26 @@ fn write_class(
     }
     if opts.show_members {
         for member in &class.members {
-            let _ = writeln!(out, "{indent}    {}", member_row(member, diff_mode));
+            let _ = writeln!(
+                out,
+                "{indent}    {}",
+                member_row(member, diff_mode, Params::Typed)
+            );
         }
     }
     let _ = writeln!(out, "{indent}}}");
 }
 
-pub(crate) fn member_row(member: &Member, diff_mode: bool) -> String {
+/// How much of a signature a member line carries. An exhaustive diagram wants
+/// the types; a curated one is read by people and wants the shape
+/// (curated-diagrams.md §5.1).
+#[derive(Clone, Copy, PartialEq)]
+pub(crate) enum Params {
+    Typed,
+    NamesOnly,
+}
+
+pub(crate) fn member_row(member: &Member, diff_mode: bool, params: Params) -> String {
     let vis = member.visibility.sigil();
     let classifier = if member.is_abstract {
         "*"
@@ -218,10 +231,11 @@ pub(crate) fn member_row(member: &Member, diff_mode: bool) -> String {
             .as_deref()
             .map(|r| format!(" {r}"))
             .unwrap_or_default();
-        format!(
-            "{vis}{}({}){classifier}{returns}",
-            member.name, member.detail
-        )
+        let signature = match params {
+            Params::Typed => member.detail.clone(),
+            Params::NamesOnly => member.param_names.join(", "),
+        };
+        format!("{vis}{}({}){classifier}{returns}", member.name, signature)
     } else if member.detail.is_empty() {
         format!("{vis}{}{classifier}", member.name)
     } else {

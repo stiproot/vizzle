@@ -255,3 +255,37 @@ def test_doc_reports_an_entry_that_no_longer_resolves(tmp_path):
     result = CliRunner().invoke(main, ["doc", str(doc), "--root", str(tmp_path)])
     assert result.exit_code != 0
     assert "Shape" in result.output and "not in the parsed graph" in result.output
+
+
+MODULE_DOC = """<!-- gen:c4-code {
+  "classes": [
+    {"id": "Cmd", "kind": "module", "file": "app.py",
+     "functions": ["run"], "consts": ["WELL_KNOWN"], "stereotype": "Typer app"}
+  ]
+} -->
+
+```mermaid
+classDiagram
+```
+"""
+
+
+def test_doc_lists_consts_before_functions_and_omits_param_types(tmp_path):
+    (tmp_path / "app.py").write_text(
+        "WELL_KNOWN: dict[str, str] = {}\n"
+        "_PRIVATE = 1\n"
+        "def run(ctx: Context, slug: str | None, verbose: bool) -> None: ...\n"
+    )
+    doc = tmp_path / "d.md"
+    doc.write_text(MODULE_DOC)
+
+    result = CliRunner().invoke(main, ["doc", str(doc), "--root", str(tmp_path)])
+    assert result.exit_code == 0, result.output
+    body = doc.read_text()
+
+    # An entry naming both must get both — consts first, as the managed docs read.
+    assert body.index("WELL_KNOWN") < body.index("+run("), body
+    # A curated diagram is read by people: parameter names, not their types.
+    assert "+run(ctx, slug, verbose) None" in body, body
+    assert "ctx: Context" not in body
+    assert "_PRIVATE" not in body, "a private module-level name is not module surface"
