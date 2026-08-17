@@ -101,6 +101,12 @@ parser can actually see:
    conditionals, `keyof` — resolving those needs a type checker, and §9 says
    we do not have one. A box with a truncated type string in it is noise.
 
+**This is a rendering rule, not a parsing one** (`curated-diagrams.md` §4.1).
+A literal union like `StopReason = "completed" | "timeout"` is dropped here
+because 183 of them would drown the diagram — but a curated diagram that names
+it has already made that judgment, and must still be able to get it. vizzle's
+opinion about what to *show* must never limit what it can *find*.
+
 **What it produced.** 117 new boxes on h — 100 `<<type>>` and 17 `<<union>>` —
 taking the class diagram from 213 boxes to 330 and its relations from 156 to
 264. More than the 68 the table predicts, because the table counted only
