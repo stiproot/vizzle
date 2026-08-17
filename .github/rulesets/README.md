@@ -4,6 +4,9 @@ GitHub stores rulesets in its own settings, not in the repository, so they are
 invisible to anyone reading the code and easy to lose. These files are the
 intended configuration, kept here so the rules are reviewable in a diff.
 
+**Both are applied and active** (imported 2026-08-17). These files remain the
+source of truth for what they *should* say; GitHub holds what they *do* say.
+
 **They are not applied automatically.** Import each one at
 *Settings → Rules → Rulesets → New ruleset → Import a ruleset*, or POST it:
 
@@ -42,3 +45,8 @@ A published tag is what PyPI's Trusted Publishing trusts and what a user reads
 to know which source built their wheel; silently moving one makes that a lie.
 Admins bypass, which is what made re-tagging `v0.1.0` possible while the
 release pipeline was still being debugged.
+
+**There is deliberately no `creation` rule**, so pushing a new `v*` tag — which
+is the entire release procedure — still works. Do not add one. Note also that
+this cannot be smoke-tested with a throwaway `v*` tag: `release.yml` fires on
+`v*` and would attempt a publish. The next real release is the test.
