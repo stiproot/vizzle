@@ -198,7 +198,13 @@ this and named it as the blocker.
 vizzle doc <doc.md>...                  # regenerate the named docs
 vizzle doc --dir <path>                 # every *.md under path carrying a manifest
 vizzle doc --dir <path> --check         # verify, do not write
+
+vizzle render <doc.md|dir|src.mmd> <out-dir> [-f png|svg]
 ```
+
+`render` turns fences into images for the places that cannot render mermaid —
+chat, a phone, a slide. The sources stay the truth, so the output directory is
+produced on demand and usually gitignored.
 
 Docs without a `gen:c4-code` marker are ignored, so a directory mixing
 generated and hand-authored diagrams is fine — h's `docs/diagrams/` is exactly
@@ -210,10 +216,16 @@ documents.
 - **Curated component diagrams.** The same manifest idea applies one level up,
   but component detection is already manifest-driven and rarely needs
   narrowing. Revisit if a real repo wants it.
-- **Rendering to PNG.** `mmdc` does this; vizzle should not grow a browser.
-  Note the trap recorded in README: a whole-repo diagram exceeds mermaid's
-  default `maxTextSize`. A curated diagram never will — being small is the
-  point.
+- ~~**Rendering to PNG.**~~ **Reversed 2026-08-17** — `vizzle render` exists.
+  The original reasoning was that vizzle should not grow a browser dependency,
+  and it still does not: `mmdc` is resolved from PATH or run through
+  bunx/npx, nothing is vendored, and a repo that never renders never pays.
+  What tipped it was owning the whole job rather than half of it — a caller
+  told to "just use mmdc" also has to discover a Chrome, suppress puppeteer's
+  redundant download, and know that a whole-repo diagram silently draws an
+  error graphic past mermaid's 50,000-character cap. `vizzle render` carries
+  all three, which is exactly the knowledge the tool has and the caller does
+  not.
 - **Inferring scope.** "Pick the 8 that matter" is the judgment this mode
   exists to preserve. A heuristic that guessed would remove the reason to use
   it.

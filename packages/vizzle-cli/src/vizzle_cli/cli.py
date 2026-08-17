@@ -8,6 +8,7 @@ from pathlib import Path
 import click
 
 from . import _core, git, managed
+from . import render as render_mod
 from .html import build_component_html, build_html, summarize, summarize_components
 
 
@@ -252,6 +253,36 @@ def doc_command(
         click.echo(f"{len(paths)} document(s) checked, all current", err=True)
     elif not written:
         click.echo("nothing to regenerate", err=True)
+
+
+@main.command("render")
+@click.argument("src", type=click.Path(exists=True, path_type=Path))
+@click.argument("out_dir", type=click.Path(file_okay=False, path_type=Path))
+@click.option("-f", "--format", "fmt", type=click.Choice(["png", "svg"]), default="png", show_default=True)
+@click.option("--scale", default=2, show_default=True, help="Pixel density multiplier (png only).")
+@click.option("--background", default="white", show_default=True, help="Page background colour.")
+def render_command(src: Path, out_dir: Path, fmt: str, scale: int, background: str) -> None:
+    """Render mermaid sources under SRC to images in OUT_DIR.
+
+    SRC is a `.md` (every fence in it), a `.mmd`, or a directory of them
+    (README.md excluded). Sources stay the truth — GitHub and IDEs render fences
+    natively — so images are produced on demand and usually gitignored.
+
+    Uses mermaid-cli, resolved from PATH or run through bunx/npx; nothing is
+    installed. The whole-repo `maxTextSize` limit is raised for you.
+    """
+    try:
+        written = [
+            path
+            for source in render_mod.sources(src)
+            for path in render_mod.render(source, out_dir, fmt=fmt, scale=scale, background=background)
+        ]
+    except render_mod.RenderError as err:
+        raise click.ClickException(str(err)) from err
+    for path in written:
+        click.echo(f"rendered {path}", err=True)
+    if not written:
+        click.echo("nothing rendered", err=True)
 
 
 @main.command("component")

@@ -171,16 +171,18 @@ Render the `.mmd` output with mermaid-cli:
 npx -y @mermaid-js/mermaid-cli -i changes.mmd -o changes.svg
 ```
 
-A whole-repo class diagram will exceed Mermaid's default 50,000-character
-`maxTextSize` and render as a small error graphic rather than failing loudly.
-Raise it:
+Or let vizzle drive it, which is usually what you want:
 
 ```sh
-echo '{"maxTextSize": 5000000, "maxEdges": 20000}' > mermaid.json
-npx -y @mermaid-js/mermaid-cli -c mermaid.json -i h-classes.mmd -o h-classes.svg
+uvx vizzle render changes.mmd out/            # one source
+uvx vizzle render docs/diagrams out/ -f svg   # a directory, README excluded
 ```
 
-The HTML output has no such limit.
+`vizzle render` finds `mmdc` on PATH or runs it through bunx/npx, points
+puppeteer at a browser you already have rather than letting it download a
+redundant one, and raises Mermaid's default 50,000-character `maxTextSize` —
+past which a whole-repo diagram renders a small **error graphic** instead of
+failing loudly. The HTML output has no such limit.
 
 ## How the diff works
 

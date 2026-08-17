@@ -289,3 +289,32 @@ def test_doc_lists_consts_before_functions_and_omits_param_types(tmp_path):
     assert "+run(ctx, slug, verbose) None" in body, body
     assert "ctx: Context" not in body
     assert "_PRIVATE" not in body, "a private module-level name is not module surface"
+
+
+def test_render_selects_diagram_sources_not_the_readme(tmp_path):
+    from vizzle_cli import render as render_mod
+
+    (tmp_path / "README.md").write_text("# index\n")
+    (tmp_path / "b.md").write_text("```mermaid\nclassDiagram\n```\n")
+    (tmp_path / "a.mmd").write_text("classDiagram\n")
+    (tmp_path / "notes.txt").write_text("ignore me\n")
+
+    names = [p.name for p in render_mod.sources(tmp_path)]
+    assert names == ["a.mmd", "b.md"], "sorted, README and non-diagrams excluded"
+    assert render_mod.sources(tmp_path / "b.md") == [tmp_path / "b.md"]
+
+
+def test_render_reports_an_empty_directory(tmp_path):
+    from vizzle_cli import render as render_mod
+
+    (tmp_path / "README.md").write_text("# only an index\n")
+    with pytest.raises(render_mod.RenderError, match="no diagram sources"):
+        render_mod.sources(tmp_path)
+
+
+def test_render_raises_the_mermaid_text_cap(tmp_path):
+    from vizzle_cli import render as render_mod
+
+    # A whole-repo diagram is past mermaid's default 50,000-character limit, and
+    # mermaid draws a small error graphic rather than failing.
+    assert render_mod.CONFIG["maxTextSize"] > 50_000
