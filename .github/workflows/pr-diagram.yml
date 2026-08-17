@@ -40,13 +40,13 @@ jobs:
       contents: read
       pull-requests: write
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           # vizzle reads both revisions out of git, so it needs the history
           # between them, not just the tip.
           fetch-depth: 0
 
-      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
           enable-cache: true
 
@@ -79,7 +79,7 @@ jobs:
           fi
           echo "bytes=$(wc -c < diagram.mmd)" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: steps.applicable.outputs.sources != '0'
         with:
           name: component-diagram
@@ -88,7 +88,7 @@ jobs:
 
       - name: Comment on the pull request
         if: github.event_name == 'pull_request' && steps.applicable.outputs.sources != '0'
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
         env:
           CHANGED: ${{ steps.render.outputs.changed }}
         with:
