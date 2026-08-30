@@ -158,3 +158,22 @@ names that file; and `manylinux: auto` builds a Linux wheel that imports with
 - Keep the spec current with the code. A spec that lies is worse than no spec:
   mark shipped sections, and move deferred ideas to the out-of-scope list.
   This applies to `SKILL.md` too — it is a spec that an agent executes.
+
+## Plans
+
+Non-trivial, multi-session work is scoped and tracked in a plan doc — a living
+tracking log, not a frozen spec. Follow the `plan-management` skill (from the
+`plan-management` plugin, enabled in `.claude/settings.json`); this repo uses
+its canonical defaults unchanged:
+
+- Active plans live at `docs/plans/<name>.md`, opening with a `Status:` line
+  and an `Established:` date.
+- Finished plans archive to `docs/plans/impl/<name>.md` — after lifting any
+  durable context into its long-lived home (this file, a spec, a test). A good
+  plan is deletable without losing anything.
+- The `docs/plans/` directory listing is the index; there is no index file.
+
+Plans track the *arc* of a piece of work — progress, findings, decisions.
+They do not replace `docs/diagram-types/` specs: diagram-type design stays
+spec-first as described above, and a plan links to the spec rather than
+restating it.
