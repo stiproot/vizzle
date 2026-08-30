@@ -70,11 +70,7 @@ def sources(src: Path) -> list[Path]:
     """The sources under `src`. A directory contributes its diagrams, not its README."""
     if src.is_file():
         return [src]
-    found = sorted(
-        p
-        for p in src.iterdir()
-        if p.is_file() and p.suffix in (".md", ".mmd") and p.name != "README.md"
-    )
+    found = sorted(p for p in src.iterdir() if p.is_file() and p.suffix in (".md", ".mmd") and p.name != "README.md")
     if not found:
         raise RenderError(f"no diagram sources in {src}")
     return found
@@ -93,11 +89,16 @@ def render(src: Path, out_dir: Path, *, fmt: str = "png", scale: int = 2, backgr
         command = [
             *_mmdc(),
             "--quiet",
-            "-c", str(config),
-            "-i", str(src),
-            "-o", str(target),
-            "--scale", str(scale),
-            "--backgroundColor", background,
+            "-c",
+            str(config),
+            "-i",
+            str(src),
+            "-o",
+            str(target),
+            "--scale",
+            str(scale),
+            "--backgroundColor",
+            background,
         ]
         result = subprocess.run(command, env=_browser_env(), capture_output=True)
     finally:
