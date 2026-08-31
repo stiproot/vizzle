@@ -1,0 +1,13 @@
+{
+  "extraKnownMarketplaces": {
+    "plan-management-marketplace": {
+      "source": {
+        "source": "github",
+        "repo": "stiproot/plan-management"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "plan-management@plan-management-marketplace": true
+  }
+}
