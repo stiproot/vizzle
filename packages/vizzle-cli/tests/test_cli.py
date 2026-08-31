@@ -171,6 +171,20 @@ def test_pages_inline_the_shared_core(workspace: Path, tmp_path: Path, command: 
     assert not re.search(r"__[A-Z0-9_]+__", page)
 
 
+@pytest.mark.parametrize("command", [["class"], ["component"]])
+def test_pages_have_no_external_references(workspace: Path, tmp_path: Path, command: list[str]) -> None:
+    """An emitted page must not fetch anything; d3 and all assets are inlined."""
+    out = tmp_path / "page.html"
+    result = CliRunner().invoke(main, [*command, str(workspace), "-o", str(out)])
+    assert result.exit_code == 0, result.output
+    page = out.read_text()
+    offenders = re.findall(
+        r'(?:src|href)=["\']https?://[^\'"]+["\']|url\(https?://[^)]+\)',
+        page,
+    )
+    assert not offenders, f"External references found in page: {offenders}"
+
+
 def test_component_no_classes_makes_a_lean_page(workspace: Path, tmp_path: Path) -> None:
     out = tmp_path / "lean.html"
     result = CliRunner().invoke(main, ["component", str(workspace), "--no-classes", "-o", str(out)])
