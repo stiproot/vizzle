@@ -1,0 +1,75 @@
+# Scoping the component diff
+
+Status: Proposed — not started. Raised by a consumer putting `vizzle diff --type component` in front
+of reviewers on every pull request.
+Established: 2026-09-14
+
+## 1. The premise
+
+`vizzle diff --type component` produces an artifact whose size is set by the **repository**, not by
+the change. In a large multi-package repository that makes the interactive HTML unusable as a
+per-pull-request artifact, and it makes the mermaid describe the whole tree rather than the part
+under review.
+
+Measured with `vizzle==0.2.0` on macOS, against a repository of ~93 parseable components spanning
+Python and TypeScript, diffing a **one-commit** change and a **237-commit** merge — both scoped on
+the command line to the same ~33-component subtree:
+
+| | components | classes | mermaid | HTML raw | HTML gz | wall |
+|---|---|---|---|---|---|---|
+| `component <subtree>` (no diff) | 33 | 2 367 | — | 3.2 MB | 0.30 MB | 0.58s |
+| `diff --type component` — 1 commit | 93 | ~20 000 | 17 685 chars | 24 MB | 1.86 MB | 6.0s |
+| `diff --type component` — 237 commits | 93 | ~20 000 | — | 24 MB | 1.86 MB | 6.3s |
+
+The two diff rows are the finding: **identical output for a one-file change and a 237-commit
+merge**, and 93 components where the same subtree scoped without `--diff` yields 33.
+
+## 2. Why the path argument does not scope it
+
+Two causes, both in `packages/vizzle-cli/src/vizzle_cli/cli.py`:
+
+1. `_collect_component_diff(path, base, head)` uses `path` only to find the repository root —
+   `root = _repo_root(path)` — and then calls `_collect_component_revision(root, …)` for each
+   revision. The path is discarded after the root lookup, so every Python and TypeScript file in the
+   repository is parsed at both revisions regardless of what the caller asked for.
+2. At the HTML call site, `_core.component_json_diff(..., classes=True)` is hardcoded, so every
+   class in the repository is embedded whether or not a reviewer will ever expand one.
+
+Neither is true of the non-diff path: `vizzle component <subtree>` scopes correctly, which is why
+the first row of the table is 33 components and 3.2 MB.
+
+## 3. What to change
+
+- **Honour `path` in the component diff.** Collect each revision under the given path rather than
+  the repository root. The class diff already takes a path-scoped collection
+  (`_collect_diff_files`), so the asymmetry is between the two diff types, not between diff and
+  non-diff.
+- **Make classes opt-in on the component diff**, or at least opt-out — a flag rather than a literal
+  at the call site. A reviewer asking "what did this rewire" does not need 20 000 class bodies to
+  answer it.
+
+Open question for whoever picks this up, and the reason this is a plan rather than a patch: a
+component diff is a comparison of two **graphs**, and scoping changes what "the graph" means. A
+component outside the path that gains or loses an edge *into* the scoped set is a real structural
+change the reviewer wants to see. Scoping naively to the path would hide it. Options worth weighing:
+scope the nodes but keep edges that cross the boundary; scope strictly and say so in the rendered
+legend; or make the boundary a rendering concern rather than a collection one.
+
+## 4. Acceptance
+
+- `vizzle diff --type component <path>` in a multi-package repository produces a diagram of
+  `<path>`, not of the whole repository.
+- A subtree-scoped component diff lands near the **3.2 MB / 0.30 MB gz** the equivalent non-diff
+  view already achieves, rather than 24 MB.
+- A one-commit diff and a many-commit diff of the same scope produce *different* output — today they
+  do not.
+- Whatever is decided about boundary-crossing edges is written into this plan and reflected in the
+  rendered legend, so a reader knows what the diagram is claiming.
+
+## 5. Why now
+
+A consumer has begun posting this diagram as a comment on every pull request. It works — the mermaid
+is 17 685 characters, well inside GitHub's 65 536 limit — but it describes 93 repository-wide
+components for a change confined to one subtree. The next step serves the interactive HTML from a
+hosted surface, where 24 MB per pull request becomes a storage and cleanup problem that mostly
+disappears once this lands.
