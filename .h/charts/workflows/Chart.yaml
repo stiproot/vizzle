@@ -1,0 +1,9 @@
+apiVersion: v2
+name: workflows
+description: >-
+  This repo's domain workflow templates for the h local substrate. Each template under
+  templates/ renders one workflow definition body as YAML — NOT a Kubernetes manifest; helm
+  is used purely as a client-side templating engine (helm template, no cluster). Consumed by
+  `h workflow run <template> --local` from this repo (charts_dir in .h/config.toml).
+type: application
+version: 0.1.0

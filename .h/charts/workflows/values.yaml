@@ -1,0 +1,44 @@
+# Fire-time identity defaults ({{params.*}} slots stay open in publish mode; these bake the
+# defaults). The local substrate maps run-claude → the operator's authenticated claude CLI.
+agentId: claude-agent
+runActivity: run-claude
+
+# Render modes (set by the h CLI, never by hand): --set template=<name> gates which template
+# body evaluates; publish/composable select slot emission (see h's stock chart).
+publish: false
+
+# One block per template. The skeleton's block — delete it with the skeleton:
+doThing:
+  env: "local"        # pin the safe environment as the default
+
+# ─── Values layered over h's STOCK chart ────────────────────────────────────────
+# These are this repo's own facts, read by h's stock templates (implement, verify,
+# create-pr, review-pr) when they render from here. The values search path layers this
+# file over the stock chart's defaults, which is the ONLY way a consumer can reach
+# them — `verify.cmd` in particular is `required` at render time, so without this
+# block `h chain run ... -t implement verify create-pr` refuses to compose at all.
+
+verify:
+  # The acceptance gate, run in the worktree after the change; a failure stops the run
+  # before any commit or PR. This is CLAUDE.md's "Verifying" block, in its required
+  # order: `uv sync --reinstall-package vizzle` rebuilds the compiled extension after a
+  # Rust change, and skipping it makes pytest silently test the OLD .so and report green.
+  cmd: "uv sync && cargo test -p vizzle-core && uv sync --reinstall-package vizzle && uv run pytest packages/vizzle-cli/tests && uv run pre-commit run --all-files"
+
+worktree:
+  # `git worktree add` leaves gitignored files behind, so anything a run needs that git does not
+  # track has to be copied in. `.env` carries the agent credentials: it lives in the h-managed
+  # clone, is gitignored, and is seeded into every fresh worktree so the relative `dotenv` in
+  # .h/config.toml resolves there too. Without this entry that setting silently yields a worktree
+  # with no credentials.
+  #
+  # Everything else gitignored here (`target/`, `.venv/`, `*.so`) is BUILT by the gate's own
+  # first commands, so it is deliberately not seeded.
+  seed:
+    - .env
+
+implement:
+  # Plain `git push origin` over the clone's ssh remote, using the operator's own agent.
+  # The default ("") rewrites to an https URL carrying GH_TOKEN, and this machine's token
+  # is not authorised for every endpoint that path touches.
+  gitAuth: ssh

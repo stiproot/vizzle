@@ -1,0 +1,10 @@
+# The h revision this repo runs on. COMMIT THIS FILE — it is what makes an h upgrade a
+# reviewable change rather than something that happens to a machine.
+#
+# repo:   the h source the pin refers to (a GitHub https URL — the plugin marketplace reads it)
+# commit: the exact revision (a full sha — a branch name here would defeat the pin)
+#
+# Written by `h workspaces init` from the h that ran it. To move it, reinstall h at the new
+# revision and re-run init with --force-lock, or edit the sha — either way the diff is the record.
+repo = "https://github.com/stiproot/h"
+commit = "17011fa625a8a6e3d981ea6003c0fde0635ee4e2"
