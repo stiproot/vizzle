@@ -285,6 +285,20 @@ components and 5 edges. Removing the scope filter brings back the full 31.
 only) and render in a dashed-border style to signal "this is part of a
 cross-boundary edge". The legend reflects the scope when active.
 
+**Boundary nodes as pure context:** A boundary node renders as context regardless
+of whether it changed outside the scope. It receives no change glyph (✚ ✖ ✱),
+no change fill/stroke class (vizzleAdded etc.), and no change stereotype label.
+The rule: if `is_boundary`, apply only the boundary style; change annotations from
+outside the scope are irrelevant to a reviewer focused on `<path>`.
+
+**Non-root path refusal:** If `<path>` is inside a component root but not at one
+(i.e. no manifest file sits directly in `<path>`), the CLI exits non-zero with an
+error naming the nearest enclosing component root:
+```
+Error: no component is rooted at packages/vizzle-cli/src
+The nearest enclosing component is packages/vizzle-cli
+```
+
 Measured on h @ 17011fa: `packages/js/engine-core` scoped component diff
 reports 6 components, 5 dependencies (vs 31/62 full-repo or 1/0 if naively
 filtered before build — the trap).

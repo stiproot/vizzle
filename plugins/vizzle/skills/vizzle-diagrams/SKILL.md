@@ -98,9 +98,11 @@ is scoped to the path you give it, keeping only components in that subtree plus
 any out-of-scope neighbours that share edges (marked distinctly as «boundary»
 nodes to show structural coupling at the scope boundary).
 
-For HTML output, `--no-classes` is the default for component type (class bodies
-are heavy and omitted to keep the artifact lean). Use `--classes` to embed them
-for drill-down detail.
+For HTML output, `--no-classes` is the default for **component diffs** (`vizzle
+diff --type component`), because class bodies are heavy and omitted to keep the
+artifact lean. `vizzle component` (non-diff) defaults to `--classes`. Use
+`--classes` in a diff to embed drill-down detail, or `--no-classes` in the
+non-diff command to produce a leaner page.
 
 Drop `--type component` for a class-level diff of what you touched.
 

@@ -19,6 +19,9 @@
     // In diff mode an unchanged element is context, not a subject.
     context: { fill: "var(--context-fill)", stroke: "var(--context-stroke)" },
     external: { fill: "var(--panel)", stroke: "var(--muted)" },
+    // Boundary: outside scope, kept because an edge crosses into it. Pure context
+    // even when it changed elsewhere — colours come from palette.rs BOUNDARY.
+    boundary: { fill: "var(--boundary-fill)", stroke: "var(--boundary-stroke)" },
   };
 
   /* Colors for one element. Under the diff lens unchanged elements recede,

@@ -20,6 +20,21 @@ pub struct ChangeColors {
     pub mermaid_extra: &'static str,
 }
 
+/// Colours for boundary nodes (outside scope, kept because an edge crosses into them).
+/// A boundary node renders as pure context even when it changed elsewhere — no
+/// change fill/stroke or glyph is applied.
+pub struct BoundaryColors {
+    pub fill: &'static str,
+    pub stroke: &'static str,
+    pub color: &'static str,
+}
+
+pub const BOUNDARY: BoundaryColors = BoundaryColors {
+    fill: "#f6f8fa",
+    stroke: "#57606a",
+    color: "#57606a",
+};
+
 pub const CHANGE_COLORS: [ChangeColors; 3] = [
     ChangeColors {
         name: "added",
@@ -60,6 +75,23 @@ pub fn mermaid_class(change: ChangeKind) -> Option<String> {
     })
 }
 
+/// The `classDef` line for the boundary class.
+pub fn mermaid_boundary_classdef() -> String {
+    format!(
+        "    classDef vizzleBoundary fill:{},stroke:{},stroke-dasharray:4 3,color:{}\n",
+        BOUNDARY.fill, BOUNDARY.stroke, BOUNDARY.color
+    )
+}
+
+/// CSS custom properties for the boundary colours, injected into every HTML page
+/// that uses scoped component diagrams.
+pub fn css_boundary_variables() -> String {
+    format!(
+        "  --boundary-fill: {};\n  --boundary-stroke: {};\n  --boundary-color: {};\n",
+        BOUNDARY.fill, BOUNDARY.stroke, BOUNDARY.color
+    )
+}
+
 /// The `classDef` block every mermaid diagram emits in diff mode.
 ///
 /// Mermaid 11 quirk: in `classDiagram` these only take effect when they appear
@@ -79,7 +111,7 @@ pub fn mermaid_classdefs() -> String {
 
 /// The same colors as CSS custom properties, injected into every HTML page.
 pub fn css_variables() -> String {
-    CHANGE_COLORS
+    let change_vars: String = CHANGE_COLORS
         .iter()
         .map(|c| {
             format!(
@@ -87,7 +119,8 @@ pub fn css_variables() -> String {
                 c.name, c.fill, c.name, c.stroke
             )
         })
-        .collect()
+        .collect();
+    change_vars + &css_boundary_variables()
 }
 
 #[cfg(test)]
@@ -115,5 +148,29 @@ mod tests {
             Some("vizzleModified")
         );
         assert_eq!(mermaid_class(ChangeKind::Unchanged), None);
+    }
+
+    #[test]
+    fn boundary_colors_are_consistent_across_renderers() {
+        let mermaid = mermaid_boundary_classdef();
+        let css = css_variables();
+        assert!(
+            mermaid.contains(BOUNDARY.fill),
+            "boundary fill missing in mermaid classdef"
+        );
+        assert!(
+            mermaid.contains(BOUNDARY.stroke),
+            "boundary stroke missing in mermaid classdef"
+        );
+        assert!(
+            css.contains(BOUNDARY.fill),
+            "boundary fill missing in css variables"
+        );
+        assert!(
+            css.contains(BOUNDARY.stroke),
+            "boundary stroke missing in css variables"
+        );
+        assert!(mermaid.contains("vizzleBoundary"));
+        assert!(css.contains("--boundary-fill:"));
     }
 }

@@ -38,10 +38,42 @@ def _component_render_kwargs(
 
 
 def _component_scope_path(path: Path) -> str:
-    """Compute scope path for component diff: "" if path is repo root, else relative path."""
+    """Compute scope path for component diff: "" if path is repo root, else relative path.
+
+    Raises ClickException if the path is inside a component root but not rooted at one
+    (i.e. no manifest file sits directly in the given directory).
+    """
     root = _repo_root(path)
     resolved = path.resolve()
-    return "" if resolved == root else str(resolved.relative_to(root))
+    try:
+        relative = resolved.relative_to(root)
+    except ValueError as exc:
+        raise click.ClickException(f"path is outside the repository root {root}: {path}") from exc
+    if resolved == root:
+        return ""
+    rel_str = relative.as_posix()
+    if _is_component_root(resolved):
+        return rel_str
+    # Path is not a component root — find the nearest enclosing one.
+    parent = resolved.parent
+    while parent != root:
+        if _is_component_root(parent):
+            parent_rel = parent.relative_to(root).as_posix()
+            raise click.ClickException(
+                f"no component is rooted at {rel_str}\nThe nearest enclosing component is {parent_rel}"
+            )
+        parent = parent.parent
+    raise click.ClickException(f"no component is rooted at {rel_str}\nNo enclosing component found in the repository")
+
+
+def _is_component_root(path: Path) -> bool:
+    """True when a manifest file sits directly in `path`, making it a component root."""
+    return any((path / name).exists() for name in git.MANIFEST_NAMES)
+
+
+def _effective_classes_for_diff(classes: bool | None) -> bool:
+    """Default for --classes in component diff/serve-diff mode: False (lean page)."""
+    return classes if classes is not None else False
 
 
 def _resolve_format(fmt: str | None, output: Path | None) -> str:
@@ -462,7 +494,7 @@ def diff_diagram(
     if diagram_type == "component":
         base_files, base_manifests, head_files, head_manifests = _collect_component_diff(path, base, head)
         scope_path = _component_scope_path(path)
-        effective_classes = classes if classes is not None else False
+        effective_classes = _effective_classes_for_diff(classes)
         resolved_title = title or f"changes vs {base}"
         if _resolve_format(fmt, output) == "html":
             graph_json = _core.component_json_diff(
@@ -576,14 +608,15 @@ def serve_command(
             if diff_mode:
                 base_files, base_manifests, head_files, head_manifests = _collect_component_diff(path, base, head)
                 scope_path = _component_scope_path(path)
-                effective_classes = classes if classes is not None else False
+                effective_classes = _effective_classes_for_diff(classes)
                 graph_json = _core.component_json_diff(
                     base_files, base_manifests, head_files, head_manifests, classes=effective_classes, scope=scope_path
                 )
                 page_title = title or f"changes vs {base} (live)"
             else:
+                effective_classes = classes if classes is not None else True
                 graph_json = _core.component_json_from_dir(
-                    str(path), include=list(include), exclude=list(exclude), langs=list(lang)
+                    str(path), include=list(include), exclude=list(exclude), langs=list(lang), classes=effective_classes
                 )
                 page_title = title or f"{path.resolve().name} — component diagram (live)"
             return build_component_html(graph_json, title=page_title, include_externals=externals)
