@@ -40,3 +40,9 @@ node_modules/
 /*.html
 /*.svg
 /*.png
+
+# Agent credentials for h's local substrate. NEVER commit: an agent running
+# `git add -A` mid-run would otherwise stage them.
+.env
+.env.*
+!.env.example

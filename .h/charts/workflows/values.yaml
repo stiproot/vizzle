@@ -26,10 +26,16 @@ verify:
   cmd: "uv sync && cargo test -p vizzle-core && uv sync --reinstall-package vizzle && uv run pytest packages/vizzle-cli/tests && uv run pre-commit run --all-files"
 
 worktree:
-  # Deliberately empty: every gitignored path in this repo (`target/`, `.venv/`, `*.so`)
-  # is BUILT by the gate's own first commands, not carried in from the clone. There is no
-  # `.env` here. Seeding exists for repos whose gate needs a gitignored credential file.
-  seed: []
+  # `git worktree add` leaves gitignored files behind, so anything a run needs that git does not
+  # track has to be copied in. `.env` carries the agent credentials: it lives in the h-managed
+  # clone, is gitignored, and is seeded into every fresh worktree so the relative `dotenv` in
+  # .h/config.toml resolves there too. Without this entry that setting silently yields a worktree
+  # with no credentials.
+  #
+  # Everything else gitignored here (`target/`, `.venv/`, `*.so`) is BUILT by the gate's own
+  # first commands, so it is deliberately not seeded.
+  seed:
+    - .env
 
 implement:
   # Plain `git push origin` over the clone's ssh remote, using the operator's own agent.
