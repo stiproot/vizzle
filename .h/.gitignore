@@ -1,0 +1,4 @@
+# h's own ignore rules, kept INSIDE .h/ so h never edits this repo's root .gitignore.
+# Everything else under .h/ is committed: config, pin, charts.
+venv/
+bin/

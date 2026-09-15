@@ -1,0 +1,12 @@
+# Fire-time identity defaults ({{params.*}} slots stay open in publish mode; these bake the
+# defaults). The local substrate maps run-claude → the operator's authenticated claude CLI.
+agentId: claude-agent
+runActivity: run-claude
+
+# Render modes (set by the h CLI, never by hand): --set template=<name> gates which template
+# body evaluates; publish/composable select slot emission (see h's stock chart).
+publish: false
+
+# One block per template. The skeleton's block — delete it with the skeleton:
+doThing:
+  env: "local"        # pin the safe environment as the default

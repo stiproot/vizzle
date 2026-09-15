@@ -1,0 +1,16 @@
+# h consumer config — discovered by the h CLI walking up from cwd, so any `h` invocation from
+# inside this repo resolves these without exported env vars. Env vars win per setting; relative
+# paths resolve against this repo's root; `~` expands. Unknown keys fail loud.
+#
+# Written by `h workspaces init`. Commit it; .h/.gitignore says what stays out.
+charts_dir = ".h/charts"
+
+# The operator's established h workspace. Declared rather than left to the install's defaults
+# because a PACKAGED h (uv tool) defaults to ~/.h/*, which is not where this machine's clones,
+# ledger or credentials live — so an unqualified `h ... --local` from this repo would run with an
+# empty workspace and no agent credentials. Absolute (`~`-expanded) on purpose: a RELATIVE path
+# here resolves beside a worktree rather than beside the clone, which fails silently.
+workspace_dir = "~/code/repo/h-workspace"     # the managed-clones boundary; where h works
+worktrees_dir = "~/code/repo/h-worktrees"     # where h cuts worktrees from its clones
+runs_dir      = "~/code/repo/h-workspace/.runs"  # the run ledger
+dotenv        = "~/code/repo/h/.env"          # agent credentials filling gaps the shell leaves

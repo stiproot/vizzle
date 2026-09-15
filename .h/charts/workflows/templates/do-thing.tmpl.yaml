@@ -1,0 +1,42 @@
+{{- /*
+do-thing workflow — one sentence on what it drives, and through which of this repo's tools
+(MCP servers, scripts). Fire-time params listed here.
+
+Run:  h workflow run do-thing --local
+*/ -}}
+{{- define "my.contract.doThing" -}}
+type: object
+required:
+  - status
+  - notes
+properties:
+  status:
+    type: string
+    description: completed | incomplete | failed
+  notes:
+    type: string
+    description: frictions worth fixing — tools that refused, rules that surprised; empty if none
+{{- end }}
+{{- if eq (.Values.template | default "") "do-thing" }}
+role: standalone
+{{- $v := .Values.doThing }}
+{{- $contract := include "my.contract.doThing" . | fromYaml }}
+params:
+  runActivity: {{ .Values.runActivity | default "run-claude" | quote }}
+  agentId: {{ .Values.agentId | quote }}
+  env: {{ $v.env | quote }}
+steps:
+  - id: work
+    activity: {{ include "h.token" "params.runActivity" | quote }}
+    input:
+      outputContract: {{ $contract | toJson }}
+      task: |-
+        <the whole brief: goal, the tools to use, the decision rules, what done looks like.
+        The agent starts cold — this prose is everything it knows about the domain. Refuse
+        dangerous targets here explicitly, e.g.: if env is not "local", STOP and report.>
+
+        Environment: {{ include "h.token" "params.env" }}
+        {{ include "h.outputContractEpilogue" $contract | nindent 8 }}
+outputs:
+  {{- include "my.contract.doThing" . | nindent 2 }}
+{{- end }}
