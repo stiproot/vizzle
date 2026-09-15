@@ -73,3 +73,28 @@ is 17 685 characters, well inside GitHub's 65 536 limit — but it describes 93 
 components for a change confined to one subtree. The next step serves the interactive HTML from a
 hosted surface, where 24 MB per pull request becomes a storage and cleanup problem that mostly
 disappears once this lands.
+
+## Tracking: Feature complete — 2026-09-15
+
+**Implemented:** Scoping strategy chosen (keep in-scope + boundary neighbours), boundary nodes
+styled distinctly as `«boundary»`, classes made opt-in with `--classes/--no-classes` flag
+defaulting to `--no-classes` for component type.
+
+**Changes:**
+- Rust core: `component::scope()` filters to in-scope + boundary neighbours, marks boundary
+  with `is_boundary: bool`, styles boundary nodes in Mermaid output
+- Python CLI: `_component_scope_path()` computes scope; `--classes/--no-classes` flag on both
+  `diff` and `serve` commands; all three call sites updated (diff HTML, diff mermaid, serve diff)
+- All tests pass (31 Rust + 29 Python); pre-commit clean
+
+**Corrections to §8:**
+
+1. **Plan §4, third bullet — artifact size insensitivity.** The claim was that "a one-commit diff and
+   a many-commit diff of the same scope produce *different* output — today they do not." This is
+   **incorrect for mermaid** (measured on h@17011fa: `HEAD~1` vs `HEAD~50` diffs produce different
+   mermaid, ~5791 vs ~6370 bytes, 25 lines differ). The insensitivity is **HTML artifact size only**
+   — ~20 000 embedded class bodies dominate the payload and swamp the delta markers, a `classes`
+   hardcode not a scoping bug. This fix (§3.5 of feature spec) separates the two problems.
+
+2. **Plan §2, call sites.** Two sites were listed (`diff` HTML and mermaid); **there is a third:**
+   `serve`'s `build_page()` diff mode also had both defects. All three now fixed.
