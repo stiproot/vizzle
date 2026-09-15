@@ -303,6 +303,67 @@ Measured on h @ 17011fa: `packages/js/engine-core` scoped component diff
 reports 6 components, 5 dependencies (vs 31/62 full-repo or 1/0 if naively
 filtered before build — the trap).
 
+### 6.2 Selection (`-I` / `-E` / `-l`) composes before scoping
+
+A component root is "a directory with a manifest in it" (§3.1), so anything
+carrying a manifest is drawn as architecture — including test fixtures that are
+themselves small packages, example projects and scaffolding templates. The
+selection flags are how a reader says "that one is not architecture", and
+they mean the same thing on `diff` as on `component`: **`-I`/`-E` are globs
+over repo-relative source paths, `-l` restricts languages, and a component
+left owning no files is never created.** One matcher in the core
+(`walk::Selector`) serves every command, so a glob cannot mean two things.
+
+Three rules follow, each decided rather than defaulted:
+
+**Selection applies to BOTH revisions, before either graph is built.** A
+fixture excluded at head but present at base would render as *removed*; the
+filter would be manufacturing the very change it was asked to hide. So the
+selector runs on each revision's file set first, and only then are the two
+graphs built and compared. Nothing can appear added or removed because of a
+filter — a filtered component is absent on both sides.
+
+**Selection runs BEFORE scope; scope runs AFTER diff.** These are two
+different questions with opposite answers, and §6.1's trap is not a
+contradiction. Scope asks *which part of the graph to show* — it needs the full
+graph on both sides to find the boundary at all, so it must come last.
+Selection asks *what is not architecture* — a component the reader said not to
+show must not come back as a `«boundary»` neighbour, so it has to be gone
+before the boundary is computed. The consequence, stated plainly: **an
+excluded component is dropped even when an in-scope component depends on it,
+and the edge into it goes with it.** That edge is real structure and it is no
+longer drawn; the legend says so (below). The alternative — keeping it dashed
+as a boundary — would be the tool overriding the reader.
+
+**Exclusion is total, change markers included.** A pull request that touches
+only excluded paths renders as *no structural change*. The diagram claims to
+describe the selected architecture; a marker for a component it does not draw
+would be a marker pointing at nothing. This is what a per-PR consumer wants
+from `-E '**/tests/fixtures/**'`: a fixture-only change should not light the
+"shape changed" signal (`pr-diagram.yml` greps for `vizzle(Added|Removed|
+Modified)`). It is arguably a lie about the *repository*; it is the truth
+about the *selection*, which is why the selection is always stated.
+
+**The legend states the selection.** Every renderer carries the active
+selection so a reader knows what the diagram is not claiming: the HTML legend
+gains a `selection: exclude …` entry (and un-hides for it), the JSON export
+carries `stats.selection`, and Mermaid — which has no legend — appends a
+`%% vizzle: selection: …` trailer beside the component count. The wording is
+`include <glob>` / `exclude <glob>` / `lang <name>` rather than the CLI flag
+spellings, because the core does not know how the CLI spells `-E`.
+
+Selecting everything away is an error, not an empty diagram: on the class
+diff, `-E` that removes every changed file exits with
+`no changed files match the include/exclude/lang selection`, since the caller
+already established there WERE changed files and the reader should hear that
+the selection ate them.
+
+Measured on h @ 17011fa, `--base HEAD~1`: the full component diff is 31
+components / 62 dependencies; `-E 'apps/**'` gives 16 / 17. Scoped to
+`packages/js/engine-core` it is 6 / 5 (§6.1); adding `-E 'apps/**'` drops the
+`workflow-svc` boundary node and its edge, giving 5 / 4 with the trailer
+`%% vizzle: selection: exclude apps/**`.
+
 ## 7. CLI surface
 
 ```sh
@@ -312,7 +373,8 @@ vizzle serve <repo> --type component [--diff]
 ```
 
 Shared flags keep their existing meaning: `-o`, `-f/--format mermaid|html`,
-`--title`, `-I/-E`, `--direction`, `--externals`. New: `--no-group`,
+`--title`, `-I/-E/-l` (on `diff` and `serve --diff` they apply to both
+revisions, §6.2), `--direction`, `--externals`. New: `--no-group`,
 `--weights`, `--focus` (diff only). `--classes/--no-classes` controls whether
 class detail (drill-down in the HTML view) is embedded; component diff defaults
 to `--no-classes` (class bodies are heavy; a reviewer asking "what rewired"

@@ -572,6 +572,20 @@ if (hasBoundary) {
     legend.hidden = false;
   }
 }
+
+// The selection the graph was built under (-I/-E/-l). A filtered component is
+// absent from both revisions, so the legend says what the diagram is not
+// claiming to show rather than letting its absence read as "unchanged".
+const selection = graph.stats.selection || [];
+if (selection.length) {
+  const legend = document.getElementById("legend");
+  if (legend) {
+    const entry = document.createElement("span");
+    entry.textContent = `selection: ${selection.join("; ")} — filtered out before detection, on both revisions`;
+    legend.appendChild(entry);
+    legend.hidden = false;
+  }
+}
 </script>
 </body>
 </html>
