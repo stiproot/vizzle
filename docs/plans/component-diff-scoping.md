@@ -3,8 +3,7 @@
 Status: **Implemented** — #21 merged 2026-09-15: scoping to in-scope + boundary neighbours,
 `--classes/--no-classes` (defaulting to `--no-classes` for the component type), Decisions A and B,
 and three call sites including `serve`. **Released as v0.3.0** on 2026-09-15. Raised by a consumer
-putting
-`vizzle diff --type component` in front of reviewers on every pull request.
+putting `vizzle diff --type component` in front of reviewers on every pull request.
 Established: 2026-09-14
 
 ## 1. The premise
