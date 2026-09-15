@@ -386,8 +386,13 @@ function drawNode(sel) {
   sel.each(function (d) {
     const g = d3.select(this);
     g.selectAll("*").remove();
-    const colors = d.external ? vizzle.PALETTE.external : colorsFor(d.comp.change, DIFF);
-    const ink = d.external ? "var(--muted)" : inkFor(d.comp.change, DIFF);
+    const isBoundary = !!d.comp.boundary;
+    const colors = d.external ? vizzle.PALETTE.external
+      : isBoundary ? vizzle.PALETTE.boundary
+      : colorsFor(d.comp.change, DIFF);
+    const ink = d.external || isBoundary ? "var(--muted)" : inkFor(d.comp.change, DIFF);
+    // Boundary nodes are pure context: no change mark even if they changed elsewhere.
+    const nameText = d.comp.name + (isBoundary ? "" : mark(d.comp.change));
 
     g.append("title").text(d.external ? d.comp.name : d.comp.path || "(repo root)");
     g.append("rect")
@@ -395,8 +400,8 @@ function drawNode(sel) {
       .attr("rx", 8)
       .attr("fill", colors.fill)
       .attr("stroke", colors.stroke)
-      .attr("stroke-width", d.comp.change === "unchanged" && !d.external ? 1.3 : 2)
-      .attr("stroke-dasharray", d.comp.change === "removed" || d.external ? "6 4" : null);
+      .attr("stroke-width", (d.comp.change === "unchanged" && !d.external && !isBoundary) ? 1.3 : 2)
+      .attr("stroke-dasharray", d.comp.change === "removed" || d.external || isBoundary ? "6 4" : null);
 
     if (!d.external) {
       for (const dy of [6, 13]) {                       // UML component tabs
@@ -408,15 +413,16 @@ function drawNode(sel) {
 
     let y = d.external ? 19 : 15;
     if (!d.external) {
+      const stereotype = isBoundary ? "«boundary»" : "«component»";
       g.append("text").attr("class", "comp-centered").attr("y", y)
         .attr("text-anchor", "middle").attr("font-size", 10)
-        .attr("fill", "var(--muted)").text("«component»");
+        .attr("fill", "var(--muted)").text(stereotype);
       y += 16;
     }
     g.append("text").attr("class", "comp-centered").attr("y", y)
       .attr("text-anchor", "middle").attr("font-size", 12.5)
       .attr("font-weight", 700).attr("fill", ink)
-      .text(d.comp.name + mark(d.comp.change));
+      .text(nameText);
     if (d.sub) {
       y += 15;
       g.append("text").attr("class", "comp-centered").attr("y", y)
@@ -552,6 +558,20 @@ vizzle.setHeader(
     (graph.stats.classes ? ` · ${graph.stats.classes} classes` : ""),
   DIFF
 );
+
+// Append a «boundary» legend entry if any boundary nodes are present.
+const hasBoundary = graph.components.some((c) => c.boundary);
+if (hasBoundary) {
+  const legend = document.getElementById("legend");
+  if (legend) {
+    const entry = document.createElement("span");
+    entry.innerHTML =
+      `<span class="chip" style="background:var(--boundary-fill);border-color:var(--boundary-stroke);` +
+      `border-style:dashed"></span>«boundary» — outside scope, kept because an edge crosses into it`;
+    legend.appendChild(entry);
+    legend.hidden = false;
+  }
+}
 </script>
 </body>
 </html>

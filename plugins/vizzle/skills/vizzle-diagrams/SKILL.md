@@ -85,13 +85,24 @@ are the question.
 ### 3. After making changes: what did they do?
 
 ```sh
-uvx vizzle diff <path> --type component          # working tree vs HEAD
+uvx vizzle diff <path> --type component                  # working tree vs HEAD, scoped to <path>
 uvx vizzle diff <path> --base main --type component
+uvx vizzle diff packages/my-module --type component      # focus on one module
+uvx vizzle diff <path> --type component --classes        # include class detail in HTML
 ```
 
 `--type component` is the interesting one: it shows whether your change
 *rewired* the application — an added or removed dependency edge between modules
-is a much bigger deal than a changed method, and it renders loudest.
+is a much bigger deal than a changed method, and it renders loudest. The diagram
+is scoped to the path you give it, keeping only components in that subtree plus
+any out-of-scope neighbours that share edges (marked distinctly as «boundary»
+nodes to show structural coupling at the scope boundary).
+
+For HTML output, `--no-classes` is the default for **component diffs** (`vizzle
+diff --type component`), because class bodies are heavy and omitted to keep the
+artifact lean. `vizzle component` (non-diff) defaults to `--classes`. Use
+`--classes` in a diff to embed drill-down detail, or `--no-classes` in the
+non-diff command to produce a leaner page.
 
 Drop `--type component` for a class-level diff of what you touched.
 

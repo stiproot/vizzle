@@ -207,6 +207,52 @@ def test_component_diff_shows_rewiring(workspace: Path) -> None:
     assert "c_apps_svc -.-> c_packages_core" in result.output
 
 
+def test_component_diff_scoped_to_package_root_has_fewer_components(workspace: Path) -> None:
+    """Scoping to a component root restricts the diagram to that component and its boundary neighbours.
+
+    Workspace: core, util, svc (svc→core). Scoping to packages/core gives only
+    core (in-scope) + svc (boundary, imports core) = 2 components, vs 3 unscoped.
+    packages/util has no edge to core, so it is excluded.
+    """
+    # Touch a file in core so the diff has something to record.
+    (workspace / "packages/core/src/extra.ts").write_text("export const v = 2;\n")
+
+    unscoped = CliRunner().invoke(main, ["diff", str(workspace), "--type", "component"])
+    assert unscoped.exit_code == 0, unscoped.output
+
+    # Scope to packages/core: only core + svc (which imports core) should appear;
+    # packages/util has no edge touching core.
+    scoped = CliRunner().invoke(main, ["diff", str(workspace / "packages/core"), "--type", "component"])
+    assert scoped.exit_code == 0, scoped.output
+
+    import re
+
+    def component_count(output: str) -> int:
+        m = re.search(r"(\d+) components", output)
+        assert m, f"no component count in: {output}"
+        return int(m.group(1))
+
+    unscoped_n = component_count(unscoped.output)
+    scoped_n = component_count(scoped.output)
+    assert scoped_n < unscoped_n, f"scoped ({scoped_n}) should have fewer components than unscoped ({unscoped_n})"
+    # packages/core must appear; packages/util must NOT.
+    assert "packages_core" in scoped.output, "core must appear in its own scope"
+    assert "packages_util" not in scoped.output, "util has no edge to core and must be excluded"
+
+
+def test_component_diff_refuses_non_root_path(workspace: Path) -> None:
+    """Passing a path inside a component root (not the root itself) is an error."""
+    # packages/core/src is inside the packages/core component root.
+    src_dir = workspace / "packages/core/src"
+    src_dir.mkdir(parents=True, exist_ok=True)
+
+    result = CliRunner().invoke(main, ["diff", str(src_dir), "--type", "component"])
+    assert result.exit_code != 0, "should refuse a sub-root path"
+    assert "no component is rooted at" in result.output, result.output
+    # The error must name the enclosing component root.
+    assert "packages/core" in result.output, result.output
+
+
 DOC = """# A managed diagram
 
 Prose above the fence.

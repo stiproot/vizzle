@@ -223,6 +223,7 @@ fn component_json_from_dir(
     include_externals = false,
     direction = None,
     title = None,
+    scope = None,
 ))]
 #[allow(clippy::too_many_arguments)]
 fn component_diagram_diff(
@@ -235,13 +236,16 @@ fn component_diagram_diff(
     include_externals: bool,
     direction: Option<String>,
     title: Option<String>,
+    scope: Option<String>,
 ) -> PyResult<String> {
     let render = component_options(group, weights, include_externals, direction, title);
+    let scope_path = scope.as_deref().unwrap_or("");
     vc::component_diff_diagram(
         &base_files,
         &base_manifests,
         &head_files,
         &head_manifests,
+        scope_path,
         &render,
     )
     .map_err(to_py_err)
@@ -249,19 +253,22 @@ fn component_diagram_diff(
 
 /// Export a change-annotated component graph from two full revisions as JSON.
 #[pyfunction]
-#[pyo3(signature = (base_files, base_manifests, head_files, head_manifests, *, classes = true))]
+#[pyo3(signature = (base_files, base_manifests, head_files, head_manifests, *, classes = true, scope = None))]
 fn component_json_diff(
     base_files: Vec<(String, String)>,
     base_manifests: Vec<(String, String)>,
     head_files: Vec<(String, String)>,
     head_manifests: Vec<(String, String)>,
     classes: bool,
+    scope: Option<String>,
 ) -> PyResult<String> {
+    let scope_path = scope.as_deref().unwrap_or("");
     vc::component_json_diff(
         &base_files,
         &base_manifests,
         &head_files,
         &head_manifests,
+        scope_path,
         classes,
     )
     .map_err(to_py_err)

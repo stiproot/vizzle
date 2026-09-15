@@ -37,6 +37,45 @@ def _component_render_kwargs(
     }
 
 
+def _component_scope_path(path: Path) -> str:
+    """Compute scope path for component diff: "" if path is repo root, else relative path.
+
+    Raises ClickException if the path is inside a component root but not rooted at one
+    (i.e. no manifest file sits directly in the given directory).
+    """
+    root = _repo_root(path)
+    resolved = path.resolve()
+    try:
+        relative = resolved.relative_to(root)
+    except ValueError as exc:
+        raise click.ClickException(f"path is outside the repository root {root}: {path}") from exc
+    if resolved == root:
+        return ""
+    rel_str = relative.as_posix()
+    if _is_component_root(resolved):
+        return rel_str
+    # Path is not a component root — find the nearest enclosing one.
+    parent = resolved.parent
+    while parent != root:
+        if _is_component_root(parent):
+            parent_rel = parent.relative_to(root).as_posix()
+            raise click.ClickException(
+                f"no component is rooted at {rel_str}\nThe nearest enclosing component is {parent_rel}"
+            )
+        parent = parent.parent
+    raise click.ClickException(f"no component is rooted at {rel_str}\nNo enclosing component found in the repository")
+
+
+def _is_component_root(path: Path) -> bool:
+    """True when a manifest file sits directly in `path`, making it a component root."""
+    return any((path / name).exists() for name in git.MANIFEST_NAMES)
+
+
+def _effective_classes_for_diff(classes: bool | None) -> bool:
+    """Default for --classes in component diff/serve-diff mode: False (lean page)."""
+    return classes if classes is not None else False
+
+
 def _resolve_format(fmt: str | None, output: Path | None) -> str:
     if fmt:
         return fmt
@@ -422,6 +461,11 @@ def _collect_component_diff(path: Path, base: str, head: str | None) -> tuple[li
     help="Diagram type. `component` diffs the module dependency graph (rewiring shows loudest).",
 )
 @click.option("--weights", is_flag=True, help="Label edges with their weight (component type, mermaid).")
+@click.option(
+    "--classes/--no-classes",
+    default=None,
+    help="Embed class detail (component type, HTML only). Default: --no-classes for component type.",
+)
 @render_options
 def diff_diagram(
     path: Path,
@@ -429,6 +473,7 @@ def diff_diagram(
     head: str | None,
     diagram_type: str,
     weights: bool,
+    classes: bool | None,
     members: bool,
     modules: bool,
     group: bool,
@@ -448,9 +493,13 @@ def diff_diagram(
     """
     if diagram_type == "component":
         base_files, base_manifests, head_files, head_manifests = _collect_component_diff(path, base, head)
+        scope_path = _component_scope_path(path)
+        effective_classes = _effective_classes_for_diff(classes)
         resolved_title = title or f"changes vs {base}"
         if _resolve_format(fmt, output) == "html":
-            graph_json = _core.component_json_diff(base_files, base_manifests, head_files, head_manifests, classes=True)
+            graph_json = _core.component_json_diff(
+                base_files, base_manifests, head_files, head_manifests, classes=effective_classes, scope=scope_path
+            )
             page = build_component_html(graph_json, title=resolved_title, include_externals=externals)
             _emit(page, output, summarize_components(graph_json))
             return
@@ -459,6 +508,7 @@ def diff_diagram(
             base_manifests,
             head_files,
             head_manifests,
+            scope=scope_path,
             **_component_render_kwargs(True, weights, externals, direction, resolved_title),
         )
         _emit_mermaid(diagram, output)
@@ -514,6 +564,11 @@ def diff_diagram(
     help="Add one «module» box per module holding its public module-level functions.",
 )
 @click.option("--externals", is_flag=True, help="Show inheritance edges to types outside the parsed set.")
+@click.option(
+    "--classes/--no-classes",
+    default=None,
+    help="Embed class detail (component type, diff mode). Default: --no-classes for component type.",
+)
 @click.option("--title", default=None, help="Diagram title.")
 @click.option("--host", default="127.0.0.1", show_default=True)
 @click.option("--port", default=8499, show_default=True, help="Port to bind (0 picks a free port).")
@@ -530,6 +585,7 @@ def serve_command(
     members: bool,
     modules: bool,
     externals: bool,
+    classes: bool | None,
     title: str | None,
     host: str,
     port: int,
@@ -551,13 +607,16 @@ def serve_command(
         if diagram_type == "component":
             if diff_mode:
                 base_files, base_manifests, head_files, head_manifests = _collect_component_diff(path, base, head)
+                scope_path = _component_scope_path(path)
+                effective_classes = _effective_classes_for_diff(classes)
                 graph_json = _core.component_json_diff(
-                    base_files, base_manifests, head_files, head_manifests, classes=True
+                    base_files, base_manifests, head_files, head_manifests, classes=effective_classes, scope=scope_path
                 )
                 page_title = title or f"changes vs {base} (live)"
             else:
+                effective_classes = classes if classes is not None else True
                 graph_json = _core.component_json_from_dir(
-                    str(path), include=list(include), exclude=list(exclude), langs=list(lang)
+                    str(path), include=list(include), exclude=list(exclude), langs=list(lang), classes=effective_classes
                 )
                 page_title = title or f"{path.resolve().name} — component diagram (live)"
             return build_component_html(graph_json, title=page_title, include_externals=externals)

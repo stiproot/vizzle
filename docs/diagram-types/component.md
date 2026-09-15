@@ -262,6 +262,47 @@ unchanged classes in touched files today), but components entirely unrelated
 to the change may be collapsed per-group under `--focus` to keep large diffs
 readable.
 
+### 6.1 Path-based scoping and boundary detection
+
+`vizzle diff --type component <path>` accepts a path but **must produce a diagram of
+`<path>`, not the repository**. Unlike the class diff, scope filtering cannot
+happen at file-collection time (edge existence depends on the full graph), so:
+
+**Scoping strategy:** Collect both revisions in full, diff them in full, filter at the
+end. Retain every component whose files live under `<path>`, plus every component
+outside `<path>` that shares a dependency edge (in either direction) with an
+in-scope component. This boundary set shows structural dependencies at the scope
+edge — a critical signal when code is organized into layers or feature areas
+where crossing boundaries indicates rewiring.
+
+**Example:** The repository's full graph has 31 components. Scoping to
+`packages/js/engine-core` (1 in-scope component) keeps that component plus 5
+out-of-scope neighbours that import from or export to it, totalling 6
+components and 5 edges. Removing the scope filter brings back the full 31.
+
+**Visual distinction:** Out-of-scope boundary neighbours are marked with
+`«boundary»` (distinct from `«external»`, which remains third-party packages
+only) and render in a dashed-border style to signal "this is part of a
+cross-boundary edge". The legend reflects the scope when active.
+
+**Boundary nodes as pure context:** A boundary node renders as context regardless
+of whether it changed outside the scope. It receives no change glyph (✚ ✖ ✱),
+no change fill/stroke class (vizzleAdded etc.), and no change stereotype label.
+The rule: if `is_boundary`, apply only the boundary style; change annotations from
+outside the scope are irrelevant to a reviewer focused on `<path>`.
+
+**Non-root path refusal:** If `<path>` is inside a component root but not at one
+(i.e. no manifest file sits directly in `<path>`), the CLI exits non-zero with an
+error naming the nearest enclosing component root:
+```
+Error: no component is rooted at packages/vizzle-cli/src
+The nearest enclosing component is packages/vizzle-cli
+```
+
+Measured on h @ 17011fa: `packages/js/engine-core` scoped component diff
+reports 6 components, 5 dependencies (vs 31/62 full-repo or 1/0 if naively
+filtered before build — the trap).
+
 ## 7. CLI surface
 
 ```sh
@@ -272,9 +313,11 @@ vizzle serve <repo> --type component [--diff]
 
 Shared flags keep their existing meaning: `-o`, `-f/--format mermaid|html`,
 `--title`, `-I/-E`, `--direction`, `--externals`. New: `--no-group`,
-`--weights`, `--no-classes` (html payload), `--focus` (diff only).
-`--type class` remains the default for `diff`/`serve`, so existing invocations
-are untouched.
+`--weights`, `--focus` (diff only). `--classes/--no-classes` controls whether
+class detail (drill-down in the HTML view) is embedded; component diff defaults
+to `--no-classes` (class bodies are heavy; a reviewer asking "what rewired"
+typically does not expand them). `--type class` remains the default for `diff`/`serve`,
+so existing invocations are untouched.
 
 ## 8. Future: provided interfaces
 

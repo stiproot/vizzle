@@ -41,6 +41,8 @@ pub struct Component {
     /// Hash of the owned files (paths + contents), for diff detection.
     pub fingerprint: u64,
     pub change: ChangeKind,
+    /// True if this component is outside the scope but shares an edge with an in-scope component.
+    pub is_boundary: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -361,6 +363,7 @@ fn new_component(name: String, path: String) -> Component {
         classes: 0,
         fingerprint: 0,
         change: ChangeKind::Unchanged,
+        is_boundary: false,
     }
 }
 
@@ -618,6 +621,92 @@ fn diff_classes(base: &[PlacedClass], head: &[PlacedClass]) -> Vec<PlacedClass> 
         .collect()
 }
 
+/// Filter graph to components under scope_path and out-of-scope neighbours that share edges.
+/// Empty string or "." returns the graph unchanged. Boundary neighbours are marked with is_boundary=true.
+pub fn scope(graph: &ComponentGraph, scope_path: &str) -> ComponentGraph {
+    if scope_path.is_empty() || scope_path == "." {
+        return graph.clone();
+    }
+
+    let is_in_scope = |path: &str| -> bool {
+        path == scope_path || path.starts_with(&format!("{}/", scope_path))
+    };
+
+    let in_scope: BTreeSet<&str> = graph
+        .components
+        .iter()
+        .filter(|c| is_in_scope(&c.path))
+        .map(|c| c.path.as_str())
+        .collect();
+
+    if in_scope.is_empty() {
+        return ComponentGraph::default();
+    }
+
+    let mut boundary: BTreeSet<String> = BTreeSet::new();
+    for edge in &graph.edges {
+        let from_in = in_scope.contains(edge.from.as_str());
+        let to_in = match &edge.to {
+            EdgeTarget::Component(path) => in_scope.contains(path.as_str()),
+            EdgeTarget::External(_) => false,
+        };
+
+        if from_in && !to_in {
+            if let EdgeTarget::Component(path) = &edge.to {
+                boundary.insert(path.clone());
+            }
+        }
+        if !from_in && to_in {
+            boundary.insert(edge.from.clone());
+        }
+    }
+
+    let kept_paths: BTreeSet<&str> = in_scope
+        .iter()
+        .copied()
+        .chain(boundary.iter().map(|s| s.as_str()))
+        .collect();
+
+    let mut result = ComponentGraph::default();
+    for component in &graph.components {
+        if kept_paths.contains(component.path.as_str()) {
+            let mut c = component.clone();
+            c.is_boundary = !in_scope.contains(component.path.as_str());
+            result.components.push(c);
+        }
+    }
+
+    for edge in &graph.edges {
+        let from_kept = kept_paths.contains(edge.from.as_str());
+        let to_kept = match &edge.to {
+            EdgeTarget::Component(path) => kept_paths.contains(path.as_str()),
+            EdgeTarget::External(_) => true,
+        };
+
+        if from_kept && to_kept {
+            let from_in_scope = in_scope.contains(edge.from.as_str());
+            let to_in_scope = match &edge.to {
+                EdgeTarget::Component(path) => in_scope.contains(path.as_str()),
+                EdgeTarget::External(_) => false,
+            };
+
+            if from_in_scope || to_in_scope {
+                result.edges.push(edge.clone());
+            }
+        }
+    }
+
+    result.classes = graph
+        .classes
+        .iter()
+        .filter(|pc| kept_paths.contains(pc.component.as_str()))
+        .cloned()
+        .collect();
+
+    result.normalize();
+    result
+}
+
 // ------------------------------------------------------------------- render
 
 #[derive(Debug, Clone)]
@@ -686,15 +775,21 @@ pub fn render_mermaid(graph: &ComponentGraph, opts: &ComponentRenderOptions) -> 
             "        "
         };
         for component in components {
-            let glyph = if diff_mode {
+            let glyph = if diff_mode && !component.is_boundary {
                 component.change.glyph()
             } else {
                 ""
             };
+            let stereotype = if component.is_boundary {
+                "«boundary»"
+            } else {
+                "«component»"
+            };
             let _ = writeln!(
                 out,
-                "{indent}{}[\"«component»<br/><b>{}{glyph}</b>\"]",
+                "{indent}{}[\"{}<br/><b>{}{glyph}</b>\"]",
                 node_id(&component.path),
+                stereotype,
                 escape_label(&component.name),
             );
         }
@@ -756,12 +851,26 @@ pub fn render_mermaid(graph: &ComponentGraph, opts: &ComponentRenderOptions) -> 
         out.push_str("    classDef vizzleExternal fill:#ffffff,stroke:#656d76,stroke-dasharray:4 3,color:#656d76\n");
     }
 
+    let has_boundary = graph.components.iter().any(|c| c.is_boundary);
+    if has_boundary {
+        out.push_str(&palette::mermaid_boundary_classdef());
+        let boundary_nodes: Vec<String> = graph
+            .components
+            .iter()
+            .filter(|c| c.is_boundary)
+            .map(|c| node_id(&c.path))
+            .collect();
+        if !boundary_nodes.is_empty() {
+            let _ = writeln!(out, "    class {} vizzleBoundary", boundary_nodes.join(","));
+        }
+    }
+
     if diff_mode {
         for change in [ChangeKind::Added, ChangeKind::Removed, ChangeKind::Modified] {
             let members: Vec<String> = graph
                 .components
                 .iter()
-                .filter(|c| c.change == change)
+                .filter(|c| c.change == change && !c.is_boundary)
                 .map(|c| node_id(&c.path))
                 .collect();
             if let (false, Some(css)) = (members.is_empty(), palette::mermaid_class(change)) {
@@ -826,6 +935,7 @@ pub fn to_json(graph: &ComponentGraph, include_classes: bool) -> String {
                 "files": c.files,
                 "classes": c.classes,
                 "change": change_str(c.change),
+                "boundary": c.is_boundary,
             })
         })
         .collect();
@@ -1136,6 +1246,238 @@ mod tests {
         assert_eq!(
             manifest_name("go.mod", "module github.com/acme/thing\n\ngo 1.22\n"),
             Some("thing".into())
+        );
+    }
+
+    #[test]
+    fn scope_empty_path_is_noop() {
+        let (files, manifests) = workspace();
+        let graph = build(&files, &manifests).unwrap();
+        let scoped = scope(&graph, "");
+        assert_eq!(scoped.components.len(), graph.components.len());
+        assert_eq!(scoped.edges.len(), graph.edges.len());
+        assert!(!scoped.components.iter().any(|c| c.is_boundary));
+    }
+
+    #[test]
+    fn scope_root_path_is_noop() {
+        let (files, manifests) = workspace();
+        let graph = build(&files, &manifests).unwrap();
+        let scoped = scope(&graph, ".");
+        assert_eq!(scoped.components.len(), graph.components.len());
+        assert_eq!(scoped.edges.len(), graph.edges.len());
+        assert!(!scoped.components.iter().any(|c| c.is_boundary));
+    }
+
+    // Workspace with boundary-to-boundary edges, used by scope tests.
+    //
+    // - `pkgs/core`: package, imported by svc and bridge
+    // - `apps/svc`: imports core (boundary when scoping to core)
+    // - `apps/bridge`: imports core (boundary when scoping to core) AND imports svc
+    //   → the bridge→svc edge is boundary-to-boundary and must be dropped.
+    fn workspace_with_cross_boundary_edge() -> (Pairs, Pairs) {
+        let manifests = pairs(&[
+            ("pkgs/core/package.json", r#"{"name": "@x/core"}"#),
+            ("apps/svc/package.json", r#"{"name": "svc"}"#),
+            ("apps/bridge/package.json", r#"{"name": "bridge"}"#),
+        ]);
+        let files = pairs(&[
+            ("pkgs/core/src/index.ts", "export class Core {}\n"),
+            (
+                "apps/svc/src/main.ts",
+                "import { Core } from \"@x/core\";\nclass Svc {}\n",
+            ),
+            (
+                "apps/bridge/src/main.ts",
+                "import { Core } from \"@x/core\";\nimport { Svc } from \"../svc/src/main\";\n",
+            ),
+        ]);
+        (files, manifests)
+    }
+
+    #[test]
+    fn scope_filters_to_path_and_boundary_neighbours() {
+        let (files, manifests) = workspace();
+        let graph = build(&files, &manifests).unwrap();
+        // Workspace: apps/svc → packages/core (internal), scripts → libs/pylib (internal).
+        // Scope to "apps/svc": keeps svc (in-scope) + packages/core (boundary, svc imports it).
+        // scripts and libs/pylib have no edge into svc's scope → excluded.
+        let scoped = scope(&graph, "apps/svc");
+
+        let paths: BTreeSet<&str> = scoped.components.iter().map(|c| c.path.as_str()).collect();
+        assert_eq!(
+            paths,
+            BTreeSet::from(["apps/svc", "packages/core"]),
+            "exact component set for apps/svc scope"
+        );
+
+        let svc = scoped
+            .components
+            .iter()
+            .find(|c| c.path == "apps/svc")
+            .unwrap();
+        assert!(!svc.is_boundary, "apps/svc is in scope, not a boundary");
+
+        let core = scoped
+            .components
+            .iter()
+            .find(|c| c.path == "packages/core")
+            .unwrap();
+        assert!(
+            core.is_boundary,
+            "packages/core is boundary (svc imports it)"
+        );
+
+        // Exact edge set: svc→core (internal, kept because svc is in-scope)
+        // and svc→fastify (external, kept because svc is in-scope).
+        // scripts→libs/pylib is dropped (neither endpoint in scope).
+        let internal_edges: Vec<(&str, &str)> = scoped
+            .edges
+            .iter()
+            .filter_map(|e| match &e.to {
+                EdgeTarget::Component(to) => Some((e.from.as_str(), to.as_str())),
+                EdgeTarget::External(_) => None,
+            })
+            .collect();
+        assert_eq!(
+            internal_edges,
+            [("apps/svc", "packages/core")],
+            "only the apps/svc→packages/core edge survives"
+        );
+
+        let external_edges: Vec<(&str, &str)> = scoped
+            .edges
+            .iter()
+            .filter_map(|e| match &e.to {
+                EdgeTarget::External(pkg) => Some((e.from.as_str(), pkg.as_str())),
+                EdgeTarget::Component(_) => None,
+            })
+            .collect();
+        assert_eq!(
+            external_edges,
+            [("apps/svc", "fastify")],
+            "external edge from in-scope component is kept; scripts→os is dropped"
+        );
+    }
+
+    #[test]
+    fn scope_keeps_only_edges_where_at_least_one_endpoint_is_in_scope() {
+        let (files, manifests) = workspace();
+        let graph = build(&files, &manifests).unwrap();
+        // Scope to packages/core: svc imports core → svc is boundary.
+        // scripts imports libs/pylib — neither is in scope → both excluded.
+        let scoped = scope(&graph, "packages/core");
+
+        let paths: BTreeSet<&str> = scoped.components.iter().map(|c| c.path.as_str()).collect();
+        assert_eq!(
+            paths,
+            BTreeSet::from(["packages/core", "apps/svc"]),
+            "exact component set: core (in-scope) + svc (boundary)"
+        );
+
+        assert!(
+            !scoped
+                .components
+                .iter()
+                .find(|c| c.path == "packages/core")
+                .unwrap()
+                .is_boundary,
+            "core is in-scope"
+        );
+        assert!(
+            scoped
+                .components
+                .iter()
+                .find(|c| c.path == "apps/svc")
+                .unwrap()
+                .is_boundary,
+            "svc is boundary"
+        );
+
+        // Exact edge set: only apps/svc→packages/core (to-endpoint is in-scope).
+        // apps/svc→fastify is dropped (external, but from is boundary, to is external → neither in scope).
+        let internal_edges: Vec<(&str, &str)> = scoped
+            .edges
+            .iter()
+            .filter_map(|e| match &e.to {
+                EdgeTarget::Component(to) => Some((e.from.as_str(), to.as_str())),
+                EdgeTarget::External(_) => None,
+            })
+            .collect();
+        assert_eq!(
+            internal_edges,
+            [("apps/svc", "packages/core")],
+            "only the svc→core edge survives"
+        );
+
+        let external_edges: Vec<(&str, &str)> = scoped
+            .edges
+            .iter()
+            .filter_map(|e| match &e.to {
+                EdgeTarget::External(pkg) => Some((e.from.as_str(), pkg.as_str())),
+                EdgeTarget::Component(_) => None,
+            })
+            .collect();
+        assert!(
+            external_edges.is_empty(),
+            "no external edges survive: svc→fastify dropped (svc is boundary, fastify external, neither in scope)"
+        );
+    }
+
+    #[test]
+    fn scope_drops_boundary_to_boundary_edges() {
+        // bridge imports both core and svc; svc imports core.
+        // When scoped to pkgs/core, both svc and bridge are boundary.
+        // The bridge→svc edge is boundary-to-boundary and must be dropped.
+        let (files, manifests) = workspace_with_cross_boundary_edge();
+        let graph = build(&files, &manifests).unwrap();
+        let scoped = scope(&graph, "pkgs/core");
+
+        let paths: BTreeSet<&str> = scoped.components.iter().map(|c| c.path.as_str()).collect();
+        assert_eq!(
+            paths,
+            BTreeSet::from(["pkgs/core", "apps/svc", "apps/bridge"]),
+            "in-scope core + boundary svc and bridge"
+        );
+
+        assert!(
+            !scoped
+                .components
+                .iter()
+                .find(|c| c.path == "pkgs/core")
+                .unwrap()
+                .is_boundary
+        );
+        assert!(
+            scoped
+                .components
+                .iter()
+                .find(|c| c.path == "apps/svc")
+                .unwrap()
+                .is_boundary
+        );
+        assert!(
+            scoped
+                .components
+                .iter()
+                .find(|c| c.path == "apps/bridge")
+                .unwrap()
+                .is_boundary
+        );
+
+        // Edges to/from pkgs/core survive; the bridge→svc boundary-to-boundary edge is dropped.
+        let internal_edges: BTreeSet<(&str, &str)> = scoped
+            .edges
+            .iter()
+            .filter_map(|e| match &e.to {
+                EdgeTarget::Component(to) => Some((e.from.as_str(), to.as_str())),
+                EdgeTarget::External(_) => None,
+            })
+            .collect();
+        assert_eq!(
+            internal_edges,
+            BTreeSet::from([("apps/svc", "pkgs/core"), ("apps/bridge", "pkgs/core")]),
+            "both in-boundary→in-scope edges kept; boundary→boundary edge dropped"
         );
     }
 }

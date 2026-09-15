@@ -73,3 +73,83 @@ is 17 685 characters, well inside GitHub's 65 536 limit — but it describes 93 
 components for a change confined to one subtree. The next step serves the interactive HTML from a
 hosted surface, where 24 MB per pull request becomes a storage and cleanup problem that mostly
 disappears once this lands.
+
+## Tracking: Initial implementation — 2026-09-15
+
+**Implemented:** Scoping strategy chosen (keep in-scope + boundary neighbours), boundary nodes
+styled distinctly as `«boundary»`, classes made opt-in with `--classes/--no-classes` flag
+defaulting to `--no-classes` for component type.
+
+**Changes (initial):**
+- Rust core: `component::scope()` filters to in-scope + boundary neighbours, marks boundary
+  with `is_boundary: bool`, styles boundary nodes in Mermaid output
+- Python CLI: `_component_scope_path()` computes scope; `--classes/--no-classes` flag on both
+  `diff` and `serve` commands; all three call sites updated (diff HTML, diff mermaid, serve diff)
+- All tests pass (31 Rust + 29 Python); pre-commit clean
+
+**Corrections to plan §4:**
+
+1. **Third bullet — artifact size insensitivity.** The claim was that "a one-commit diff and
+   a many-commit diff of the same scope produce *different* output — today they do not." This is
+   **incorrect for mermaid** (measured on h@17011fa: `HEAD~1` vs `HEAD~50` diffs produce different
+   mermaid, ~5791 vs ~6370 bytes, 25 lines differ). The insensitivity is **HTML artifact size only**
+   — ~20 000 embedded class bodies dominate the payload and swamp the delta markers, a `classes`
+   hardcode not a scoping bug. This fix (§3.5 of feature spec) separates the two problems.
+
+2. **Plan §2, call sites.** Two sites were listed (`diff` HTML and mermaid); **there is a third:**
+   `serve`'s `build_page()` diff mode also had both defects. All three now fixed.
+
+## Tracking: Revision — 2026-09-15
+
+Review of PR #21 found issues in the initial implementation. All addressed in this revision.
+
+**Decision A — HTML view MUST render boundary nodes:**
+The initial implementation exported `"boundary"` in `to_json` but `template-component.html`
+never read it. Now fixed: boundary nodes render with dashed grey stroke and `«boundary»`
+stereotype; the legend gains a `«boundary»` entry. Colours live once in `palette.rs`
+(`BOUNDARY` constant + `mermaid_boundary_classdef()` / `css_boundary_variables()`), both
+Mermaid and HTML CSS read from there. The hardcoded `#f6f8fa/#57606a` literals in the Mermaid
+renderer were replaced with `palette::mermaid_boundary_classdef()`.
+
+**Decision B — path inside a component root is an ERROR:**
+`vizzle diff --type component packages/vizzle-cli/src` previously returned an empty diagram
+and exited 0. The CLI now raises a `ClickException` naming the nearest enclosing component root:
+```
+Error: no component is rooted at packages/vizzle-cli/src
+The nearest enclosing component is packages/vizzle-cli
+```
+
+**F1 — boundary × changed styling collision:**
+Boundary nodes were getting change fill/stroke classes even though a change outside scope is
+irrelevant to a reviewer. Excluded boundary nodes from diff-class attachment and glyph in
+both Mermaid (`component.rs:870`, `component.rs:780`) and HTML (`drawNode` in template).
+Rule documented in `docs/diagram-types/component.md` §6.1.
+
+**F2 — `_component_scope_path` uncaught ValueError:**
+Added `.relative_to(root)` resolution for the root path and catches `ValueError` to emit
+a `ClickException` for paths outside the repo. Returns `as_posix()` so separators match git.
+
+**F3 — tests strengthened:**
+Rewrote `scope_filters_to_path_and_boundary_neighbours` and
+`scope_keeps_only_edges_where_at_least_one_endpoint_is_in_scope` to assert exact component
+sets and exact edge sets. Added `scope_drops_boundary_to_boundary_edges` fixture covering
+boundary-to-boundary edges (must be dropped). Added two Python CLI tests:
+- `test_component_diff_scoped_to_package_root_has_fewer_components` — asserts scoped count
+  differs from unscoped
+- `test_component_diff_refuses_non_root_path` — asserts Decision B refusal and message
+
+All three Rust scope tests demonstrated failing against identity `scope()` before trusting them.
+Python scope test demonstrated failing when `scope=` was dropped.
+
+**F4 — `serve --no-classes` was silently ignored outside diff mode:**
+Fixed by passing `effective_classes` (with `True` default for non-diff) to
+`component_json_from_dir`. Deduplicated the `else False` default via `_effective_classes_for_diff()`.
+
+**F5 — SKILL.md overstated `--no-classes`:**
+Fixed wording: `--no-classes` is the default for component *diffs*, not for `vizzle component`.
+
+**F6 — dead code removed:**
+`from_kept && to_kept && (from_kept || to_kept)` simplified to `from_kept && to_kept`.
+Redundant `!is_in_scope()` guards removed.
+
+**Final state:** 33 Rust tests + 31 Python tests pass; pre-commit clean.
