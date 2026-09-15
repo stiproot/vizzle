@@ -1,7 +1,11 @@
 # Filtering components in a diff
 
-Status: Proposed — not started. Raised by a consumer whose per-pull-request component diff renders
-test fixtures as architectural components, with no flag available to exclude them.
+Status: **Implemented** — 2026-09-15: `-I/-E/-l` on `diff` (and honoured by `serve --diff`),
+applied to both revisions before build; selection runs before scope so an excluded component is
+never a `«boundary»`; exclusion is total, change markers included; the selection is stated in
+every renderer. Decisions and measurements in `docs/diagram-types/component.md` §6.2. Raised by a
+consumer whose per-pull-request component diff renders test fixtures as architectural components,
+with no flag available to exclude them.
 Established: 2026-09-15
 
 ## 1. The premise
@@ -67,3 +71,48 @@ A consumer wired the component diff into pull-request review on 2026-09-15 and i
 one package root the diagram is 6 components rather than 93, and the mermaid fits a comment
 comfortably. One of those six is a test fixture. At six boxes a spurious one is a sixth of the
 diagram, which is the difference between a reviewer trusting it and learning to skim past it.
+
+## Tracking: Implementation — 2026-09-15
+
+**Where the filtering lives.** One matcher, `walk::Selector` (language → include → exclude,
+over the repo-relative path), extracted from the walker's inline loop and reused by the four diff
+entry points (`diff_diagram`, `json_diff`, `component_diff_diagram`, `component_json_diff`), which
+now take a `SelectOptions`. The bindings gained `include`/`exclude`/`langs` keyword args with
+empty defaults, so nothing that did not pass them changed behaviour. The CLI puts the shared
+`select_options` decorator on `diff`, and `serve` now uses the same decorator instead of its own
+three copies whose help text said "class mode" — a fourth call site the plan's table missed (the
+flags were there, but ignored in component diff mode).
+
+**§3.1 — composition with scoping: selection first, then diff, then scope.** An excluded
+component is dropped even as a boundary neighbour, and its edge goes with it. Reasoning and the
+measured effect are in the spec (§6.2): on h, scoping to `packages/js/engine-core` gives 6/5;
+adding `-E 'apps/**'` drops the `workflow-svc` boundary node → 5/4.
+
+**§3.2 — change markers: exclusion is total.** A change confined to excluded paths renders as no
+structural change, and the pr-diagram grep therefore reads "unchanged" for a fixture-only PR.
+Recorded in the spec with the reason it is the truth about the selection rather than a lie about
+the repository.
+
+**Legend.** HTML legend entry (`selection: exclude …`), `stats.selection` in the JSON, and a
+`%% vizzle: selection:` trailer on the Mermaid, which has no legend of its own. Wording uses rule
+names (`include`/`exclude`/`lang`), not flag spellings — the core does not know how the CLI
+spells `-E`.
+
+**Filtering everything is an error** on the class diff (`no changed files match the
+include/exclude/lang selection`), not an empty diagram. While making that message reach the user
+it turned out that EVERY core error surfaced as a Python traceback (an invalid glob on today's
+`vizzle component` did too), so the click group now translates the core's `ValueError` into a
+one-line `Error:`. Test: `test_core_errors_are_reported_not_raised`.
+
+**Also fixed in passing:** pre-commit's `check-yaml` failed on main against
+`.h/charts/**/*.tmpl.yaml` — helm templates are not YAML until rendered; excluded.
+
+**Tests:** 3 Rust (`walk` selector rules + invalid glob; `lib` selection-drops-on-both-sides,
+selection-before-scope, filter-to-nothing is an error) and 6 Python CLI tests, including the
+acceptance items one for one: excluded component gone, nothing added/removed because of it,
+boundary neighbour dropped, fixture-only change is no change, legend carries the selection,
+class diff refuses an empty selection. 38 Rust + 37 Python pass; pre-commit clean.
+
+**Acceptance (§4) — all met.** The fourth bullet's "covered by a test" is
+`test_component_diff_exclude_wins_over_boundary` (CLI) and
+`selection_runs_before_scope_so_an_excluded_neighbour_is_not_a_boundary` (core).

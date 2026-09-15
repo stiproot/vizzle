@@ -40,5 +40,8 @@ repos:
       - id: trailing-whitespace
       - id: end-of-file-fixer
       - id: check-yaml
+        # Helm chart templates are Go templates that render TO yaml; the
+        # checker parses them as-is and fails on the first `{{`.
+        exclude: ^\.h/charts/
       - id: check-toml
       - id: check-merge-conflict

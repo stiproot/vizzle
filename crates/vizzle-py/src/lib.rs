@@ -10,6 +10,14 @@ fn to_py_err(err: anyhow::Error) -> PyErr {
     PyValueError::new_err(format!("{err:#}"))
 }
 
+fn selection(include: Vec<String>, exclude: Vec<String>, langs: Vec<String>) -> SelectOptions {
+    SelectOptions {
+        include,
+        exclude,
+        langs,
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn options(
     show_members: bool,
@@ -111,6 +119,9 @@ fn class_diagram_from_files(
     base_files,
     head_files,
     *,
+    include = vec![],
+    exclude = vec![],
+    langs = vec![],
     show_members = true,
     show_modules = false,
     group_by_module = false,
@@ -122,6 +133,9 @@ fn class_diagram_from_files(
 fn class_diagram_diff(
     base_files: Vec<(String, String)>,
     head_files: Vec<(String, String)>,
+    include: Vec<String>,
+    exclude: Vec<String>,
+    langs: Vec<String>,
     show_members: bool,
     show_modules: bool,
     group_by_module: bool,
@@ -137,7 +151,8 @@ fn class_diagram_diff(
         direction,
         title,
     );
-    vc::diff_diagram(&base_files, &head_files, &render).map_err(to_py_err)
+    let select = selection(include, exclude, langs);
+    vc::diff_diagram(&base_files, &head_files, &select, &render).map_err(to_py_err)
 }
 
 fn component_options(
@@ -218,6 +233,9 @@ fn component_json_from_dir(
     head_files,
     head_manifests,
     *,
+    include = vec![],
+    exclude = vec![],
+    langs = vec![],
     group = true,
     weights = false,
     include_externals = false,
@@ -231,6 +249,9 @@ fn component_diagram_diff(
     base_manifests: Vec<(String, String)>,
     head_files: Vec<(String, String)>,
     head_manifests: Vec<(String, String)>,
+    include: Vec<String>,
+    exclude: Vec<String>,
+    langs: Vec<String>,
     group: bool,
     weights: bool,
     include_externals: bool,
@@ -239,12 +260,14 @@ fn component_diagram_diff(
     scope: Option<String>,
 ) -> PyResult<String> {
     let render = component_options(group, weights, include_externals, direction, title);
+    let select = selection(include, exclude, langs);
     let scope_path = scope.as_deref().unwrap_or("");
     vc::component_diff_diagram(
         &base_files,
         &base_manifests,
         &head_files,
         &head_manifests,
+        &select,
         scope_path,
         &render,
     )
@@ -253,21 +276,38 @@ fn component_diagram_diff(
 
 /// Export a change-annotated component graph from two full revisions as JSON.
 #[pyfunction]
-#[pyo3(signature = (base_files, base_manifests, head_files, head_manifests, *, classes = true, scope = None))]
+#[pyo3(signature = (
+    base_files,
+    base_manifests,
+    head_files,
+    head_manifests,
+    *,
+    include = vec![],
+    exclude = vec![],
+    langs = vec![],
+    classes = true,
+    scope = None,
+))]
+#[allow(clippy::too_many_arguments)]
 fn component_json_diff(
     base_files: Vec<(String, String)>,
     base_manifests: Vec<(String, String)>,
     head_files: Vec<(String, String)>,
     head_manifests: Vec<(String, String)>,
+    include: Vec<String>,
+    exclude: Vec<String>,
+    langs: Vec<String>,
     classes: bool,
     scope: Option<String>,
 ) -> PyResult<String> {
+    let select = selection(include, exclude, langs);
     let scope_path = scope.as_deref().unwrap_or("");
     vc::component_json_diff(
         &base_files,
         &base_manifests,
         &head_files,
         &head_manifests,
+        &select,
         scope_path,
         classes,
     )
@@ -318,11 +358,16 @@ fn graph_json_from_dir(
 
 /// Export a change-annotated class graph from base/head revisions as JSON.
 #[pyfunction]
+#[pyo3(signature = (base_files, head_files, *, include = vec![], exclude = vec![], langs = vec![]))]
 fn graph_json_diff(
     base_files: Vec<(String, String)>,
     head_files: Vec<(String, String)>,
+    include: Vec<String>,
+    exclude: Vec<String>,
+    langs: Vec<String>,
 ) -> PyResult<String> {
-    vc::json_diff(&base_files, &head_files).map_err(to_py_err)
+    let select = selection(include, exclude, langs);
+    vc::json_diff(&base_files, &head_files, &select).map_err(to_py_err)
 }
 
 #[pymodule]
