@@ -37,6 +37,13 @@ def _component_render_kwargs(
     }
 
 
+def _component_scope_path(path: Path) -> str:
+    """Compute scope path for component diff: "" if path is repo root, else relative path."""
+    root = _repo_root(path)
+    resolved = path.resolve()
+    return "" if resolved == root else str(resolved.relative_to(root))
+
+
 def _resolve_format(fmt: str | None, output: Path | None) -> str:
     if fmt:
         return fmt
@@ -422,6 +429,11 @@ def _collect_component_diff(path: Path, base: str, head: str | None) -> tuple[li
     help="Diagram type. `component` diffs the module dependency graph (rewiring shows loudest).",
 )
 @click.option("--weights", is_flag=True, help="Label edges with their weight (component type, mermaid).")
+@click.option(
+    "--classes/--no-classes",
+    default=None,
+    help="Embed class detail (component type, HTML only). Default: --no-classes for component type.",
+)
 @render_options
 def diff_diagram(
     path: Path,
@@ -429,6 +441,7 @@ def diff_diagram(
     head: str | None,
     diagram_type: str,
     weights: bool,
+    classes: bool | None,
     members: bool,
     modules: bool,
     group: bool,
@@ -448,9 +461,13 @@ def diff_diagram(
     """
     if diagram_type == "component":
         base_files, base_manifests, head_files, head_manifests = _collect_component_diff(path, base, head)
+        scope_path = _component_scope_path(path)
+        effective_classes = classes if classes is not None else False
         resolved_title = title or f"changes vs {base}"
         if _resolve_format(fmt, output) == "html":
-            graph_json = _core.component_json_diff(base_files, base_manifests, head_files, head_manifests, classes=True)
+            graph_json = _core.component_json_diff(
+                base_files, base_manifests, head_files, head_manifests, classes=effective_classes, scope=scope_path
+            )
             page = build_component_html(graph_json, title=resolved_title, include_externals=externals)
             _emit(page, output, summarize_components(graph_json))
             return
@@ -459,6 +476,7 @@ def diff_diagram(
             base_manifests,
             head_files,
             head_manifests,
+            scope=scope_path,
             **_component_render_kwargs(True, weights, externals, direction, resolved_title),
         )
         _emit_mermaid(diagram, output)
@@ -514,6 +532,11 @@ def diff_diagram(
     help="Add one «module» box per module holding its public module-level functions.",
 )
 @click.option("--externals", is_flag=True, help="Show inheritance edges to types outside the parsed set.")
+@click.option(
+    "--classes/--no-classes",
+    default=None,
+    help="Embed class detail (component type, diff mode). Default: --no-classes for component type.",
+)
 @click.option("--title", default=None, help="Diagram title.")
 @click.option("--host", default="127.0.0.1", show_default=True)
 @click.option("--port", default=8499, show_default=True, help="Port to bind (0 picks a free port).")
@@ -530,6 +553,7 @@ def serve_command(
     members: bool,
     modules: bool,
     externals: bool,
+    classes: bool | None,
     title: str | None,
     host: str,
     port: int,
@@ -551,8 +575,10 @@ def serve_command(
         if diagram_type == "component":
             if diff_mode:
                 base_files, base_manifests, head_files, head_manifests = _collect_component_diff(path, base, head)
+                scope_path = _component_scope_path(path)
+                effective_classes = classes if classes is not None else False
                 graph_json = _core.component_json_diff(
-                    base_files, base_manifests, head_files, head_manifests, classes=True
+                    base_files, base_manifests, head_files, head_manifests, classes=effective_classes, scope=scope_path
                 )
                 page_title = title or f"changes vs {base} (live)"
             else:
