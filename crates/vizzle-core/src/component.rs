@@ -41,6 +41,8 @@ pub struct Component {
     /// Hash of the owned files (paths + contents), for diff detection.
     pub fingerprint: u64,
     pub change: ChangeKind,
+    /// True if this component is outside the scope but shares an edge with an in-scope component.
+    pub is_boundary: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -361,6 +363,7 @@ fn new_component(name: String, path: String) -> Component {
         classes: 0,
         fingerprint: 0,
         change: ChangeKind::Unchanged,
+        is_boundary: false,
     }
 }
 
@@ -618,6 +621,94 @@ fn diff_classes(base: &[PlacedClass], head: &[PlacedClass]) -> Vec<PlacedClass> 
         .collect()
 }
 
+/// Filter graph to components under scope_path and out-of-scope neighbours that share edges.
+/// Empty string or "." returns the graph unchanged. Boundary neighbours are marked with is_boundary=true.
+pub fn scope(graph: &ComponentGraph, scope_path: &str) -> ComponentGraph {
+    if scope_path.is_empty() || scope_path == "." {
+        return graph.clone();
+    }
+
+    let is_in_scope = |path: &str| -> bool {
+        path == scope_path || path.starts_with(&format!("{}/", scope_path))
+    };
+
+    let in_scope: BTreeSet<&str> = graph
+        .components
+        .iter()
+        .filter(|c| is_in_scope(&c.path))
+        .map(|c| c.path.as_str())
+        .collect();
+
+    if in_scope.is_empty() {
+        return ComponentGraph::default();
+    }
+
+    let mut boundary: BTreeSet<String> = BTreeSet::new();
+    for edge in &graph.edges {
+        let from_in = in_scope.contains(edge.from.as_str());
+        let to_in = match &edge.to {
+            EdgeTarget::Component(path) => in_scope.contains(path.as_str()),
+            EdgeTarget::External(_) => false,
+        };
+
+        if from_in && !to_in {
+            if let EdgeTarget::Component(path) = &edge.to {
+                if !is_in_scope(path) {
+                    boundary.insert(path.clone());
+                }
+            }
+        }
+        if !from_in && to_in && !is_in_scope(&edge.from) {
+            boundary.insert(edge.from.clone());
+        }
+    }
+
+    let kept_paths: BTreeSet<&str> = in_scope
+        .iter()
+        .copied()
+        .chain(boundary.iter().map(|s| s.as_str()))
+        .collect();
+
+    let mut result = ComponentGraph::default();
+    for component in &graph.components {
+        if kept_paths.contains(component.path.as_str()) {
+            let mut c = component.clone();
+            c.is_boundary = !in_scope.contains(component.path.as_str());
+            result.components.push(c);
+        }
+    }
+
+    for edge in &graph.edges {
+        let from_kept = kept_paths.contains(edge.from.as_str());
+        let to_kept = match &edge.to {
+            EdgeTarget::Component(path) => kept_paths.contains(path.as_str()),
+            EdgeTarget::External(_) => true,
+        };
+
+        if from_kept && to_kept && (from_kept || to_kept) {
+            let from_in_scope = in_scope.contains(edge.from.as_str());
+            let to_in_scope = match &edge.to {
+                EdgeTarget::Component(path) => in_scope.contains(path.as_str()),
+                EdgeTarget::External(_) => false,
+            };
+
+            if from_in_scope || to_in_scope {
+                result.edges.push(edge.clone());
+            }
+        }
+    }
+
+    result.classes = graph
+        .classes
+        .iter()
+        .filter(|pc| kept_paths.contains(pc.component.as_str()))
+        .cloned()
+        .collect();
+
+    result.normalize();
+    result
+}
+
 // ------------------------------------------------------------------- render
 
 #[derive(Debug, Clone)]
@@ -691,10 +782,16 @@ pub fn render_mermaid(graph: &ComponentGraph, opts: &ComponentRenderOptions) -> 
             } else {
                 ""
             };
+            let stereotype = if component.is_boundary {
+                "«boundary»"
+            } else {
+                "«component»"
+            };
             let _ = writeln!(
                 out,
-                "{indent}{}[\"«component»<br/><b>{}{glyph}</b>\"]",
+                "{indent}{}[\"{}<br/><b>{}{glyph}</b>\"]",
                 node_id(&component.path),
+                stereotype,
                 escape_label(&component.name),
             );
         }
@@ -754,6 +851,20 @@ pub fn render_mermaid(graph: &ComponentGraph, opts: &ComponentRenderOptions) -> 
     }
     if !externals.is_empty() {
         out.push_str("    classDef vizzleExternal fill:#ffffff,stroke:#656d76,stroke-dasharray:4 3,color:#656d76\n");
+    }
+
+    let has_boundary = graph.components.iter().any(|c| c.is_boundary);
+    if has_boundary {
+        out.push_str("    classDef vizzleBoundary fill:#f6f8fa,stroke:#57606a,stroke-dasharray:4 3,color:#57606a\n");
+        let boundary_nodes: Vec<String> = graph
+            .components
+            .iter()
+            .filter(|c| c.is_boundary)
+            .map(|c| node_id(&c.path))
+            .collect();
+        if !boundary_nodes.is_empty() {
+            let _ = writeln!(out, "    class {} vizzleBoundary", boundary_nodes.join(","));
+        }
     }
 
     if diff_mode {
@@ -826,6 +937,7 @@ pub fn to_json(graph: &ComponentGraph, include_classes: bool) -> String {
                 "files": c.files,
                 "classes": c.classes,
                 "change": change_str(c.change),
+                "boundary": c.is_boundary,
             })
         })
         .collect();
@@ -1137,5 +1249,77 @@ mod tests {
             manifest_name("go.mod", "module github.com/acme/thing\n\ngo 1.22\n"),
             Some("thing".into())
         );
+    }
+
+    #[test]
+    fn scope_empty_path_is_noop() {
+        let (files, manifests) = workspace();
+        let graph = build(&files, &manifests).unwrap();
+        let scoped = scope(&graph, "");
+        assert_eq!(scoped.components.len(), graph.components.len());
+        assert_eq!(scoped.edges.len(), graph.edges.len());
+        assert!(!scoped.components.iter().any(|c| c.is_boundary));
+    }
+
+    #[test]
+    fn scope_root_path_is_noop() {
+        let (files, manifests) = workspace();
+        let graph = build(&files, &manifests).unwrap();
+        let scoped = scope(&graph, ".");
+        assert_eq!(scoped.components.len(), graph.components.len());
+        assert_eq!(scoped.edges.len(), graph.edges.len());
+        assert!(!scoped.components.iter().any(|c| c.is_boundary));
+    }
+
+    #[test]
+    fn scope_filters_to_path_and_boundary_neighbours() {
+        let (files, manifests) = workspace();
+        let graph = build(&files, &manifests).unwrap();
+        // Scope to "apps/svc": includes svc (in-scope) + packages/core (boundary)
+        let scoped = scope(&graph, "apps/svc");
+
+        let paths: BTreeSet<&str> = scoped.components.iter().map(|c| c.path.as_str()).collect();
+        assert!(paths.contains("apps/svc"));
+        assert!(paths.contains("packages/core"));
+        assert!(!paths.contains("libs/pylib"));
+        assert!(!paths.contains("scripts"));
+
+        let svc = scoped
+            .components
+            .iter()
+            .find(|c| c.path == "apps/svc")
+            .unwrap();
+        assert!(!svc.is_boundary);
+
+        let core = scoped
+            .components
+            .iter()
+            .find(|c| c.path == "packages/core")
+            .unwrap();
+        assert!(core.is_boundary);
+    }
+
+    #[test]
+    fn scope_keeps_only_edges_where_at_least_one_endpoint_is_in_scope() {
+        let (files, manifests) = workspace();
+        let graph = build(&files, &manifests).unwrap();
+        let scoped = scope(&graph, "packages/core");
+
+        // Only packages/core (in-scope) and its neighbours should be present
+        let paths: BTreeSet<&str> = scoped.components.iter().map(|c| c.path.as_str()).collect();
+        assert!(paths.contains("packages/core"));
+        assert!(paths.contains("apps/svc"));
+        assert!(!paths.contains("packages/util")); // not adjacent to packages/core
+
+        for edge in &scoped.edges {
+            match &edge.to {
+                EdgeTarget::Component(to) => {
+                    let from_in = paths.contains(edge.from.as_str());
+                    let to_in = paths.contains(to.as_str());
+                    assert!(from_in || to_in);
+                }
+                EdgeTarget::External(_) => {}
+            }
+        }
     }
 }

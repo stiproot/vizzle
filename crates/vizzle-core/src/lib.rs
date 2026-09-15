@@ -128,9 +128,16 @@ pub fn component_diff_diagram(
     base_manifests: &[(String, String)],
     head_files: &[(String, String)],
     head_manifests: &[(String, String)],
+    scope_path: &str,
     render: &ComponentRenderOptions,
 ) -> Result<String> {
-    let merged = component_diff_graph(base_files, base_manifests, head_files, head_manifests)?;
+    let merged = component_diff_graph(
+        base_files,
+        base_manifests,
+        head_files,
+        head_manifests,
+        scope_path,
+    )?;
     Ok(component::render_mermaid(&merged, render))
 }
 
@@ -140,9 +147,16 @@ pub fn component_json_diff(
     base_manifests: &[(String, String)],
     head_files: &[(String, String)],
     head_manifests: &[(String, String)],
+    scope_path: &str,
     include_classes: bool,
 ) -> Result<String> {
-    let merged = component_diff_graph(base_files, base_manifests, head_files, head_manifests)?;
+    let merged = component_diff_graph(
+        base_files,
+        base_manifests,
+        head_files,
+        head_manifests,
+        scope_path,
+    )?;
     Ok(component::to_json(&merged, include_classes))
 }
 
@@ -151,10 +165,12 @@ fn component_diff_graph(
     base_manifests: &[(String, String)],
     head_files: &[(String, String)],
     head_manifests: &[(String, String)],
+    scope_path: &str,
 ) -> Result<component::ComponentGraph> {
     let base = component::build(base_files, base_manifests)?;
     let head = component::build(head_files, head_manifests)?;
-    Ok(component::diff(&base, &head))
+    let merged = component::diff(&base, &head);
+    Ok(component::scope(&merged, scope_path))
 }
 
 /// Export a change-annotated class graph from two revisions of a file set as JSON.
