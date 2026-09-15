@@ -1,7 +1,10 @@
 # Scoping the component diff
 
-Status: Proposed — not started. Raised by a consumer putting `vizzle diff --type component` in front
-of reviewers on every pull request.
+Status: **Implemented** — #21 merged 2026-09-15: scoping to in-scope + boundary neighbours,
+`--classes/--no-classes` (defaulting to `--no-classes` for the component type), Decisions A and B,
+and three call sites including `serve`. **Not yet released** — the newest tag is `v0.2.0`, so a
+consumer pinning `vizzle==0.2.0` does not have it. Raised by a consumer putting
+`vizzle diff --type component` in front of reviewers on every pull request.
 Established: 2026-09-14
 
 ## 1. The premise
