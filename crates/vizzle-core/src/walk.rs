@@ -49,6 +49,57 @@ pub fn collect_manifests(root: &Path) -> Result<Vec<(String, String)>> {
     Ok(manifests)
 }
 
+/// The file-selection rules shared by every entry point: language, then
+/// include globs, then exclude globs, all matched against the repo-relative
+/// path. One matcher rather than one per entry point, so a glob means the
+/// same thing on `component`, `class`, `doc` and `diff` — the diff learns
+/// nothing about globs of its own.
+pub struct Selector {
+    include: Option<GlobSet>,
+    exclude: Option<GlobSet>,
+    langs: Vec<Language>,
+}
+
+impl Selector {
+    pub fn new(include: &[String], exclude: &[String], langs: &[Language]) -> Result<Self> {
+        Ok(Self {
+            include: build_globset(include)?,
+            exclude: build_globset(exclude)?,
+            langs: langs.to_vec(),
+        })
+    }
+
+    /// True when `rel` is a supported source file the rules let through.
+    pub fn accepts(&self, rel: &str) -> bool {
+        let Some(lang) = Language::from_path(rel) else {
+            return false;
+        };
+        if !self.langs.is_empty() && !self.langs.contains(&lang) {
+            return false;
+        }
+        if let Some(include) = &self.include {
+            if !include.is_match(rel) {
+                return false;
+            }
+        }
+        if let Some(exclude) = &self.exclude {
+            if exclude.is_match(rel) {
+                return false;
+            }
+        }
+        true
+    }
+
+    /// Keep the `(relative_path, contents)` pairs the rules let through.
+    pub fn filter(&self, files: &[(String, String)]) -> Vec<(String, String)> {
+        files
+            .iter()
+            .filter(|(rel, _)| self.accepts(rel))
+            .cloned()
+            .collect()
+    }
+}
+
 /// Collect `(relative_path, contents)` for supported source files under `root`,
 /// respecting .gitignore. `include`/`exclude` are glob patterns matched against
 /// the relative path; `langs` (empty = all) restricts languages.
@@ -58,8 +109,7 @@ pub fn collect_files(
     exclude: &[String],
     langs: &[Language],
 ) -> Result<Vec<(String, String)>> {
-    let include = build_globset(include)?;
-    let exclude = build_globset(exclude)?;
+    let selector = Selector::new(include, exclude, langs)?;
 
     let mut files = Vec::new();
     for entry in WalkBuilder::new(root).hidden(true).build() {
@@ -73,21 +123,8 @@ pub fn collect_files(
             .unwrap_or(entry.path())
             .to_string_lossy()
             .replace('\\', "/");
-        let Some(lang) = Language::from_path(&rel) else {
+        if !selector.accepts(&rel) {
             continue;
-        };
-        if !langs.is_empty() && !langs.contains(&lang) {
-            continue;
-        }
-        if let Some(include) = &include {
-            if !include.is_match(&rel) {
-                continue;
-            }
-        }
-        if let Some(exclude) = &exclude {
-            if exclude.is_match(&rel) {
-                continue;
-            }
         }
         match std::fs::read_to_string(entry.path()) {
             Ok(contents) => files.push((rel, contents)),
@@ -96,4 +133,69 @@ pub fn collect_files(
     }
     files.sort();
     Ok(files)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn pairs(items: &[&str]) -> Vec<(String, String)> {
+        items
+            .iter()
+            .map(|p| ((*p).to_owned(), String::new()))
+            .collect()
+    }
+
+    fn paths(files: &[(String, String)]) -> Vec<&str> {
+        files.iter().map(|(p, _)| p.as_str()).collect()
+    }
+
+    #[test]
+    fn selector_applies_lang_then_include_then_exclude() {
+        let files = pairs(&[
+            "apps/svc/main.ts",
+            "packages/core/index.ts",
+            "packages/core/tests/fixtures/repo/index.ts",
+            "tools/script.py",
+            "README.md",
+        ]);
+        let all = Selector::new(&[], &[], &[]).unwrap();
+        assert_eq!(
+            paths(&all.filter(&files)),
+            [
+                "apps/svc/main.ts",
+                "packages/core/index.ts",
+                "packages/core/tests/fixtures/repo/index.ts",
+                "tools/script.py",
+            ],
+            "unsupported files drop even with no rules"
+        );
+
+        let excluded = Selector::new(&[], &["**/tests/fixtures/**".to_owned()], &[]).unwrap();
+        assert_eq!(
+            paths(&excluded.filter(&files)),
+            [
+                "apps/svc/main.ts",
+                "packages/core/index.ts",
+                "tools/script.py"
+            ]
+        );
+
+        let included = Selector::new(&["packages/**".to_owned()], &[], &[]).unwrap();
+        assert_eq!(
+            paths(&included.filter(&files)),
+            [
+                "packages/core/index.ts",
+                "packages/core/tests/fixtures/repo/index.ts"
+            ]
+        );
+
+        let python = Selector::new(&[], &[], &[Language::Python]).unwrap();
+        assert_eq!(paths(&python.filter(&files)), ["tools/script.py"]);
+    }
+
+    #[test]
+    fn selector_rejects_an_invalid_glob() {
+        assert!(Selector::new(&["[".to_owned()], &[], &[]).is_err());
+    }
 }
