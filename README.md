@@ -65,6 +65,13 @@ Full class diagram of a codebase:
 uvx vizzle class ~/code/repo/h -o h-classes.mmd
 ```
 
+Grouped into `namespace` blocks — `--group-by component` for one block per
+package, `--group-by module` for one per file:
+
+```sh
+uvx vizzle class ~/code/repo/h --group-by component --no-members
+```
+
 Component diagram — one box per build-level module (workspace package, app,
 service; any directory with a `package.json`/`pyproject.toml`/`Cargo.toml`/
 `go.mod`), one dashed arrow per dependency derived from imports

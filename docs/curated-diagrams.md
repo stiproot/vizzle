@@ -178,6 +178,49 @@ is the author's and is never touched.
 regenerate. This is the same rule `code-comprehension` states, and it is the
 only rule that makes `--check` meaningful.
 
+## 5.1 Two ways to say what is in the diagram
+
+A manifest either **curates** a list of symbols, or **scopes** a path. They are
+mutually exclusive; carrying both is an error, because it would silently
+describe two diagrams.
+
+```json
+{"classes": [{"id": "Shape", "kind": "class", "file": "src/shape.ts", "symbol": "Shape"}]}
+{"scope":   {"path": "src/pkg", "lang": "python", "group": "module"}}
+```
+
+`scope` keys: `path` (required), `lang`, `group` (`none`/`module`/`component`),
+`members`, `include`, `exclude`. `direction` sits at the top level for both.
+
+**Which to use.** They answer different questions, and both are authored — the
+distinction §8 draws is between an author stating scope and vizzle *inferring*
+it, and neither of these infers anything.
+
+| | curated `classes` | scoped `path` |
+|---|---|---|
+| answers | "these eight are the story" | "everything here, kept honest" |
+| for | a design document | a drift gate |
+| catches a renamed member | yes | yes |
+| catches an **added class** | **no** | yes |
+
+That last row is the whole reason the second form exists. A class absent from a
+curated manifest is absent from the diagram, so `--check` reports current and
+the gate is silent about an addition it never knew to look for. A consumer
+running a curated manifest as a lint gate discovered this the hard way and
+worked around it with a bespoke regenerate-and-diff script; the scoped form is
+that workaround, moved here. See `docs/plans/scope-and-grouping.md`.
+
+## 5.2 The mermaid ceiling
+
+Mermaid stops laying out past **50,000 characters** and renders an error
+graphic instead of the diagram — it fails in the one way nobody reports.
+`vizzle doc` therefore fails a document whose generated fence exceeds that, and
+warns within 5,000 of it, whichever form the manifest takes.
+
+A scoped manifest makes this easy to hit: a whole-tree class diagram measured
+987,503 characters, 20x the ceiling. Narrowing the scope is the fix; vizzle
+says how far over you are but not where to cut, which is a modelling decision.
+
 ## 6. `--check` is the point
 
 ```sh
