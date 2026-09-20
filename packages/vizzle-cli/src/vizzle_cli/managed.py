@@ -7,11 +7,20 @@ docs/curated-diagrams.md.
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
 
 MARKER = "gen:c4-code"
+
+# Mermaid stops laying a diagram out past this many characters and renders an
+# error graphic in its place. A generated document that crosses it therefore
+# fails in the one way nobody reports: it looks rendered, and it is wrong. The
+# warning band exists so a repository hears about it while there is still room
+# to narrow the scope.
+MERMAID_LIMIT = 50_000
+MERMAID_WARN = 45_000
 
 # The manifest is JSON inside an HTML comment. Non-greedy up to the first `-->`,
 # which is why the format forbids `--` anywhere inside the JSON.
@@ -22,6 +31,62 @@ _FENCE = re.compile(r"(?P<open>```mermaid\n)(?P<body>.*?)(?P<close>```)", re.DOT
 
 class ManagedDocError(Exception):
     """A document carries the marker but is not shaped like a managed doc."""
+
+
+@dataclass(frozen=True)
+class Scope:
+    """A path-derived diagram: every class under `path`, not a chosen few.
+
+    The counterpart to a curated `classes` list. A curated manifest cannot
+    catch an addition, because a class absent from the manifest is absent from
+    the diagram and the check reports current. A scope can, which is what makes
+    it the right shape for a gate rather than for a design document.
+    """
+
+    path: str
+    lang: str | None = None
+    group: str = "none"
+    members: bool = True
+    direction: str | None = None
+    include: tuple[str, ...] = ()
+    exclude: tuple[str, ...] = ()
+
+
+def scope_of(manifest: str) -> Scope | None:
+    """The manifest's `scope`, or None when it curates a `classes` list.
+
+    Raises if it carries both: that would silently describe two diagrams.
+    """
+    try:
+        data = json.loads(manifest)
+    except json.JSONDecodeError as err:
+        raise ManagedDocError(f"manifest is not valid JSON: {err}") from err
+    if not isinstance(data, dict):
+        raise ManagedDocError("manifest must be a JSON object")
+
+    raw = data.get("scope")
+    if raw is None:
+        return None
+    if "classes" in data:
+        raise ManagedDocError(
+            "manifest carries both `scope` and `classes`; they describe different diagrams, so pick one"
+        )
+    if not isinstance(raw, dict) or "path" not in raw:
+        raise ManagedDocError("`scope` must be an object with a `path`")
+
+    unknown = set(raw) - {"path", "lang", "group", "members", "include", "exclude"}
+    if unknown:
+        raise ManagedDocError(f"unknown `scope` key(s): {', '.join(sorted(unknown))}")
+
+    return Scope(
+        path=raw["path"],
+        lang=raw.get("lang"),
+        group=raw.get("group", "none"),
+        members=raw.get("members", True),
+        direction=data.get("direction"),
+        include=tuple(raw.get("include", ())),
+        exclude=tuple(raw.get("exclude", ())),
+    )
 
 
 @dataclass(frozen=True)

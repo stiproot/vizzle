@@ -7,6 +7,38 @@ use crate::model::{ChangeKind, Class, CodeGraph, Member};
 use crate::palette;
 use crate::resolve::{resolve_all_relations, Target};
 
+/// How class boxes are gathered into `namespace` blocks.
+///
+/// `Component` needs a lookup the renderer cannot derive from a [`CodeGraph`]
+/// alone — component ownership comes from package manifests on disk — so the
+/// caller supplies it in [`RenderOptions::component_of`]. `diagram_from_dir`
+/// fills it; a caller rendering from in-memory files that leaves it empty gets
+/// ungrouped output rather than a wrong grouping.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Grouping {
+    /// One flat list of classes.
+    #[default]
+    None,
+    /// One namespace per module (for Python, per file).
+    Module,
+    /// One namespace per detected component (the package a class belongs to).
+    Component,
+}
+
+impl Grouping {
+    /// Parse the CLI spelling. Unknown values are an error, not a silent default.
+    pub fn parse(value: &str) -> Result<Self, String> {
+        match value {
+            "none" => Ok(Self::None),
+            "module" => Ok(Self::Module),
+            "component" => Ok(Self::Component),
+            other => Err(format!(
+                "unknown grouping `{other}`; expected none, module or component"
+            )),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct RenderOptions {
     /// Render fields and methods inside each class box.
@@ -14,8 +46,11 @@ pub struct RenderOptions {
     /// Include the `<<module>>` boxes holding module-level functions
     /// (class.md §2.4). Off by default: on h they add 124 boxes to 213.
     pub show_modules: bool,
-    /// Group classes into `namespace` blocks per module.
-    pub group_by_module: bool,
+    /// How classes are gathered into `namespace` blocks.
+    pub grouping: Grouping,
+    /// Qualified class name to owning component name, for [`Grouping::Component`].
+    /// Empty for every other grouping.
+    pub component_of: HashMap<String, String>,
     /// Emit inheritance edges to types that were not found in the parsed set
     /// (mermaid will auto-create empty nodes for them).
     pub include_externals: bool,
@@ -29,7 +64,8 @@ impl Default for RenderOptions {
         Self {
             show_members: true,
             show_modules: false,
-            group_by_module: false,
+            grouping: Grouping::default(),
+            component_of: HashMap::new(),
             include_externals: false,
             direction: None,
             title: None,
@@ -87,22 +123,28 @@ pub fn render(graph: &CodeGraph, opts: &RenderOptions) -> String {
     // Class declarations, optionally grouped into namespaces.
     let mut groups: BTreeMap<String, Vec<&Class>> = BTreeMap::new();
     for class in &graph.classes {
-        let key = if opts.group_by_module {
-            class.module.clone()
-        } else {
-            String::new()
+        let key = match opts.grouping {
+            Grouping::None => String::new(),
+            Grouping::Module => class.module.clone(),
+            Grouping::Component => opts
+                .component_of
+                .get(&class.qualified)
+                .cloned()
+                .unwrap_or_default(),
         };
         groups.entry(key).or_default().push(class);
     }
 
     let diff_mode = graph.diff_mode();
 
-    for (module, classes) in &groups {
-        let (indent, in_namespace) = if opts.group_by_module {
-            let _ = writeln!(out, "    namespace {} {{", sanitize_id(module));
-            ("        ", true)
-        } else {
+    for (group, classes) in &groups {
+        // Empty key: ungrouped, either because grouping is off or because this
+        // class has no component. Mermaid rejects an unnamed namespace anyway.
+        let (indent, in_namespace) = if group.is_empty() {
             ("    ", false)
+        } else {
+            let _ = writeln!(out, "    namespace {} {{", sanitize_id(group));
+            ("        ", true)
         };
         for class in classes {
             write_class(&mut out, class, &ids, opts, diff_mode, indent);
@@ -174,10 +216,10 @@ fn write_class(
     indent: &str,
 ) {
     let id = &ids[class.qualified.as_str()];
-    let label = if opts.group_by_module {
-        class.name.clone()
-    } else {
+    let label = if opts.grouping == Grouping::None {
         class.qualified.clone()
+    } else {
+        class.name.clone()
     };
     let mut label = escape_label(&label);
     if diff_mode {
@@ -352,6 +394,85 @@ mod tests {
             "shown under show_modules:\n{shown}"
         );
         assert!(shown.contains("parse"));
+    }
+
+    /// Two classes in two modules, the minimum to tell groupings apart.
+    fn two_class_graph() -> CodeGraph {
+        crate::parse::parse_files(&[
+            ("a.py".to_owned(), "class Alpha:\n    pass\n".to_owned()),
+            ("b.py".to_owned(), "class Beta:\n    pass\n".to_owned()),
+        ])
+        .unwrap()
+    }
+
+    #[test]
+    fn grouping_parses_its_three_spellings() {
+        assert_eq!(Grouping::parse("none").unwrap(), Grouping::None);
+        assert_eq!(Grouping::parse("module").unwrap(), Grouping::Module);
+        assert_eq!(Grouping::parse("component").unwrap(), Grouping::Component);
+        // An unknown spelling is an error, never a silent fallback to None:
+        // a typo that quietly dropped the grouping would be hard to notice.
+        assert!(Grouping::parse("Module").is_err());
+        assert!(Grouping::parse("package").is_err());
+    }
+
+    #[test]
+    fn component_grouping_uses_the_supplied_map() {
+        let graph = two_class_graph();
+        let mut opts = RenderOptions {
+            grouping: Grouping::Component,
+            ..Default::default()
+        };
+        opts.component_of
+            .insert("a.Alpha".to_owned(), "core".to_owned());
+        opts.component_of
+            .insert("b.Beta".to_owned(), "core".to_owned());
+        let out = render(&graph, &opts);
+        assert_eq!(out.matches("namespace ").count(), 1, "{out}");
+        assert!(out.contains("namespace core {"), "{out}");
+    }
+
+    #[test]
+    fn component_grouping_without_a_map_leaves_classes_ungrouped() {
+        // diagram_from_files has no tree to detect components in. Ungrouped
+        // output is honest; a namespace named after nothing would not be.
+        let graph = two_class_graph();
+        let out = render(
+            &graph,
+            &RenderOptions {
+                grouping: Grouping::Component,
+                ..Default::default()
+            },
+        );
+        assert!(!out.contains("namespace"), "{out}");
+    }
+
+    #[test]
+    fn a_class_outside_the_map_is_not_forced_into_a_namespace() {
+        let graph = two_class_graph();
+        let mut opts = RenderOptions {
+            grouping: Grouping::Component,
+            ..Default::default()
+        };
+        opts.component_of
+            .insert("a.Alpha".to_owned(), "core".to_owned());
+        let out = render(&graph, &opts);
+        assert_eq!(out.matches("namespace ").count(), 1, "{out}");
+        // Beta is still drawn, just outside the block.
+        assert!(out.contains("Beta"), "{out}");
+    }
+
+    #[test]
+    fn module_grouping_still_groups_per_module() {
+        let graph = two_class_graph();
+        let out = render(
+            &graph,
+            &RenderOptions {
+                grouping: Grouping::Module,
+                ..Default::default()
+            },
+        );
+        assert_eq!(out.matches("namespace ").count(), 2, "{out}");
     }
 
     #[test]

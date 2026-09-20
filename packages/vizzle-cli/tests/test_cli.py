@@ -378,3 +378,128 @@ def test_render_raises_the_mermaid_text_cap(tmp_path):
     # A whole-repo diagram is past mermaid's default 50,000-character limit, and
     # mermaid draws a small error graphic rather than failing.
     assert render_mod.CONFIG["maxTextSize"] > 50_000
+
+
+# Scoped managed documents: a manifest that names a path instead of symbols.
+# The point of the mode is that it catches an *addition*, which a curated
+# symbol list cannot. See docs/plans/scope-and-grouping.md.
+
+
+def _scoped_repo(tmp_path: Path, group: str = "module", extra: str = "") -> Path:
+    src = tmp_path / "src" / "pkg"
+    src.mkdir(parents=True)
+    (src / "alpha.py").write_text("class Alpha:\n    def run(self) -> int: ...\n")
+    (src / "beta.py").write_text("class Beta:\n    pass\n")
+    if extra:
+        (src / "extra.py").write_text(extra)
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    doc = docs / "scoped.md"
+    doc.write_text(
+        "# Scoped\n\nProse above.\n\n"
+        '<!-- gen:c4-code {"scope":{"path":"src/pkg","lang":"python",'
+        f'"group":"{group}"}}}} -->\n\n'
+        "```mermaid\nstale\n```\n\nProse below.\n"
+    )
+    return doc
+
+
+def test_doc_scope_generates_from_a_path(tmp_path):
+    doc = _scoped_repo(tmp_path)
+    result = CliRunner().invoke(main, ["doc", str(doc), "--root", str(tmp_path)])
+    assert result.exit_code == 0, result.output
+
+    text = doc.read_text()
+    assert "Prose above." in text and "Prose below." in text
+    assert "stale" not in text
+    assert "Alpha" in text and "Beta" in text
+    assert "+run() int" in text, "scoped mode renders members like the class command"
+
+
+def test_doc_scope_catches_an_added_class(tmp_path):
+    """The reason this mode exists: a curated symbol list cannot do this."""
+    doc = _scoped_repo(tmp_path)
+    CliRunner().invoke(main, ["doc", str(doc), "--root", str(tmp_path)])
+    assert CliRunner().invoke(main, ["doc", str(doc), "--root", str(tmp_path), "--check"]).exit_code == 0
+
+    (tmp_path / "src" / "pkg" / "gamma.py").write_text("class Gamma:\n    pass\n")
+
+    stale = CliRunner().invoke(main, ["doc", str(doc), "--root", str(tmp_path), "--check"])
+    assert stale.exit_code != 0, "a new class in scope must fail --check"
+    assert "out of date" in stale.output
+
+    CliRunner().invoke(main, ["doc", str(doc), "--root", str(tmp_path)])
+    assert "Gamma" in doc.read_text()
+
+
+def test_doc_scope_groups_by_component(tmp_path):
+    doc = _scoped_repo(tmp_path, group="component")
+    (tmp_path / "pyproject.toml").write_text('[project]\nname = "demo"\n')
+    result = CliRunner().invoke(main, ["doc", str(doc), "--root", str(tmp_path)])
+    assert result.exit_code == 0, result.output
+    assert "namespace" in doc.read_text()
+
+
+def test_doc_rejects_a_manifest_carrying_both_scope_and_classes(tmp_path):
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    doc = docs / "both.md"
+    doc.write_text('# X\n<!-- gen:c4-code {"scope":{"path":"src"},"classes":[]} -->\n\n```mermaid\nx\n```\n')
+    result = CliRunner().invoke(main, ["doc", str(doc), "--root", str(tmp_path)])
+    assert result.exit_code != 0
+    assert "both `scope` and `classes`" in result.output
+
+
+def test_doc_rejects_an_unknown_scope_key(tmp_path):
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    doc = docs / "typo.md"
+    doc.write_text('# X\n<!-- gen:c4-code {"scope":{"path":"src","grouping":"module"}} -->\n\n```mermaid\nx\n```\n')
+    result = CliRunner().invoke(main, ["doc", str(doc), "--root", str(tmp_path)])
+    assert result.exit_code != 0
+    assert "unknown `scope` key(s): grouping" in result.output
+
+
+def test_doc_fails_a_diagram_past_the_mermaid_limit(tmp_path, monkeypatch):
+    """Past the ceiling mermaid draws an error graphic, so nobody reports it."""
+    from vizzle_cli import managed
+
+    monkeypatch.setattr(managed, "MERMAID_LIMIT", 200)
+    monkeypatch.setattr(managed, "MERMAID_WARN", 100)
+    doc = _scoped_repo(tmp_path)
+
+    result = CliRunner().invoke(main, ["doc", str(doc), "--root", str(tmp_path), "--check"])
+    assert result.exit_code != 0
+    assert "too large" in result.output
+    assert "error graphic" in result.output
+
+
+def test_doc_warns_inside_the_mermaid_margin_but_passes(tmp_path, monkeypatch):
+    from vizzle_cli import managed
+
+    doc = _scoped_repo(tmp_path)
+    CliRunner().invoke(main, ["doc", str(doc), "--root", str(tmp_path)])
+    size = len(doc.read_text())
+    # A band this document lands inside, without exceeding the limit.
+    monkeypatch.setattr(managed, "MERMAID_LIMIT", size + 200)
+    monkeypatch.setattr(managed, "MERMAID_WARN", 1)
+
+    result = CliRunner().invoke(main, ["doc", str(doc), "--root", str(tmp_path), "--check"])
+    assert result.exit_code == 0, result.output
+    assert "short of mermaid's" in result.output
+
+
+def test_class_group_by_component_needs_no_flag_change_for_module(tmp_path):
+    """--group stays a working alias so existing invocations keep their output."""
+    _scoped_repo(tmp_path)
+    by_alias = CliRunner().invoke(main, ["class", str(tmp_path / "src"), "--group"])
+    by_name = CliRunner().invoke(main, ["class", str(tmp_path / "src"), "--group-by", "module"])
+    assert by_alias.exit_code == 0 and by_name.exit_code == 0
+    assert by_alias.output == by_name.output
+
+
+def test_diff_rejects_component_grouping(repo: Path) -> None:
+    """A diff has no tree to detect components in; say so rather than degrade."""
+    result = CliRunner().invoke(main, ["diff", str(repo), "--group-by", "component"])
+    assert result.exit_code != 0
+    assert "not available for a diff" in result.output

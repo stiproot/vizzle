@@ -11,14 +11,33 @@ from . import _core, git, managed
 from . import render as render_mod
 from .html import build_component_html, build_html, summarize, summarize_components
 
+GROUPINGS = ("none", "module", "component")
+
+
+def _grouping(group_by: str | None, group: bool) -> str:
+    """Resolve the grouping from the current flag and the deprecated one.
+
+    `--group` predates `--group-by` and meant "per module". It stays as an
+    alias so existing invocations and manifests keep working; `--group-by`
+    wins when both are given.
+    """
+    if group_by is not None:
+        return group_by
+    return "module" if group else "none"
+
 
 def _render_kwargs(
-    members: bool, modules: bool, group: bool, externals: bool, direction: str | None, title: str | None
+    members: bool,
+    modules: bool,
+    grouping: str,
+    externals: bool,
+    direction: str | None,
+    title: str | None,
 ) -> dict:
     return {
         "show_members": members,
         "show_modules": modules,
-        "group_by_module": group,
+        "grouping": grouping,
         "include_externals": externals,
         "direction": direction,
         "title": title,
@@ -158,11 +177,20 @@ render_options = _compose(
         help="Add one «module» box per module holding its public module-level functions.",
     ),
     click.option(
+        "--group-by",
+        "group_by",
+        type=click.Choice(GROUPINGS),
+        default=None,
+        help=(
+            "Gather classes into namespace blocks (mermaid only): per module, "
+            "per detected component, or not at all. [default: none]"
+        ),
+    ),
+    click.option(
         "--group/--no-group",
         "group",
         default=False,
-        show_default=True,
-        help="Group classes into namespace blocks per module (mermaid only).",
+        help="Deprecated alias for --group-by module.",
     ),
     click.option("--externals", is_flag=True, help="Show inheritance edges to types outside the parsed set."),
     output_options,
@@ -186,6 +214,7 @@ def class_diagram(
     lang: tuple[str, ...],
     members: bool,
     modules: bool,
+    group_by: str | None,
     group: bool,
     externals: bool,
     direction: str | None,
@@ -214,7 +243,7 @@ def class_diagram(
         include=list(include),
         exclude=list(exclude),
         langs=list(lang),
-        **_render_kwargs(members, modules, group, externals, direction, title),
+        **_render_kwargs(members, modules, _grouping(group_by, group), externals, direction, title),
     )
     _emit_mermaid(diagram, output)
 
@@ -258,6 +287,8 @@ def doc_command(
 
     paths = list(docs) + (managed.discover(directory) if directory else [])
     stale: list[Path] = []
+    oversized: list[Path] = []
+    managed_count = 0
     written = 0
     for path in paths:
         try:
@@ -266,14 +297,37 @@ def doc_command(
             raise click.ClickException(str(err)) from err
         if doc is None:
             continue
+        managed_count += 1
 
         try:
-            diagram = _core.curated_diagram_from_dir(
-                str(root), doc.manifest, include=list(include), exclude=list(exclude), langs=list(lang)
-            )
+            scope = managed.scope_of(doc.manifest)
+            if scope is None:
+                diagram = _core.curated_diagram_from_dir(
+                    str(root), doc.manifest, include=list(include), exclude=list(exclude), langs=list(lang)
+                )
+            else:
+                diagram = _core.class_diagram_from_dir(
+                    str(root / scope.path),
+                    include=list(include) + list(scope.include),
+                    exclude=list(exclude) + list(scope.exclude),
+                    langs=list(lang) or ([scope.lang] if scope.lang else []),
+                    **_render_kwargs(scope.members, False, scope.group, False, scope.direction, None),
+                )
             updated = doc.with_diagram(diagram)
         except (ValueError, managed.ManagedDocError) as err:
             raise click.ClickException(f"{path}: {err}") from err
+
+        # A diagram past the ceiling is broken whether or not it drifted, so
+        # this is checked before the equality test, not after it.
+        if len(diagram) > managed.MERMAID_LIMIT:
+            oversized.append(path)
+        elif len(diagram) > managed.MERMAID_WARN:
+            click.echo(
+                f"{path}: {len(diagram):,} characters, "
+                f"{managed.MERMAID_LIMIT - len(diagram):,} short of mermaid's "
+                f"{managed.MERMAID_LIMIT:,} limit; narrow its scope before it crosses",
+                err=True,
+            )
 
         if updated == doc.text:
             continue
@@ -284,12 +338,22 @@ def doc_command(
             click.echo(f"regenerated {path}", err=True)
             written += 1
 
-    if check and stale:
-        for path in stale:
-            click.echo(f"out of date: {path}", err=True)
-        raise click.ClickException(f"{len(stale)} document(s) need regenerating; run `vizzle doc`")
+    for path in oversized:
+        click.echo(
+            f"too large: {path} exceeds mermaid's {managed.MERMAID_LIMIT:,}-character "
+            f"limit, which renders an error graphic instead of the diagram",
+            err=True,
+        )
+    for path in stale:
+        click.echo(f"out of date: {path}", err=True)
+    if stale or oversized:
+        raise click.ClickException(
+            f"{len(stale)} document(s) need regenerating, {len(oversized)} too large; run `vizzle doc`"
+            if oversized
+            else f"{len(stale)} document(s) need regenerating; run `vizzle doc`"
+        )
     if check:
-        click.echo(f"{len(paths)} document(s) checked, all current", err=True)
+        click.echo(f"{managed_count} managed document(s) checked, all current", err=True)
     elif not written:
         click.echo("nothing to regenerate", err=True)
 
@@ -476,6 +540,7 @@ def diff_diagram(
     classes: bool | None,
     members: bool,
     modules: bool,
+    group_by: str | None,
     group: bool,
     externals: bool,
     direction: str | None,
@@ -491,6 +556,15 @@ def diff_diagram(
     diagram highlights components whose files changed plus dependency edges
     that were added or removed.
     """
+    # A diff renders two revisions held in memory, so there is no tree to
+    # detect components in. Say so rather than silently emitting ungrouped output.
+    grouping = _grouping(group_by, group)
+    if grouping == "component":
+        raise click.UsageError(
+            "--group-by component is not available for a diff: component ownership "
+            "comes from the package manifests on disk, and a diff renders two "
+            "revisions held in memory. Use --group-by module."
+        )
     if diagram_type == "component":
         base_files, base_manifests, head_files, head_manifests = _collect_component_diff(path, base, head)
         scope_path = _component_scope_path(path)
@@ -520,6 +594,13 @@ def diff_diagram(
             f"no changed Python/TypeScript files between {base} and {head or 'the working tree'}"
         )
 
+    grouping = _grouping(group_by, group)
+    if grouping == "component":
+        raise click.UsageError(
+            "--group-by component is not available for a diff: component ownership "
+            "comes from the package manifests on disk, and a diff renders two "
+            "revisions held in memory. Use --group-by module."
+        )
     resolved_title = title or f"changes vs {base}"
     if _resolve_format(fmt, output) == "html":
         graph_json = _core.graph_json_diff(base_files, head_files)
@@ -536,7 +617,7 @@ def diff_diagram(
     diagram = _core.class_diagram_diff(
         base_files,
         head_files,
-        **_render_kwargs(members, modules, group, externals, direction, resolved_title),
+        **_render_kwargs(members, modules, grouping, externals, direction, resolved_title),
     )
     _emit_mermaid(diagram, output)
 

@@ -4,7 +4,7 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
 use ::vizzle_core as vc;
-use vc::{ComponentRenderOptions, RenderOptions, SelectOptions};
+use vc::{ComponentRenderOptions, Grouping, RenderOptions, SelectOptions};
 
 fn to_py_err(err: anyhow::Error) -> PyErr {
     PyValueError::new_err(format!("{err:#}"))
@@ -14,19 +14,20 @@ fn to_py_err(err: anyhow::Error) -> PyErr {
 fn options(
     show_members: bool,
     show_modules: bool,
-    group_by_module: bool,
+    grouping: &str,
     include_externals: bool,
     direction: Option<String>,
     title: Option<String>,
-) -> RenderOptions {
-    RenderOptions {
+) -> PyResult<RenderOptions> {
+    Ok(RenderOptions {
         show_members,
         show_modules,
-        group_by_module,
+        grouping: Grouping::parse(grouping).map_err(PyValueError::new_err)?,
+        component_of: Default::default(),
         include_externals,
         direction,
         title,
-    }
+    })
 }
 
 /// Render a Mermaid class diagram for all supported sources under `root`.
@@ -39,7 +40,7 @@ fn options(
     langs = vec![],
     show_members = true,
     show_modules = false,
-    group_by_module = false,
+    grouping = "none",
     include_externals = false,
     direction = None,
     title = None,
@@ -52,7 +53,7 @@ fn class_diagram_from_dir(
     langs: Vec<String>,
     show_members: bool,
     show_modules: bool,
-    group_by_module: bool,
+    grouping: &str,
     include_externals: bool,
     direction: Option<String>,
     title: Option<String>,
@@ -65,11 +66,11 @@ fn class_diagram_from_dir(
     let render = options(
         show_members,
         show_modules,
-        group_by_module,
+        grouping,
         include_externals,
         direction,
         title,
-    );
+    )?;
     vc::diagram_from_dir(std::path::Path::new(root), &select, &render).map_err(to_py_err)
 }
 
@@ -80,7 +81,7 @@ fn class_diagram_from_dir(
     *,
     show_members = true,
     show_modules = false,
-    group_by_module = false,
+    grouping = "none",
     include_externals = false,
     direction = None,
     title = None,
@@ -89,7 +90,7 @@ fn class_diagram_from_files(
     files: Vec<(String, String)>,
     show_members: bool,
     show_modules: bool,
-    group_by_module: bool,
+    grouping: &str,
     include_externals: bool,
     direction: Option<String>,
     title: Option<String>,
@@ -97,11 +98,11 @@ fn class_diagram_from_files(
     let render = options(
         show_members,
         show_modules,
-        group_by_module,
+        grouping,
         include_externals,
         direction,
         title,
-    );
+    )?;
     vc::diagram_from_files(&files, &render).map_err(to_py_err)
 }
 
@@ -113,7 +114,7 @@ fn class_diagram_from_files(
     *,
     show_members = true,
     show_modules = false,
-    group_by_module = false,
+    grouping = "none",
     include_externals = false,
     direction = None,
     title = None,
@@ -124,7 +125,7 @@ fn class_diagram_diff(
     head_files: Vec<(String, String)>,
     show_members: bool,
     show_modules: bool,
-    group_by_module: bool,
+    grouping: &str,
     include_externals: bool,
     direction: Option<String>,
     title: Option<String>,
@@ -132,11 +133,11 @@ fn class_diagram_diff(
     let render = options(
         show_members,
         show_modules,
-        group_by_module,
+        grouping,
         include_externals,
         direction,
         title,
-    );
+    )?;
     vc::diff_diagram(&base_files, &head_files, &render).map_err(to_py_err)
 }
 

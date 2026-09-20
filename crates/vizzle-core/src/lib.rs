@@ -23,7 +23,7 @@ use std::path::Path;
 use anyhow::Result;
 
 pub use component::ComponentRenderOptions;
-pub use mermaid::RenderOptions;
+pub use mermaid::{Grouping, RenderOptions};
 
 /// File-selection options shared by the high-level entry points.
 #[derive(Debug, Clone, Default)]
@@ -48,13 +48,40 @@ impl SelectOptions {
 }
 
 /// Render a class diagram for every supported source file under `root`.
+///
+/// Under [`Grouping::Component`] this also detects components, because
+/// ownership comes from package manifests on disk rather than from the class
+/// graph. That is why component grouping is available here and not from
+/// [`diagram_from_files`], which has no tree to look at.
 pub fn diagram_from_dir(
     root: &Path,
     select: &SelectOptions,
     render: &RenderOptions,
 ) -> Result<String> {
     let files = walk::collect_files(root, &select.include, &select.exclude, &select.languages()?)?;
-    diagram_from_files(&files, render)
+    if render.grouping != Grouping::Component {
+        return diagram_from_files(&files, render);
+    }
+    let manifests = walk::collect_manifests(root)?;
+    let components = component::build(&files, &manifests)?;
+    let names: std::collections::HashMap<&str, &str> = components
+        .components
+        .iter()
+        .map(|c| (c.path.as_str(), c.name.as_str()))
+        .collect();
+    let mut render = render.clone();
+    render.component_of = components
+        .classes
+        .iter()
+        .map(|placed| {
+            let name = names
+                .get(placed.component.as_str())
+                .copied()
+                .unwrap_or(placed.component.as_str());
+            (placed.class.qualified.clone(), name.to_owned())
+        })
+        .collect();
+    diagram_from_files(&files, &render)
 }
 
 /// Render a class diagram from in-memory `(relative_path, contents)` pairs.

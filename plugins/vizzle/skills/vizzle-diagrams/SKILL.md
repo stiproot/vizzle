@@ -74,6 +74,36 @@ with `-I`** unless the repo is small or you have budgeted for it. Cheaper still:
 
 - `--no-members` — classes and relations without fields and methods.
 - `-l python` / `-l typescript` — one language only.
+- `--group-by component` — one `namespace` per package, so the diagram reads as
+  "what is each component made of". `--group-by module` is finer (one namespace
+  per file) and reads better when the scope is already a single package.
+
+### Keeping a diagram true: `vizzle doc`
+
+A diagram committed to a repository goes stale. `vizzle doc` regenerates one
+from a manifest, and `--check` verifies without writing, which is what belongs
+in a lint chain:
+
+```sh
+uvx vizzle doc --dir docs/architecture            # regenerate
+uvx vizzle doc --dir docs/architecture --check    # verify; non-zero if stale
+```
+
+A managed document is markdown carrying a manifest comment and one mermaid
+fence. **Only the fence is rewritten** — prose around it is the author's. The
+manifest either lists symbols by hand, or names a path:
+
+```
+<!-- gen:c4-code {"scope":{"path":"src/pkg","lang":"python","group":"module"}} -->
+```
+
+Prefer the path form for a gate: a hand-listed manifest cannot catch a *new*
+class, because a class absent from the manifest is absent from the diagram and
+the check reports current. A path catches it.
+
+Exit codes: `0` current, `1` stale or too large for mermaid to render, `2` the
+command could not run. A caller that wants to fail open on a broken environment
+while still blocking on real drift keys off that split.
 
 The class diagram covers classes, interfaces, enums, dataclasses, and the
 TypeScript `type` aliases that carry structure (an object literal, or a union
