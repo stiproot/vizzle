@@ -119,6 +119,7 @@ cargo test -p vizzle-core                 # core
 uv run pytest packages/vizzle-cli/tests   # CLI + server
 uv run pre-commit run --all-files        # ruff, cargo fmt, clippy -D warnings
 uv sync --reinstall-package vizzle       # after Rust changes, before CLI tests
+bash scripts/check-rulesets.sh            # ruleset drift; requires authenticated gh
 ```
 
 - **Run it against a real repo**, not just fixtures. `~/code/h` is the standing
@@ -136,9 +137,15 @@ uv sync --reinstall-package vizzle       # after Rust changes, before CLI tests
 ## Releasing
 
 The version is stated **once**, in the root `Cargo.toml`; maturin derives the
-Python one from it. So a release is: bump it, commit, tag `vX.Y.Z`, push the
-tag. `release.yml` builds four wheels and an sdist, smoke-tests each on a
-clean runner, and publishes to PyPI by Trusted Publishing.
+Python one from it. So a release is:
+
+1. Bump the version in `Cargo.toml`, commit.
+2. Tag `vX.Y.Z`, push the tag.
+3. Bump the `vizzle==X.Y.Z` pin in `.github/workflows/pr-diagram.yml` to the new version. This pin must stay current to prevent runtime drift of the published package.
+4. Commit and merge that update.
+
+`release.yml` builds four wheels and an sdist, smoke-tests each on a clean
+runner, and publishes to PyPI by Trusted Publishing.
 
 Two ways to break it silently, both learned the hard way (`docs/distribution.md`
 §5.1): renaming `release.yml` voids the PyPI publisher registration, which

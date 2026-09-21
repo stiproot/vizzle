@@ -1,9 +1,14 @@
 # Build wheels for every supported platform and publish them to PyPI.
 #
-# Triggered by a `v*` tag. Publishing uses PyPI Trusted Publishing (OIDC), so
-# there is no API token stored in this repository — PyPI verifies GitHub
-# directly. The publisher registered on PyPI names this file, so renaming it
-# breaks publishing until the pending publisher is updated to match.
+# Publishing is triggered only by a `v*` tag. The pypi environment requires an
+# approving reviewer and only accepts refs matching v*. A `workflow_dispatch`
+# can build wheels but never publishes them. This ensures the release checklist
+# must complete before any code reaches PyPI, and a reviewer has the last gate.
+#
+# Publishing uses PyPI Trusted Publishing (OIDC), so there is no API token stored
+# in this repository — PyPI verifies GitHub directly. The publisher registered on
+# PyPI names this file, so renaming it breaks publishing until the pending
+# publisher is updated to match.
 #
 # See docs/distribution.md §5 and §6.
 name: release
@@ -12,11 +17,6 @@ on:
   push:
     tags: ["v*"]
   workflow_dispatch:
-    inputs:
-      publish:
-        description: "Publish to PyPI (otherwise build only)"
-        type: boolean
-        default: false
 
 permissions:
   contents: read
@@ -176,7 +176,7 @@ jobs:
   publish:
     name: Publish to PyPI
     needs: [build, sdist, smoke]
-    if: startsWith(github.ref, 'refs/tags/v') || inputs.publish
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
