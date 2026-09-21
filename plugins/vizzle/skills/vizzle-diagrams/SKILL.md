@@ -118,8 +118,17 @@ are the question.
 uvx vizzle diff <path> --type component                  # working tree vs HEAD, scoped to <path>
 uvx vizzle diff <path> --base main --type component
 uvx vizzle diff packages/my-module --type component      # focus on one module
+uvx vizzle diff <path> --type component -E '**/tests/fixtures/**'   # drop fixture "components"
 uvx vizzle diff <path> --type component --classes        # include class detail in HTML
 ```
+
+`-I`/`-E`/`-l` mean exactly what they mean on `component`: a component whose
+files are all filtered out is never drawn — on either revision, so nothing
+reads as added or removed because of the filter. An excluded component is
+dropped even if it would have been a «boundary» neighbour (and the edge into it
+goes with it), and a change confined to excluded paths renders as no structural
+change. The active selection is stated in the HTML legend and in a
+`%% vizzle: selection:` trailer on the Mermaid.
 
 `--type component` is the interesting one: it shows whether your change
 *rewired* the application — an added or removed dependency edge between modules

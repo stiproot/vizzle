@@ -169,8 +169,9 @@ Defaults to http://127.0.0.1:8499/; see `--port`, `--host`, `--base`.
 Useful flags (both commands): `--no-members`, `--modules` (add a «module»
 box per module holding its public module-level functions), `--group` (mermaid namespace
 blocks per module), `--externals` (edges to types outside the parsed set),
-`--direction LR` (mermaid), `-I/-E` include/exclude globs (`vizzle class`),
-`--title`, `-f/--format mermaid|html`.
+`--direction LR` (mermaid), `-I/-E` include/exclude globs and `-l` language
+(every command; on `diff` they apply to both revisions, so a filtered file
+never reads as added or removed), `--title`, `-f/--format mermaid|html`.
 
 Render the `.mmd` output with mermaid-cli:
 

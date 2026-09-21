@@ -240,6 +240,103 @@ def test_component_diff_scoped_to_package_root_has_fewer_components(workspace: P
     assert "packages_util" not in scoped.output, "util has no edge to core and must be excluded"
 
 
+FIXTURE_GLOB = "**/tests/fixtures/**"
+
+
+def _add_fixture_component(workspace: Path) -> None:
+    """A test fixture that is itself a package: a manifest plus one source file, committed."""
+    fixture = workspace / "packages/core/tests/fixtures/repo"
+    fixture.mkdir(parents=True)
+    (fixture / "package.json").write_text('{"name": "fixture-repo"}')
+    (fixture / "index.ts").write_text("export class Fixture {}\n")
+    git(workspace, "add", ".")
+    git(workspace, "commit", "-m", "fixture")
+
+
+def _component_count(output: str) -> int:
+    m = re.search(r"(\d+) components", output)
+    assert m, f"no component count in: {output}"
+    return int(m.group(1))
+
+
+def test_component_diff_exclude_drops_a_component_on_both_revisions(workspace: Path) -> None:
+    """-E removes the matching component from the diff without it reading as added or removed."""
+    _add_fixture_component(workspace)
+    (workspace / "packages/core/src/extra.ts").write_text("export const v = 2;\n")
+
+    unfiltered = CliRunner().invoke(main, ["diff", str(workspace), "--type", "component"])
+    assert unfiltered.exit_code == 0, unfiltered.output
+    assert "fixture-repo" in unfiltered.output
+    assert _component_count(unfiltered.output) == 4
+
+    filtered = CliRunner().invoke(main, ["diff", str(workspace), "--type", "component", "-E", FIXTURE_GLOB])
+    assert filtered.exit_code == 0, filtered.output
+    assert "fixture-repo" not in filtered.output
+    assert _component_count(filtered.output) == 3
+    # The fixture exists at both revisions; filtering it must not surface as a change.
+    assert "✚" not in filtered.output and "✖" not in filtered.output, filtered.output
+    assert "«component»<br/><b>@w/core ✱</b>" in filtered.output
+    assert f"%% vizzle: selection: exclude {FIXTURE_GLOB}" in filtered.output
+
+
+def test_component_diff_exclude_wins_over_boundary(workspace: Path) -> None:
+    """An excluded component is dropped even when it would otherwise be kept as a «boundary» neighbour."""
+    (workspace / "packages/core/src/extra.ts").write_text("export const v = 2;\n")
+    scoped = CliRunner().invoke(main, ["diff", str(workspace / "packages/core"), "--type", "component"])
+    assert scoped.exit_code == 0, scoped.output
+    assert "«boundary»<br/><b>svc</b>" in scoped.output
+    assert "c_apps_svc -.-> c_packages_core" in scoped.output
+
+    result = CliRunner().invoke(
+        main, ["diff", str(workspace / "packages/core"), "--type", "component", "-E", "apps/**"]
+    )
+    assert result.exit_code == 0, result.output
+    assert "«boundary»" not in result.output
+    assert "c_apps_svc" not in result.output, "the edge into the excluded component goes with it"
+    assert _component_count(result.output) == 1
+
+
+def test_component_diff_change_confined_to_excluded_paths_is_no_change(workspace: Path) -> None:
+    """A change that touches only excluded files renders as no structural change (spec §6.2)."""
+    _add_fixture_component(workspace)
+    (workspace / "packages/core/tests/fixtures/repo/index.ts").write_text("export class Fixture { x = 1 }\n")
+
+    unfiltered = CliRunner().invoke(main, ["diff", str(workspace), "--type", "component"])
+    assert unfiltered.exit_code == 0, unfiltered.output
+    assert "vizzleModified" in unfiltered.output
+
+    filtered = CliRunner().invoke(main, ["diff", str(workspace), "--type", "component", "-E", FIXTURE_GLOB])
+    assert filtered.exit_code == 0, filtered.output
+    assert not re.search(r"vizzle(Added|Removed|Modified)", filtered.output), filtered.output
+
+
+def test_component_diff_html_legend_carries_the_selection(workspace: Path, tmp_path: Path) -> None:
+    _add_fixture_component(workspace)
+    (workspace / "packages/core/src/extra.ts").write_text("export const v = 2;\n")
+    out = tmp_path / "diff.html"
+    result = CliRunner().invoke(
+        main, ["diff", str(workspace), "--type", "component", "-E", FIXTURE_GLOB, "-l", "typescript", "-o", str(out)]
+    )
+    assert result.exit_code == 0, result.output
+    page = out.read_text()
+    payload = json.loads(re.search(r'id="graph-data"[^>]*>(.*?)</script>', page, re.S).group(1))
+    assert payload["stats"]["selection"] == [f"exclude {FIXTURE_GLOB}", "lang typescript"]
+    assert "fixture-repo" not in page
+
+
+def test_class_diff_selection_that_filters_everything_is_an_error(repo: Path) -> None:
+    result = CliRunner().invoke(main, ["diff", str(repo), "-E", "app.py"])
+    assert result.exit_code == 1, result.output
+    assert "Error: no changed files match the include/exclude/lang selection" in result.output, result.output
+
+
+def test_core_errors_are_reported_not_raised(workspace: Path) -> None:
+    """An invalid glob is the user's input; it comes back as `Error:`, never a traceback."""
+    result = CliRunner().invoke(main, ["component", str(workspace), "-E", "["])
+    assert result.exit_code == 1, result.output
+    assert result.output.startswith("Error: invalid glob `[`"), result.output
+
+
 def test_component_diff_refuses_non_root_path(workspace: Path) -> None:
     """Passing a path inside a component root (not the root itself) is an error."""
     # packages/core/src is inside the packages/core component root.
@@ -503,3 +600,49 @@ def test_diff_rejects_component_grouping(repo: Path) -> None:
     result = CliRunner().invoke(main, ["diff", str(repo), "--group-by", "component"])
     assert result.exit_code != 0
     assert "not available for a diff" in result.output
+
+
+def test_the_same_exclude_glob_works_on_component_and_diff(workspace: Path) -> None:
+    """The acceptance criterion: a user learns -E once.
+
+    `component <path>` is a walk rooted at <path>, so its paths are relative to
+    it. A component diff cannot be rooted there — an edge's existence depends on
+    files the change never touched — so it collects the whole repository and its
+    paths are repo-relative. Sharing one matcher is necessary but not sufficient
+    to make one glob mean one thing; the scope-relative spelling has to match
+    too, or -E filters on `component` and silently does nothing on `diff`.
+    """
+    _add_fixture_component(workspace)
+    scope = workspace / "packages/core"
+    glob = "tests/fixtures/**"
+
+    component = CliRunner().invoke(main, ["component", str(scope), "-E", glob])
+    assert component.exit_code == 0, component.output
+    assert "fixture-repo" not in component.output
+
+    diff = CliRunner().invoke(main, ["diff", str(scope), "--type", "component", "--base", "HEAD~1", "-E", glob])
+    assert diff.exit_code == 0, diff.output
+    assert "fixture-repo" not in diff.output, (
+        "the glob filtered on `component` and not on `diff`, so -E means two "
+        "different things depending on which command you reach for"
+    )
+
+
+def test_a_repo_relative_exclude_glob_also_works_on_a_scoped_diff(workspace: Path) -> None:
+    """Adding the scope-relative spelling must not remove the original one."""
+    _add_fixture_component(workspace)
+    diff = CliRunner().invoke(
+        main,
+        [
+            "diff",
+            str(workspace / "packages/core"),
+            "--type",
+            "component",
+            "--base",
+            "HEAD~1",
+            "-E",
+            "packages/core/tests/fixtures/**",
+        ],
+    )
+    assert diff.exit_code == 0, diff.output
+    assert "fixture-repo" not in diff.output

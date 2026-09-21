@@ -56,6 +56,10 @@ def _component_render_kwargs(
     }
 
 
+def _selection_kwargs(include: tuple[str, ...], exclude: tuple[str, ...], lang: tuple[str, ...]) -> dict:
+    return {"include": list(include), "exclude": list(exclude), "langs": list(lang)}
+
+
 def _component_scope_path(path: Path) -> str:
     """Compute scope path for component diff: "" if path is repo root, else relative path.
 
@@ -197,7 +201,20 @@ render_options = _compose(
 )
 
 
-@click.group()
+class _CoreErrorsAreUserErrors(click.Group):
+    """The Rust core reports every failure as a ValueError with the full anyhow
+    context (an invalid glob, a selection that filters everything). Those are
+    the user's inputs, so they come out as a one-line `Error:`, not a traceback.
+    """
+
+    def invoke(self, ctx: click.Context):
+        try:
+            return super().invoke(ctx)
+        except ValueError as exc:
+            raise click.ClickException(str(exc)) from exc
+
+
+@click.group(cls=_CoreErrorsAreUserErrors)
 @click.version_option(package_name="vizzle")
 def main() -> None:
     """UML visualization for git: class diagrams from code, as Mermaid or interactive HTML."""
@@ -530,6 +547,7 @@ def _collect_component_diff(path: Path, base: str, head: str | None) -> tuple[li
     default=None,
     help="Embed class detail (component type, HTML only). Default: --no-classes for component type.",
 )
+@select_options
 @render_options
 def diff_diagram(
     path: Path,
@@ -538,6 +556,9 @@ def diff_diagram(
     diagram_type: str,
     weights: bool,
     classes: bool | None,
+    include: tuple[str, ...],
+    exclude: tuple[str, ...],
+    lang: tuple[str, ...],
     members: bool,
     modules: bool,
     group_by: str | None,
@@ -554,7 +575,8 @@ def diff_diagram(
     carry ✚ / ✖ / ✱ markers. Unchanged classes in touched files appear as
     context. With --type component, both revisions are parsed in full and the
     diagram highlights components whose files changed plus dependency edges
-    that were added or removed.
+    that were added or removed. -I/-E/-l apply to BOTH revisions, so a
+    filtered file never reads as added or removed.
     """
     # A diff renders two revisions held in memory, so there is no tree to
     # detect components in. Say so rather than silently emitting ungrouped output.
@@ -565,6 +587,7 @@ def diff_diagram(
             "comes from the package manifests on disk, and a diff renders two "
             "revisions held in memory. Use --group-by module."
         )
+    selection = _selection_kwargs(include, exclude, lang)
     if diagram_type == "component":
         base_files, base_manifests, head_files, head_manifests = _collect_component_diff(path, base, head)
         scope_path = _component_scope_path(path)
@@ -572,7 +595,13 @@ def diff_diagram(
         resolved_title = title or f"changes vs {base}"
         if _resolve_format(fmt, output) == "html":
             graph_json = _core.component_json_diff(
-                base_files, base_manifests, head_files, head_manifests, classes=effective_classes, scope=scope_path
+                base_files,
+                base_manifests,
+                head_files,
+                head_manifests,
+                classes=effective_classes,
+                scope=scope_path,
+                **selection,
             )
             page = build_component_html(graph_json, title=resolved_title, include_externals=externals)
             _emit(page, output, summarize_components(graph_json))
@@ -583,6 +612,7 @@ def diff_diagram(
             head_files,
             head_manifests,
             scope=scope_path,
+            **selection,
             **_component_render_kwargs(True, weights, externals, direction, resolved_title),
         )
         _emit_mermaid(diagram, output)
@@ -603,7 +633,7 @@ def diff_diagram(
         )
     resolved_title = title or f"changes vs {base}"
     if _resolve_format(fmt, output) == "html":
-        graph_json = _core.graph_json_diff(base_files, head_files)
+        graph_json = _core.graph_json_diff(base_files, head_files, **selection)
         page = build_html(
             graph_json,
             title=resolved_title,
@@ -617,6 +647,7 @@ def diff_diagram(
     diagram = _core.class_diagram_diff(
         base_files,
         head_files,
+        **selection,
         **_render_kwargs(members, modules, grouping, externals, direction, resolved_title),
     )
     _emit_mermaid(diagram, output)
@@ -635,9 +666,7 @@ def diff_diagram(
 @click.option("--diff", "diff_mode", is_flag=True, help="Serve a live diff of the working tree against --base.")
 @click.option("--base", default="HEAD", show_default=True, help="Base git revision (diff mode).")
 @click.option("--head", default=None, help="Head git revision (diff mode; defaults to the working tree).")
-@click.option("-I", "--include", multiple=True, help="Glob of relative paths to include (class mode, repeatable).")
-@click.option("-E", "--exclude", multiple=True, help="Glob of relative paths to exclude (class mode, repeatable).")
-@click.option("-l", "--lang", multiple=True, type=click.Choice(["python", "typescript"]), help="Restrict languages.")
+@select_options
 @click.option("--members/--no-members", default=True, show_default=True, help="Render fields and methods.")
 @click.option(
     "--modules",
@@ -684,6 +713,8 @@ def serve_command(
     if head:
         diff_mode = True
 
+    selection = _selection_kwargs(include, exclude, lang)
+
     def build_page() -> str:
         if diagram_type == "component":
             if diff_mode:
@@ -691,24 +722,26 @@ def serve_command(
                 scope_path = _component_scope_path(path)
                 effective_classes = _effective_classes_for_diff(classes)
                 graph_json = _core.component_json_diff(
-                    base_files, base_manifests, head_files, head_manifests, classes=effective_classes, scope=scope_path
+                    base_files,
+                    base_manifests,
+                    head_files,
+                    head_manifests,
+                    classes=effective_classes,
+                    scope=scope_path,
+                    **selection,
                 )
                 page_title = title or f"changes vs {base} (live)"
             else:
                 effective_classes = classes if classes is not None else True
-                graph_json = _core.component_json_from_dir(
-                    str(path), include=list(include), exclude=list(exclude), langs=list(lang), classes=effective_classes
-                )
+                graph_json = _core.component_json_from_dir(str(path), classes=effective_classes, **selection)
                 page_title = title or f"{path.resolve().name} — component diagram (live)"
             return build_component_html(graph_json, title=page_title, include_externals=externals)
         if diff_mode:
             base_files, head_files = _collect_diff_files(path, base, head)
-            graph_json = _core.graph_json_diff(base_files, head_files)
+            graph_json = _core.graph_json_diff(base_files, head_files, **selection)
             page_title = title or f"changes vs {base} (live)"
         else:
-            graph_json = _core.graph_json_from_dir(
-                str(path), include=list(include), exclude=list(exclude), langs=list(lang)
-            )
+            graph_json = _core.graph_json_from_dir(str(path), **selection)
             page_title = title or f"{path.resolve().name} — class diagram (live)"
         return build_html(
             graph_json,

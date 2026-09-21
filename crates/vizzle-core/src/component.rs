@@ -79,6 +79,11 @@ pub struct ComponentGraph {
     /// Classes inside each component. Carried so a reader can open a component
     /// and see what it is made of without regenerating a separate diagram.
     pub classes: Vec<PlacedClass>,
+    /// The file selection this graph was built under (`include …`,
+    /// `exclude …`, `lang …`), empty when nothing was filtered. Carried on the
+    /// graph so every renderer can say what the diagram is NOT claiming to
+    /// show: a component filtered out here is absent, not unchanged.
+    pub selection: Vec<String>,
 }
 
 impl ComponentGraph {
@@ -346,6 +351,7 @@ fn build_from_graph(
         components,
         edges,
         classes: placed,
+        selection: Vec::new(),
     };
     graph.normalize();
     graph
@@ -588,6 +594,7 @@ pub fn diff(base: &ComponentGraph, head: &ComponentGraph) -> ComponentGraph {
     }
 
     merged.classes = diff_classes(&base.classes, &head.classes);
+    merged.selection = head.selection.clone();
     merged.normalize();
     merged
 }
@@ -640,7 +647,10 @@ pub fn scope(graph: &ComponentGraph, scope_path: &str) -> ComponentGraph {
         .collect();
 
     if in_scope.is_empty() {
-        return ComponentGraph::default();
+        return ComponentGraph {
+            selection: graph.selection.clone(),
+            ..ComponentGraph::default()
+        };
     }
 
     let mut boundary: BTreeSet<String> = BTreeSet::new();
@@ -702,6 +712,7 @@ pub fn scope(graph: &ComponentGraph, scope_path: &str) -> ComponentGraph {
         .filter(|pc| kept_paths.contains(pc.component.as_str()))
         .cloned()
         .collect();
+    result.selection = graph.selection.clone();
 
     result.normalize();
     result
@@ -902,6 +913,11 @@ pub fn render_mermaid(graph: &ComponentGraph, opts: &ComponentRenderOptions) -> 
         graph.components.len(),
         edge_count
     );
+    // Mermaid has no legend, so the selection rides the trailer: a reader of
+    // the source sees why a component they expected is not drawn.
+    if !graph.selection.is_empty() {
+        let _ = writeln!(out, "%% vizzle: selection: {}", graph.selection.join("; "));
+    }
     out
 }
 
@@ -998,6 +1014,7 @@ pub fn to_json(graph: &ComponentGraph, include_classes: bool) -> String {
             "classes": classes.len(),
             "classRelations": class_relations.len(),
             "diff": graph.diff_mode(),
+            "selection": graph.selection,
         },
     })
     .to_string()

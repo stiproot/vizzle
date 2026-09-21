@@ -25,6 +25,9 @@ use anyhow::Result;
 pub use component::ComponentRenderOptions;
 pub use mermaid::{Grouping, RenderOptions};
 
+/// A file set as the entry points take it: repo-relative `(path, contents)` pairs.
+pub type Files = Vec<(String, String)>;
+
 /// File-selection options shared by the high-level entry points.
 #[derive(Debug, Clone, Default)]
 pub struct SelectOptions {
@@ -35,6 +38,21 @@ pub struct SelectOptions {
 }
 
 impl SelectOptions {
+    fn selector(&self) -> Result<walk::Selector> {
+        walk::Selector::new(&self.include, &self.exclude, &self.languages()?)
+    }
+
+    /// The selection as a reader sees it in a legend or trailer, one entry per
+    /// rule; empty when nothing is filtered. Speaks in rule names, not CLI flag
+    /// spellings — the core does not know how the CLI spells `-E`.
+    pub fn describe(&self) -> Vec<String> {
+        let mut out = Vec::new();
+        out.extend(self.include.iter().map(|g| format!("include {g}")));
+        out.extend(self.exclude.iter().map(|g| format!("exclude {g}")));
+        out.extend(self.langs.iter().map(|l| format!("lang {l}")));
+        out
+    }
+
     fn languages(&self) -> Result<Vec<model::Language>> {
         self.langs
             .iter()
@@ -91,15 +109,37 @@ pub fn diagram_from_files(files: &[(String, String)], render: &RenderOptions) ->
 }
 
 /// Render a change-highlighted class diagram from two revisions of a file set.
+/// `select` applies to both sides, so the same globs mean the same thing here
+/// as on `diagram_from_dir`.
 pub fn diff_diagram(
     base_files: &[(String, String)],
     head_files: &[(String, String)],
+    select: &SelectOptions,
     render: &RenderOptions,
 ) -> Result<String> {
-    let base = parse::parse_files(base_files)?;
-    let head = parse::parse_files(head_files)?;
+    let (base_files, head_files) = select_both(base_files, head_files, select)?;
+    let base = parse::parse_files(&base_files)?;
+    let head = parse::parse_files(&head_files)?;
     let merged = diff::diff_graphs(&base, &head);
     Ok(mermaid::render(&merged, render))
+}
+
+/// Apply one selection to both revisions of a changed-file set. Filtering to
+/// nothing is an error rather than an empty diagram: the caller already
+/// established there were changed files, so "nothing left" is the selection's
+/// doing and the reader should hear that, not see a blank page.
+fn select_both(
+    base_files: &[(String, String)],
+    head_files: &[(String, String)],
+    select: &SelectOptions,
+) -> Result<(Files, Files)> {
+    let selector = select.selector()?;
+    let base = selector.filter(base_files);
+    let head = selector.filter(head_files);
+    if base.is_empty() && head.is_empty() && !(base_files.is_empty() && head_files.is_empty()) {
+        anyhow::bail!("no changed files match the include/exclude/lang selection");
+    }
+    Ok((base, head))
 }
 
 /// Render a curated diagram (docs/curated-diagrams.md) for the repo at `root`.
@@ -144,17 +184,22 @@ fn component_graph_from_dir(
 ) -> Result<component::ComponentGraph> {
     let files = walk::collect_files(root, &select.include, &select.exclude, &select.languages()?)?;
     let manifests = walk::collect_manifests(root)?;
-    component::build(&files, &manifests)
+    let mut graph = component::build(&files, &manifests)?;
+    graph.selection = select.describe();
+    Ok(graph)
 }
 
 /// Render a change-highlighted component diagram from two full revisions of a
 /// repo's sources and manifests. Unlike the class diff, both sides must be the
 /// complete file set — an edge's existence depends on files a change didn't touch.
+/// `select` applies to BOTH revisions before either graph is built, so a
+/// filtered file can never read as added or removed.
 pub fn component_diff_diagram(
     base_files: &[(String, String)],
     base_manifests: &[(String, String)],
     head_files: &[(String, String)],
     head_manifests: &[(String, String)],
+    select: &SelectOptions,
     scope_path: &str,
     render: &ComponentRenderOptions,
 ) -> Result<String> {
@@ -163,6 +208,7 @@ pub fn component_diff_diagram(
         base_manifests,
         head_files,
         head_manifests,
+        select,
         scope_path,
     )?;
     Ok(component::render_mermaid(&merged, render))
@@ -174,6 +220,7 @@ pub fn component_json_diff(
     base_manifests: &[(String, String)],
     head_files: &[(String, String)],
     head_manifests: &[(String, String)],
+    select: &SelectOptions,
     scope_path: &str,
     include_classes: bool,
 ) -> Result<String> {
@@ -182,20 +229,30 @@ pub fn component_json_diff(
         base_manifests,
         head_files,
         head_manifests,
+        select,
         scope_path,
     )?;
     Ok(component::to_json(&merged, include_classes))
 }
 
+/// Selection runs BEFORE build and scope runs AFTER diff, deliberately in that
+/// order. Selection is what the reader asked not to see, so a filtered
+/// component must not survive as a `«boundary»` neighbour — it owns no files,
+/// so `build` never creates it and no edge can reach it. Scope, by contrast,
+/// needs the full graph on both sides to find the boundary at all
+/// (`docs/diagram-types/component.md` §6.1–6.2).
 fn component_diff_graph(
     base_files: &[(String, String)],
     base_manifests: &[(String, String)],
     head_files: &[(String, String)],
     head_manifests: &[(String, String)],
+    select: &SelectOptions,
     scope_path: &str,
 ) -> Result<component::ComponentGraph> {
-    let base = component::build(base_files, base_manifests)?;
-    let head = component::build(head_files, head_manifests)?;
+    let selector = select.selector()?.within_scope(scope_path);
+    let base = component::build(&selector.filter(base_files), base_manifests)?;
+    let mut head = component::build(&selector.filter(head_files), head_manifests)?;
+    head.selection = select.describe();
     let merged = component::diff(&base, &head);
     Ok(component::scope(&merged, scope_path))
 }
@@ -204,9 +261,148 @@ fn component_diff_graph(
 pub fn json_diff(
     base_files: &[(String, String)],
     head_files: &[(String, String)],
+    select: &SelectOptions,
 ) -> Result<String> {
-    let base = parse::parse_files(base_files)?;
-    let head = parse::parse_files(head_files)?;
+    let (base_files, head_files) = select_both(base_files, head_files, select)?;
+    let base = parse::parse_files(&base_files)?;
+    let head = parse::parse_files(&head_files)?;
     let merged = diff::diff_graphs(&base, &head);
     Ok(export::to_json(&merged))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn pairs(items: &[(&str, &str)]) -> Files {
+        items
+            .iter()
+            .map(|(p, c)| ((*p).to_owned(), (*c).to_owned()))
+            .collect()
+    }
+
+    /// `pkgs/core` imported by `apps/svc`; the fixture under core's tests is a
+    /// package of its own and exists at both revisions.
+    fn revision(core_body: &str) -> (Files, Files) {
+        let manifests = pairs(&[
+            ("pkgs/core/package.json", r#"{"name": "@x/core"}"#),
+            (
+                "pkgs/core/tests/fixtures/repo/package.json",
+                r#"{"name": "fixture"}"#,
+            ),
+            ("apps/svc/package.json", r#"{"name": "svc"}"#),
+        ]);
+        let files = pairs(&[
+            ("pkgs/core/src/index.ts", core_body),
+            (
+                "pkgs/core/tests/fixtures/repo/index.ts",
+                "export class Fixture {}\n",
+            ),
+            (
+                "apps/svc/src/main.ts",
+                "import { Core } from \"@x/core\";\nclass Svc {}\n",
+            ),
+        ]);
+        (files, manifests)
+    }
+
+    fn select(exclude: &[&str]) -> SelectOptions {
+        SelectOptions {
+            exclude: exclude.iter().map(|g| (*g).to_owned()).collect(),
+            ..SelectOptions::default()
+        }
+    }
+
+    fn component_paths(json: &str) -> Vec<String> {
+        let value: serde_json::Value = serde_json::from_str(json).unwrap();
+        value["components"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|c| c["path"].as_str().unwrap().to_owned())
+            .collect()
+    }
+
+    #[test]
+    fn selection_drops_a_component_from_both_revisions() {
+        let (base_files, base_manifests) = revision("export class Core {}\n");
+        let (head_files, head_manifests) = revision("export class Core { x = 1 }\n");
+        let json = component_json_diff(
+            &base_files,
+            &base_manifests,
+            &head_files,
+            &head_manifests,
+            &select(&["**/tests/fixtures/**"]),
+            "",
+            false,
+        )
+        .unwrap();
+        assert_eq!(component_paths(&json), ["apps/svc", "pkgs/core"]);
+        let value: serde_json::Value = serde_json::from_str(&json).unwrap();
+        // Absent on both sides: nothing may read as added or removed.
+        for c in value["components"].as_array().unwrap() {
+            assert_ne!(c["change"], "added");
+            assert_ne!(c["change"], "removed");
+        }
+        assert_eq!(
+            value["stats"]["selection"],
+            serde_json::json!(["exclude **/tests/fixtures/**"])
+        );
+    }
+
+    #[test]
+    fn selection_runs_before_scope_so_an_excluded_neighbour_is_not_a_boundary() {
+        let (base_files, base_manifests) = revision("export class Core {}\n");
+        let (head_files, head_manifests) = revision("export class Core { x = 1 }\n");
+        let scoped_only = component_json_diff(
+            &base_files,
+            &base_manifests,
+            &head_files,
+            &head_manifests,
+            &SelectOptions::default(),
+            "pkgs/core",
+            false,
+        )
+        .unwrap();
+        assert!(
+            component_paths(&scoped_only).contains(&"apps/svc".to_owned()),
+            "without a selection svc is kept as core's boundary neighbour"
+        );
+
+        let json = component_json_diff(
+            &base_files,
+            &base_manifests,
+            &head_files,
+            &head_manifests,
+            &select(&["apps/**"]),
+            "pkgs/core",
+            false,
+        )
+        .unwrap();
+        let value: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(
+            component_paths(&json),
+            ["pkgs/core", "pkgs/core/tests/fixtures/repo"]
+        );
+        assert!(value["components"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|c| c["boundary"] == false));
+        assert_eq!(
+            value["edges"].as_array().unwrap().len(),
+            0,
+            "the edge goes with it"
+        );
+    }
+
+    #[test]
+    fn class_diff_selection_that_filters_everything_is_an_error() {
+        let base = pairs(&[("app.py", "class A: ...\n")]);
+        let head = pairs(&[("app.py", "class B: ...\n")]);
+        let err = json_diff(&base, &head, &select(&["app.py"])).unwrap_err();
+        assert!(err.to_string().contains("selection"), "{err}");
+        // Two genuinely empty sides are the caller's case to report, not ours.
+        assert!(json_diff(&[], &[], &select(&["app.py"])).is_ok());
+    }
 }
