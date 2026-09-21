@@ -119,6 +119,20 @@ jobs:
             echo "  ok: $required"
           done
 
+      - name: sdist carries the licence
+        run: |
+          tarball=$(ls ${{ env.PROJECT_DIR }}/dist/*.tar.gz)
+          content=$(tar xzOf "$tarball" '*/LICENSE')
+          if ! echo "$content" | head -1 | grep -q '^MIT License$'; then
+            echo "::error::sdist LICENSE does not begin with 'MIT License' — symlink may have become a path string"
+            exit 1
+          fi
+          if ! echo "$content" | grep -q 'Copyright (c) 2026 Simon Stipcich'; then
+            echo "::error::sdist LICENSE is missing 'Copyright (c) 2026 Simon Stipcich'"
+            exit 1
+          fi
+          echo "sdist LICENSE ok"
+
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: wheels-sdist
@@ -172,6 +186,22 @@ jobs:
           grep -q '<svg' classes.html || { echo "::error::no svg in classes.html"; exit 1; }
           grep -q 'd3' classes.html || { echo "::error::d3 was not inlined — the page is not self-contained"; exit 1; }
           echo "components.mmd $(wc -c < components.mmd) bytes, classes.html $(wc -c < classes.html) bytes"
+
+      - name: Installed wheel carries the licence
+        shell: bash
+        run: |
+          # Find the dist-info directory and check the LICENSE file
+          dist_info=$(python -c "import importlib.metadata; d = importlib.metadata.distribution('vizzle'); print(d._path)" 2>/dev/null)
+          license_file="$dist_info/licenses/LICENSE"
+          if [ ! -f "$license_file" ]; then
+            echo "::error::no licenses/LICENSE found in the installed vizzle dist-info"
+            exit 1
+          fi
+          if ! head -1 "$license_file" | grep -q '^MIT License$'; then
+            echo "::error::installed LICENSE does not begin with 'MIT License'"
+            exit 1
+          fi
+          echo "installed licence ok: $license_file"
 
   publish:
     name: Publish to PyPI
