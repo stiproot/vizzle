@@ -15,7 +15,7 @@ use serde_json::{json, Value};
 
 use crate::export::change_str;
 use crate::mermaid::{escape_label, sanitize_id};
-use crate::model::{ChangeKind, Class, CodeGraph, Import, Language};
+use crate::model::{ChangeCounts, ChangeKind, Class, CodeGraph, Import, Language};
 use crate::palette;
 use crate::parse;
 
@@ -96,11 +96,19 @@ impl ComponentGraph {
         });
     }
 
+    /// Change counts over components and edges: both are diff signals (§6),
+    /// and a rewiring with no component churn must still read as a change.
+    pub fn change_counts(&self) -> ChangeCounts {
+        ChangeCounts::tally(
+            self.components
+                .iter()
+                .map(|c| c.change)
+                .chain(self.edges.iter().map(|e| e.change)),
+        )
+    }
+
     pub fn diff_mode(&self) -> bool {
-        self.components
-            .iter()
-            .any(|c| c.change != ChangeKind::Unchanged)
-            || self.edges.iter().any(|e| e.change != ChangeKind::Unchanged)
+        self.change_counts().changed()
     }
 }
 
@@ -930,7 +938,7 @@ pub fn render_mermaid(graph: &ComponentGraph, opts: &ComponentRenderOptions) -> 
 ///   "components": [{"name", "path", "group", "langs", "files", "classes", "change"}],
 ///   "edges": [{"from", "to", "external", "weight", "change"}],
 ///   "classes": [{"component", ...class fields}],
-///   "stats": {"components", "edges", "diff"}
+///   "stats": {"components", "edges", "diff", "changes": {"added", "removed", "modified"}}
 /// }
 /// ```
 ///
@@ -1014,6 +1022,7 @@ pub fn to_json(graph: &ComponentGraph, include_classes: bool) -> String {
             "classes": classes.len(),
             "classRelations": class_relations.len(),
             "diff": graph.diff_mode(),
+            "changes": crate::export::change_counts_json(&graph.change_counts()),
             "selection": graph.selection,
         },
     })

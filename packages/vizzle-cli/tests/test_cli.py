@@ -646,3 +646,61 @@ def test_a_repo_relative_exclude_glob_also_works_on_a_scoped_diff(workspace: Pat
     )
     assert diff.exit_code == 0, diff.output
     assert "fixture-repo" not in diff.output
+
+
+def _stats(path: Path) -> dict:
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def test_component_diff_stats_carry_the_verdict(workspace: Path, tmp_path: Path) -> None:
+    """A consumer reads the verdict from --stats, never from the drawing."""
+    (workspace / "apps/svc/src/extra.ts").write_text('import { u } from "@w/util";\n')
+    out = tmp_path / "out"
+    out.mkdir()
+    result = CliRunner().invoke(
+        main,
+        ["diff", str(workspace), "--type", "component", "-o", str(out / "d.mmd"), "--stats", str(out / "s.json")],
+    )
+    assert result.exit_code == 0, result.output
+
+    stats = _stats(out / "s.json")
+    assert stats["type"] == "component"
+    assert stats["format"] == "mermaid"
+    assert stats["changed"] is True
+    # svc gained a file (modified) and a dependency on util appeared (added edge).
+    assert stats["changes"] == {"added": 1, "removed": 0, "modified": 1}
+    assert stats["chars"] == len((out / "d.mmd").read_text(encoding="utf-8"))
+    assert stats["mermaidLimit"] == 50_000
+    assert stats["oversized"] is False
+
+
+def test_component_diff_stats_report_no_change(workspace: Path, tmp_path: Path) -> None:
+    """A change confined to excluded paths is no change, and the stats say so."""
+    _add_fixture_component(workspace)
+    (workspace / "packages/core/tests/fixtures/repo/index.ts").write_text("export class Fixture { x = 1 }\n")
+    stats_path = tmp_path / "s.json"
+    result = CliRunner().invoke(
+        main,
+        ["diff", str(workspace), "--type", "component", "-E", FIXTURE_GLOB, "--stats", str(stats_path)],
+    )
+    assert result.exit_code == 0, result.output
+
+    stats = _stats(stats_path)
+    assert stats["changed"] is False
+    assert stats["changes"] == {"added": 0, "removed": 0, "modified": 0}
+
+
+def test_class_diff_stats_for_html(repo: Path, tmp_path: Path) -> None:
+    out = tmp_path / "out"
+    out.mkdir()
+    result = CliRunner().invoke(main, ["diff", str(repo), "-o", str(out / "d.html"), "--stats", str(out / "s.json")])
+    assert result.exit_code == 0, result.output
+
+    stats = _stats(out / "s.json")
+    assert stats["type"] == "class"
+    assert stats["format"] == "html"
+    assert stats["changed"] is True
+    # Fresh is new, Old is gone, Base is untouched.
+    assert stats["changes"] == {"added": 1, "removed": 1, "modified": 0}
+    assert stats["chars"] == len((out / "d.html").read_text(encoding="utf-8"))
+    assert "mermaidLimit" not in stats and "oversized" not in stats

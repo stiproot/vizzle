@@ -328,8 +328,14 @@ vizzle class <repo> [-o out.mmd|out.html] [-I glob] [-E glob] [-l python|typescr
                    [--no-members] [--group] [--externals] [--direction LR] [--title]
                    [--modules]                        # §2.5, off by default
 vizzle diff <repo> [--base REV] [--head REV]          # --type class is the default
+                   [--stats verdict.json]            # changed / counts / size as JSON, for tooling
 vizzle serve <repo> [--diff]
 ```
+
+`--stats` exists so a consumer never reads the verdict off the diagram: the
+JSON export's `stats.changes` (tallied over classes) and `stats.diff` carry it,
+and the sidecar repeats them beside the rendered file with its size. The
+component spec §6 has the shape.
 
 ## 9. Out of scope
 

@@ -272,6 +272,25 @@ unchanged classes in touched files today), but components entirely unrelated
 to the change may be collapsed per-group under `--focus` to keep large diffs
 readable.
 
+**The verdict is data, not drawing.** A consumer that acts on a diff (a CI
+step deciding whether to post it, and where) must not learn "did anything
+change" by grepping the mermaid for `vizzleAdded` or a glyph: those are
+palette and rendering choices, free to change between releases. The JSON
+export carries `stats.changes = {added, removed, modified}` tallied over
+components *and* edges (so a pure rewiring still counts), and `stats.diff` is
+its boolean. `vizzle diff --stats FILE` writes the same verdict beside the
+diagram, plus the rendered size and, for mermaid, the ceiling it is measured
+against:
+
+```json
+{"type": "component", "format": "mermaid", "changed": true,
+ "changes": {"added": 1, "removed": 0, "modified": 1},
+ "chars": 1333, "mermaidLimit": 50000, "oversized": false}
+```
+
+Shipped in 0.6.0. A consumer that reads the diagram text for any of this is
+coupled to the renderer and will break silently when it changes.
+
 ### 6.1 Path-based scoping and boundary detection
 
 `vizzle diff --type component <path>` accepts a path but **must produce a diagram of
@@ -378,7 +397,7 @@ components / 62 dependencies; `-E 'apps/**'` gives 16 / 17. Scoped to
 
 ```sh
 vizzle component <repo> [-o out.mmd|out.html] [flags]     # full graph
-vizzle diff <repo> --type component [--base ... --head ...]
+vizzle diff <repo> --type component [--base ... --head ...] [--stats verdict.json]
 vizzle serve <repo> --type component [--diff]
 ```
 
@@ -389,7 +408,8 @@ revisions, §6.2), `--direction`, `--externals`. New: `--no-group`,
 class detail (drill-down in the HTML view) is embedded; component diff defaults
 to `--no-classes` (class bodies are heavy; a reviewer asking "what rewired"
 typically does not expand them). `--type class` remains the default for `diff`/`serve`,
-so existing invocations are untouched.
+so existing invocations are untouched. `--stats FILE` (diff only, §6) writes the
+change verdict and rendered size as JSON for tooling.
 
 ## 8. Future: provided interfaces
 

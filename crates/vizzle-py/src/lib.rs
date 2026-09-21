@@ -143,7 +143,7 @@ fn class_diagram_diff(
     include_externals: bool,
     direction: Option<String>,
     title: Option<String>,
-) -> PyResult<String> {
+) -> PyResult<(String, String)> {
     let render = options(
         show_members,
         show_modules,
@@ -153,7 +153,15 @@ fn class_diagram_diff(
         title,
     )?;
     let select = selection(include, exclude, langs);
-    vc::diff_diagram(&base_files, &head_files, &select, &render).map_err(to_py_err)
+    let diagram =
+        vc::diff_diagram(&base_files, &head_files, &select, &render).map_err(to_py_err)?;
+    Ok(diff_pair(diagram))
+}
+
+/// `(mermaid, changes_json)`: the diagram and its verdict, as the CLI wants them.
+fn diff_pair(diagram: vc::DiffDiagram) -> (String, String) {
+    let changes = vc::export::change_counts_json(&diagram.changes).to_string();
+    (diagram.mermaid, changes)
 }
 
 fn component_options(
@@ -259,11 +267,11 @@ fn component_diagram_diff(
     direction: Option<String>,
     title: Option<String>,
     scope: Option<String>,
-) -> PyResult<String> {
+) -> PyResult<(String, String)> {
     let render = component_options(group, weights, include_externals, direction, title);
     let select = selection(include, exclude, langs);
     let scope_path = scope.as_deref().unwrap_or("");
-    vc::component_diff_diagram(
+    let diagram = vc::component_diff_diagram(
         &base_files,
         &base_manifests,
         &head_files,
@@ -272,7 +280,8 @@ fn component_diagram_diff(
         scope_path,
         &render,
     )
-    .map_err(to_py_err)
+    .map_err(to_py_err)?;
+    Ok(diff_pair(diagram))
 }
 
 /// Export a change-annotated component graph from two full revisions as JSON.

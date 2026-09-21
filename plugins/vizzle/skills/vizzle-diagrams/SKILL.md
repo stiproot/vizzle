@@ -120,6 +120,7 @@ uvx vizzle diff <path> --base main --type component
 uvx vizzle diff packages/my-module --type component      # focus on one module
 uvx vizzle diff <path> --type component -E '**/tests/fixtures/**'   # drop fixture "components"
 uvx vizzle diff <path> --type component --classes        # include class detail in HTML
+uvx vizzle diff <path> --type component -o d.mmd --stats verdict.json   # + machine-readable verdict
 ```
 
 `-I`/`-E`/`-l` mean exactly what they mean on `component`: a component whose
@@ -144,6 +145,14 @@ artifact lean. `vizzle component` (non-diff) defaults to `--classes`. Use
 non-diff command to produce a leaner page.
 
 Drop `--type component` for a class-level diff of what you touched.
+
+**If a script acts on the result, give it `--stats FILE` and read that.** It is
+JSON: `changed` (bool), `changes` (`added`/`removed`/`modified` counts),
+`chars` (rendered size) and, for mermaid, `mermaidLimit` and `oversized`. Never
+decide "did anything change" or "will this fit in a comment" by searching the
+diagram text for `vizzleAdded` or a `✚`: those are rendering choices and can
+change in any release, and a script keyed on them fails silently as "no
+change".
 
 ## Reading the output
 

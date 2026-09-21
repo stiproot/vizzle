@@ -24,6 +24,15 @@ use anyhow::Result;
 
 pub use component::ComponentRenderOptions;
 pub use mermaid::{Grouping, RenderOptions};
+pub use model::ChangeCounts;
+
+/// A rendered diff together with the verdict behind it, so a caller that must
+/// not read the diagram text can still learn whether anything changed.
+#[derive(Debug, Clone)]
+pub struct DiffDiagram {
+    pub mermaid: String,
+    pub changes: ChangeCounts,
+}
 
 /// A file set as the entry points take it: repo-relative `(path, contents)` pairs.
 pub type Files = Vec<(String, String)>;
@@ -116,12 +125,15 @@ pub fn diff_diagram(
     head_files: &[(String, String)],
     select: &SelectOptions,
     render: &RenderOptions,
-) -> Result<String> {
+) -> Result<DiffDiagram> {
     let (base_files, head_files) = select_both(base_files, head_files, select)?;
     let base = parse::parse_files(&base_files)?;
     let head = parse::parse_files(&head_files)?;
     let merged = diff::diff_graphs(&base, &head);
-    Ok(mermaid::render(&merged, render))
+    Ok(DiffDiagram {
+        mermaid: mermaid::render(&merged, render),
+        changes: merged.change_counts(),
+    })
 }
 
 /// Apply one selection to both revisions of a changed-file set. Filtering to
@@ -202,7 +214,7 @@ pub fn component_diff_diagram(
     select: &SelectOptions,
     scope_path: &str,
     render: &ComponentRenderOptions,
-) -> Result<String> {
+) -> Result<DiffDiagram> {
     let merged = component_diff_graph(
         base_files,
         base_manifests,
@@ -211,7 +223,10 @@ pub fn component_diff_diagram(
         select,
         scope_path,
     )?;
-    Ok(component::render_mermaid(&merged, render))
+    Ok(DiffDiagram {
+        mermaid: component::render_mermaid(&merged, render),
+        changes: merged.change_counts(),
+    })
 }
 
 /// Export a change-annotated component graph from two full revisions as JSON.
