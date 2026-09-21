@@ -70,8 +70,8 @@ jobs:
           # Pin vizzle to the latest released version to prevent runtime changes
           # to published package behavior. The pin must be bumped whenever a new
           # release goes out; see the release checklist in CLAUDE.md.
-          uvx 'vizzle==0.4.0' diff . --base "$BASE" --type component -o diagram.mmd
-          uvx 'vizzle==0.4.0' diff . --base "$BASE" --type component -o diagram.html
+          uvx 'vizzle==0.6.0' diff . --base "$BASE" --type component -o diagram.mmd
+          uvx 'vizzle==0.6.0' diff . --base "$BASE" --type component -o diagram.html
 
           # Change markers are emitted only when something actually changed, so
           # their absence is the signal for "this PR did not touch the shape".
