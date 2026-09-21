@@ -2,7 +2,7 @@
 
 use serde_json::{json, Value};
 
-use crate::model::{ChangeKind, Class, CodeGraph};
+use crate::model::{ChangeCounts, ChangeKind, Class, CodeGraph};
 use crate::resolve::{resolve_all_relations, Target};
 
 /// Change status as the wire-format string every renderer keys its palette on.
@@ -13,6 +13,16 @@ pub(crate) fn change_str(change: ChangeKind) -> &'static str {
         ChangeKind::Removed => "removed",
         ChangeKind::Modified => "modified",
     }
+}
+
+/// Change counts as JSON: the shape `stats.changes` takes in both exports and
+/// in the CLI's `--stats` sidecar.
+pub fn change_counts_json(counts: &ChangeCounts) -> Value {
+    json!({
+        "added": counts.added,
+        "removed": counts.removed,
+        "modified": counts.modified,
+    })
 }
 
 /// One resolved relation as JSON, shared by both diagram exports.
@@ -72,10 +82,7 @@ pub fn to_json(graph: &CodeGraph) -> String {
         .map(relation_json)
         .collect();
 
-    let diff = graph
-        .classes
-        .iter()
-        .any(|c| c.change != ChangeKind::Unchanged);
+    let changes = graph.change_counts();
 
     json!({
         "classes": classes,
@@ -83,7 +90,8 @@ pub fn to_json(graph: &CodeGraph) -> String {
         "stats": {
             "classes": graph.classes.len(),
             "relations": relations.len(),
-            "diff": diff,
+            "diff": changes.changed(),
+            "changes": change_counts_json(&changes),
         },
     })
     .to_string()

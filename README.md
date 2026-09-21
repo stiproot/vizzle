@@ -103,6 +103,10 @@ uvx vizzle diff ~/code/repo/h --base HEAD~20 --head HEAD -o changes.mmd
 # did the change rewire the application? (parses both full revisions;
 # added/removed dependency edges render loudest)
 uvx vizzle diff ~/code/repo/h --type component
+
+# for a script: the verdict as JSON (changed, counts, rendered size), so it
+# never has to read the diagram text
+uvx vizzle diff ~/code/repo/h --type component -o changes.mmd --stats verdict.json
 ```
 
 ### Interactive HTML (d3)

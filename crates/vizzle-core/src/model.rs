@@ -65,6 +65,37 @@ impl ChangeKind {
     }
 }
 
+/// How many elements of a diff graph carry each change kind: the verdict a
+/// consumer wants from a diff ("did anything change, and how much") without
+/// reading the drawing. Exposed as `stats.changes` in both JSON exports and
+/// through the CLI's `--stats` sidecar, so tooling never has to key on class
+/// names or glyphs that are free to change.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ChangeCounts {
+    pub added: usize,
+    pub removed: usize,
+    pub modified: usize,
+}
+
+impl ChangeCounts {
+    pub fn tally<I: IntoIterator<Item = ChangeKind>>(changes: I) -> Self {
+        let mut counts = Self::default();
+        for change in changes {
+            match change {
+                ChangeKind::Added => counts.added += 1,
+                ChangeKind::Removed => counts.removed += 1,
+                ChangeKind::Modified => counts.modified += 1,
+                ChangeKind::Unchanged => {}
+            }
+        }
+        counts
+    }
+
+    pub fn changed(&self) -> bool {
+        self.added + self.removed + self.modified > 0
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Member {
     pub name: String,
@@ -235,5 +266,40 @@ impl CodeGraph {
                 .collect(),
             ..self.clone()
         }
+    }
+}
+
+impl CodeGraph {
+    /// Change counts over classes. Classes are the unit: a changed member
+    /// marks its class modified, and relations carry no change status of
+    /// their own.
+    pub fn change_counts(&self) -> ChangeCounts {
+        ChangeCounts::tally(self.classes.iter().map(|c| c.change))
+    }
+}
+
+#[cfg(test)]
+mod change_count_tests {
+    use super::*;
+
+    #[test]
+    fn tallies_each_kind_and_ignores_unchanged() {
+        let counts = ChangeCounts::tally([
+            ChangeKind::Added,
+            ChangeKind::Unchanged,
+            ChangeKind::Modified,
+            ChangeKind::Added,
+            ChangeKind::Removed,
+        ]);
+        assert_eq!(
+            counts,
+            ChangeCounts {
+                added: 2,
+                removed: 1,
+                modified: 1
+            }
+        );
+        assert!(counts.changed());
+        assert!(!ChangeCounts::tally([ChangeKind::Unchanged; 3]).changed());
     }
 }

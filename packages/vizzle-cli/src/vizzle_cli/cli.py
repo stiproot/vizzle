@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -115,6 +116,38 @@ def _emit(content: str, output: Path | None, summary: str) -> None:
         click.echo(f"wrote {output}  ({summary})", err=True)
     else:
         click.echo(content)
+
+
+def _write_diff_stats(
+    path: Path | None,
+    *,
+    diagram_type: str,
+    fmt: str,
+    content: str,
+    changes: dict[str, int],
+) -> None:
+    """The verdict behind a diff, for a consumer that must not read the drawing.
+
+    A CI script deciding between "post the diagram" and "say nothing" needs to
+    know whether anything changed and whether the mermaid fits where it is
+    going. Reading that off the diagram text couples the script to class names
+    and glyphs that are free to change between releases; this file is the
+    contract instead. `chars` is the rendered size; for mermaid the ceiling it
+    is measured against comes along, so the consumer only has to compare.
+    """
+    if path is None:
+        return
+    stats: dict[str, object] = {
+        "type": diagram_type,
+        "format": fmt,
+        "changed": any(changes.values()),
+        "changes": changes,
+        "chars": len(content),
+    }
+    if fmt == "mermaid":
+        stats["mermaidLimit"] = managed.MERMAID_LIMIT
+        stats["oversized"] = len(content) > managed.MERMAID_LIMIT
+    path.write_text(json.dumps(stats, indent=2) + "\n", encoding="utf-8")
 
 
 def _emit_mermaid(diagram: str, output: Path | None) -> None:
@@ -547,6 +580,17 @@ def _collect_component_diff(path: Path, base: str, head: str | None) -> tuple[li
     default=None,
     help="Embed class detail (component type, HTML only). Default: --no-classes for component type.",
 )
+@click.option(
+    "--stats",
+    "stats_path",
+    type=click.Path(dir_okay=False, path_type=Path),
+    default=None,
+    help=(
+        "Also write a JSON verdict to FILE: whether anything changed, counts of "
+        "added/removed/modified elements, and the rendered size. For tooling that "
+        "must not read the diagram text."
+    ),
+)
 @select_options
 @render_options
 def diff_diagram(
@@ -556,6 +600,7 @@ def diff_diagram(
     diagram_type: str,
     weights: bool,
     classes: bool | None,
+    stats_path: Path | None,
     include: tuple[str, ...],
     exclude: tuple[str, ...],
     lang: tuple[str, ...],
@@ -576,7 +621,8 @@ def diff_diagram(
     context. With --type component, both revisions are parsed in full and the
     diagram highlights components whose files changed plus dependency edges
     that were added or removed. -I/-E/-l apply to BOTH revisions, so a
-    filtered file never reads as added or removed.
+    filtered file never reads as added or removed. --stats FILE writes the
+    verdict (changed, counts, size) as JSON beside the diagram.
     """
     # A diff renders two revisions held in memory, so there is no tree to
     # detect components in. Say so rather than silently emitting ungrouped output.
@@ -593,7 +639,8 @@ def diff_diagram(
         scope_path = _component_scope_path(path)
         effective_classes = _effective_classes_for_diff(classes)
         resolved_title = title or f"changes vs {base}"
-        if _resolve_format(fmt, output) == "html":
+        resolved_format = _resolve_format(fmt, output)
+        if resolved_format == "html":
             graph_json = _core.component_json_diff(
                 base_files,
                 base_manifests,
@@ -604,9 +651,16 @@ def diff_diagram(
                 **selection,
             )
             page = build_component_html(graph_json, title=resolved_title, include_externals=externals)
+            _write_diff_stats(
+                stats_path,
+                diagram_type=diagram_type,
+                fmt=resolved_format,
+                content=page,
+                changes=json.loads(graph_json)["stats"]["changes"],
+            )
             _emit(page, output, summarize_components(graph_json))
             return
-        diagram = _core.component_diagram_diff(
+        diagram, changes_json = _core.component_diagram_diff(
             base_files,
             base_manifests,
             head_files,
@@ -614,6 +668,13 @@ def diff_diagram(
             scope=scope_path,
             **selection,
             **_component_render_kwargs(True, weights, externals, direction, resolved_title),
+        )
+        _write_diff_stats(
+            stats_path,
+            diagram_type=diagram_type,
+            fmt=resolved_format,
+            content=diagram,
+            changes=json.loads(changes_json),
         )
         _emit_mermaid(diagram, output)
         return
@@ -632,7 +693,8 @@ def diff_diagram(
             "revisions held in memory. Use --group-by module."
         )
     resolved_title = title or f"changes vs {base}"
-    if _resolve_format(fmt, output) == "html":
+    resolved_format = _resolve_format(fmt, output)
+    if resolved_format == "html":
         graph_json = _core.graph_json_diff(base_files, head_files, **selection)
         page = build_html(
             graph_json,
@@ -641,14 +703,28 @@ def diff_diagram(
             show_modules=modules,
             include_externals=externals,
         )
+        _write_diff_stats(
+            stats_path,
+            diagram_type=diagram_type,
+            fmt=resolved_format,
+            content=page,
+            changes=json.loads(graph_json)["stats"]["changes"],
+        )
         _emit(page, output, summarize(graph_json, show_modules=modules))
         return
 
-    diagram = _core.class_diagram_diff(
+    diagram, changes_json = _core.class_diagram_diff(
         base_files,
         head_files,
         **selection,
         **_render_kwargs(members, modules, grouping, externals, direction, resolved_title),
+    )
+    _write_diff_stats(
+        stats_path,
+        diagram_type=diagram_type,
+        fmt=resolved_format,
+        content=diagram,
+        changes=json.loads(changes_json),
     )
     _emit_mermaid(diagram, output)
 
