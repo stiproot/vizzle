@@ -116,3 +116,27 @@ class diff refuses an empty selection. 38 Rust + 37 Python pass; pre-commit clea
 **Acceptance (§4) — all met.** The fourth bullet's "covered by a test" is
 `test_component_diff_exclude_wins_over_boundary` (CLI) and
 `selection_runs_before_scope_so_an_excluded_neighbour_is_not_a_boundary` (core).
+
+## 6. Implementation note — the path base
+
+Discovered while verifying §4's first acceptance criterion against a real tree, after the
+matcher was already shared.
+
+`Selector` matched the repo-relative path only, on the reasoning that one matcher gives one
+meaning. That is necessary but not sufficient: the commands do not hand it the same kind of path.
+A walk is rooted at the path the user names (`component harness/kikimora` sees `tests/...`); a
+component diff collects the whole repository by design, because an edge's existence depends on
+files the change never touched (`diff harness/kikimora` sees `harness/kikimora/tests/...`).
+
+Measured on the consumer's tree before the fix:
+
+| command | `-E 'tests/fixtures/**'` | `-E 'harness/kikimora/tests/fixtures/**'` |
+|---|---|---|
+| `component` | filtered | — |
+| `diff` | **no effect** | filtered |
+
+So the flag was present on `diff` and quietly did nothing for the glob a user would actually
+write, which is the failure mode the change set out to remove. `Selector::within_scope` matches
+a path under the scope by both spellings; stripping is prefix-anchored, so a scope-relative glob
+cannot reach outside the scope. Covered by five unit tests and two CLI tests, the latter verified
+by removing the fix and watching them fail.

@@ -231,6 +231,16 @@ The payload carries `classes[]` (each tagged with its owning `component`) and
 Relations that cross a component boundary are not drawn inside a box — they
 belong at the component level, where the dependency edge already says it.
 
+**One glob, one meaning — including the path it is matched against.** Sharing a
+matcher is not enough. `component <path>` is a walk rooted at `<path>`, so it
+sees `tests/fixtures/...`; a component diff cannot be rooted there, because an
+edge's existence depends on files the change never touched, so it collects the
+whole repository and sees `<path>/tests/fixtures/...`. A glob is therefore
+matched against **both** the repo-relative path and the path relative to the
+scope argument. Without that, `-E 'tests/fixtures/**'` filters on `component`
+and silently does nothing on `diff`, which is the inconsistency this
+vocabulary exists to remove.
+
 ## 6. Diff semantics
 
 `vizzle diff --type component` reuses the whole git pipeline (changed files

@@ -249,7 +249,7 @@ fn component_diff_graph(
     select: &SelectOptions,
     scope_path: &str,
 ) -> Result<component::ComponentGraph> {
-    let selector = select.selector()?;
+    let selector = select.selector()?.within_scope(scope_path);
     let base = component::build(&selector.filter(base_files), base_manifests)?;
     let mut head = component::build(&selector.filter(head_files), head_manifests)?;
     head.selection = select.describe();

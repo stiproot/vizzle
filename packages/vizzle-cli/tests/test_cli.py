@@ -600,3 +600,49 @@ def test_diff_rejects_component_grouping(repo: Path) -> None:
     result = CliRunner().invoke(main, ["diff", str(repo), "--group-by", "component"])
     assert result.exit_code != 0
     assert "not available for a diff" in result.output
+
+
+def test_the_same_exclude_glob_works_on_component_and_diff(workspace: Path) -> None:
+    """The acceptance criterion: a user learns -E once.
+
+    `component <path>` is a walk rooted at <path>, so its paths are relative to
+    it. A component diff cannot be rooted there — an edge's existence depends on
+    files the change never touched — so it collects the whole repository and its
+    paths are repo-relative. Sharing one matcher is necessary but not sufficient
+    to make one glob mean one thing; the scope-relative spelling has to match
+    too, or -E filters on `component` and silently does nothing on `diff`.
+    """
+    _add_fixture_component(workspace)
+    scope = workspace / "packages/core"
+    glob = "tests/fixtures/**"
+
+    component = CliRunner().invoke(main, ["component", str(scope), "-E", glob])
+    assert component.exit_code == 0, component.output
+    assert "fixture-repo" not in component.output
+
+    diff = CliRunner().invoke(main, ["diff", str(scope), "--type", "component", "--base", "HEAD~1", "-E", glob])
+    assert diff.exit_code == 0, diff.output
+    assert "fixture-repo" not in diff.output, (
+        "the glob filtered on `component` and not on `diff`, so -E means two "
+        "different things depending on which command you reach for"
+    )
+
+
+def test_a_repo_relative_exclude_glob_also_works_on_a_scoped_diff(workspace: Path) -> None:
+    """Adding the scope-relative spelling must not remove the original one."""
+    _add_fixture_component(workspace)
+    diff = CliRunner().invoke(
+        main,
+        [
+            "diff",
+            str(workspace / "packages/core"),
+            "--type",
+            "component",
+            "--base",
+            "HEAD~1",
+            "-E",
+            "packages/core/tests/fixtures/**",
+        ],
+    )
+    assert diff.exit_code == 0, diff.output
+    assert "fixture-repo" not in diff.output
