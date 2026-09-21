@@ -122,7 +122,11 @@ jobs:
       - name: sdist carries the licence
         run: |
           tarball=$(ls ${{ env.PROJECT_DIR }}/dist/*.tar.gz)
-          content=$(tar xzOf "$tarball" '*/LICENSE')
+          # Extract and glob in the shell: GNU tar rejects patterns in the
+          # member list without --wildcards, and bsdtar rejects --wildcards.
+          tmp=$(mktemp -d)
+          tar xzf "$tarball" -C "$tmp"
+          content=$(cat "$tmp"/*/LICENSE)
           if ! echo "$content" | head -1 | grep -q '^MIT License$'; then
             echo "::error::sdist LICENSE does not begin with 'MIT License' — symlink may have become a path string"
             exit 1
