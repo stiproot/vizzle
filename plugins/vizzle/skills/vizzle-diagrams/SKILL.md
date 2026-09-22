@@ -121,7 +121,20 @@ uvx vizzle diff packages/my-module --type component      # focus on one module
 uvx vizzle diff <path> --type component -E '**/tests/fixtures/**'   # drop fixture "components"
 uvx vizzle diff <path> --type component --classes        # include class detail in HTML
 uvx vizzle diff <path> --type component -o d.mmd --stats verdict.json   # + machine-readable verdict
+uvx vizzle diff <path> --type component --split <path>/src/<pkg> --focus  # one-manifest service: see below
 ```
+
+**One manifest, many subsystems?** If the repo (or the path) is a single
+Python package whose real architecture is its subpackages, a component diff
+shows one box, and every PR reads as "the service changed". Say where the
+subsystems live with `--split <dir>`: each direct child of `<dir>` becomes a
+component, and `pkg.sub.mod` imports resolve to `sub`. Then add `--focus` to a
+diff so it draws only the changed components, changed edges and their
+neighbours, and states how many it left out. `vizzle component <path> --split
+<dir>` shows the same split without a diff.
+
+`--base` is resolved to the fork point (`git merge-base`) automatically, so
+`--base main` on a branch describes the branch, not what `main` gained since.
 
 `-I`/`-E`/`-l` mean exactly what they mean on `component`: a component whose
 files are all filtered out is never drawn — on either revision, so nothing

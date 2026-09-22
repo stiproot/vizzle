@@ -26,12 +26,25 @@ pub use component::ComponentRenderOptions;
 pub use mermaid::{Grouping, RenderOptions};
 pub use model::ChangeCounts;
 
+/// Which part of a component diff to show: the scope path (§6.1) and whether
+/// to focus on the change (§6.3). A view choice, not a selection: it decides
+/// what is drawn of a graph that has already been built in full.
+#[derive(Debug, Clone, Default)]
+pub struct DiffView {
+    /// Repo-relative directory to scope to; empty for the whole repository.
+    pub scope: String,
+    /// Draw only the changed components, changed edges and their neighbours.
+    pub focus: bool,
+}
+
 /// A rendered diff together with the verdict behind it, so a caller that must
 /// not read the diagram text can still learn whether anything changed.
 #[derive(Debug, Clone)]
 pub struct DiffDiagram {
     pub mermaid: String,
     pub changes: ChangeCounts,
+    /// Unchanged components a focus pass left out; 0 without `--focus`.
+    pub omitted: usize,
 }
 
 /// A file set as the entry points take it: repo-relative `(path, contents)` pairs.
@@ -44,6 +57,11 @@ pub struct SelectOptions {
     pub exclude: Vec<String>,
     /// Language names ("python", "typescript"); empty means all supported.
     pub langs: Vec<String>,
+    /// Directories whose direct children are components of their own
+    /// (`component.md` §3.4). Detection rather than selection, but it travels
+    /// with the selection because both are the reader's statement of what
+    /// counts as architecture, and both belong in the legend.
+    pub splits: Vec<String>,
 }
 
 impl SelectOptions {
@@ -59,6 +77,7 @@ impl SelectOptions {
         out.extend(self.include.iter().map(|g| format!("include {g}")));
         out.extend(self.exclude.iter().map(|g| format!("exclude {g}")));
         out.extend(self.langs.iter().map(|l| format!("lang {l}")));
+        out.extend(self.splits.iter().map(|p| format!("split {p}")));
         out
     }
 
@@ -90,7 +109,7 @@ pub fn diagram_from_dir(
         return diagram_from_files(&files, render);
     }
     let manifests = walk::collect_manifests(root)?;
-    let components = component::build(&files, &manifests)?;
+    let components = component::build(&files, &manifests, &select.splits)?;
     let names: std::collections::HashMap<&str, &str> = components
         .components
         .iter()
@@ -133,6 +152,7 @@ pub fn diff_diagram(
     Ok(DiffDiagram {
         mermaid: mermaid::render(&merged, render),
         changes: merged.change_counts(),
+        omitted: 0,
     })
 }
 
@@ -196,7 +216,7 @@ fn component_graph_from_dir(
 ) -> Result<component::ComponentGraph> {
     let files = walk::collect_files(root, &select.include, &select.exclude, &select.languages()?)?;
     let manifests = walk::collect_manifests(root)?;
-    let mut graph = component::build(&files, &manifests)?;
+    let mut graph = component::build(&files, &manifests, &select.splits)?;
     graph.selection = select.describe();
     Ok(graph)
 }
@@ -212,7 +232,7 @@ pub fn component_diff_diagram(
     head_files: &[(String, String)],
     head_manifests: &[(String, String)],
     select: &SelectOptions,
-    scope_path: &str,
+    view: &DiffView,
     render: &ComponentRenderOptions,
 ) -> Result<DiffDiagram> {
     let merged = component_diff_graph(
@@ -221,11 +241,12 @@ pub fn component_diff_diagram(
         head_files,
         head_manifests,
         select,
-        scope_path,
+        view,
     )?;
     Ok(DiffDiagram {
         mermaid: component::render_mermaid(&merged, render),
         changes: merged.change_counts(),
+        omitted: merged.omitted,
     })
 }
 
@@ -236,7 +257,7 @@ pub fn component_json_diff(
     head_files: &[(String, String)],
     head_manifests: &[(String, String)],
     select: &SelectOptions,
-    scope_path: &str,
+    view: &DiffView,
     include_classes: bool,
 ) -> Result<String> {
     let merged = component_diff_graph(
@@ -245,13 +266,13 @@ pub fn component_json_diff(
         head_files,
         head_manifests,
         select,
-        scope_path,
+        view,
     )?;
     Ok(component::to_json(&merged, include_classes))
 }
 
-/// Selection runs BEFORE build and scope runs AFTER diff, deliberately in that
-/// order. Selection is what the reader asked not to see, so a filtered
+/// Selection runs BEFORE build, scope runs AFTER diff, and focus runs last,
+/// deliberately in that order. Selection is what the reader asked not to see, so a filtered
 /// component must not survive as a `«boundary»` neighbour — it owns no files,
 /// so `build` never creates it and no edge can reach it. Scope, by contrast,
 /// needs the full graph on both sides to find the boundary at all
@@ -262,14 +283,19 @@ fn component_diff_graph(
     head_files: &[(String, String)],
     head_manifests: &[(String, String)],
     select: &SelectOptions,
-    scope_path: &str,
+    view: &DiffView,
 ) -> Result<component::ComponentGraph> {
-    let selector = select.selector()?.within_scope(scope_path);
-    let base = component::build(&selector.filter(base_files), base_manifests)?;
-    let mut head = component::build(&selector.filter(head_files), head_manifests)?;
+    let selector = select.selector()?.within_scope(&view.scope);
+    let base = component::build(&selector.filter(base_files), base_manifests, &select.splits)?;
+    let mut head = component::build(&selector.filter(head_files), head_manifests, &select.splits)?;
     head.selection = select.describe();
     let merged = component::diff(&base, &head);
-    Ok(component::scope(&merged, scope_path))
+    let scoped = component::scope(&merged, &view.scope);
+    Ok(if view.focus {
+        component::focus(&scoped)
+    } else {
+        scoped
+    })
 }
 
 /// Export a change-annotated class graph from two revisions of a file set as JSON.
@@ -348,7 +374,11 @@ mod tests {
             &head_files,
             &head_manifests,
             &select(&["**/tests/fixtures/**"]),
-            "",
+            &DiffView {
+                scope: "".to_owned(),
+
+                focus: false,
+            },
             false,
         )
         .unwrap();
@@ -375,7 +405,11 @@ mod tests {
             &head_files,
             &head_manifests,
             &SelectOptions::default(),
-            "pkgs/core",
+            &DiffView {
+                scope: "pkgs/core".to_owned(),
+
+                focus: false,
+            },
             false,
         )
         .unwrap();
@@ -390,7 +424,11 @@ mod tests {
             &head_files,
             &head_manifests,
             &select(&["apps/**"]),
-            "pkgs/core",
+            &DiffView {
+                scope: "pkgs/core".to_owned(),
+
+                focus: false,
+            },
             false,
         )
         .unwrap();

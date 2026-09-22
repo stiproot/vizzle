@@ -84,6 +84,10 @@ pub struct ComponentGraph {
     /// graph so every renderer can say what the diagram is NOT claiming to
     /// show: a component filtered out here is absent, not unchanged.
     pub selection: Vec<String>,
+    /// Unchanged components a `focus` pass left out (§6.3). Zero when the
+    /// graph is complete. Carried so the trailer and the JSON can say how much
+    /// of the picture the reader is not seeing.
+    pub omitted: usize,
 }
 
 impl ComponentGraph {
@@ -160,6 +164,16 @@ fn dir_of(path: &str) -> &str {
     path.rsplit_once('/').map(|(dir, _)| dir).unwrap_or("")
 }
 
+/// `path` relative to `dir` when `dir` is a proper ancestor (`""` is every
+/// path's ancestor); `None` otherwise.
+fn under<'a>(path: &'a str, dir: &str) -> Option<&'a str> {
+    if dir.is_empty() {
+        return Some(path);
+    }
+    let rest = path.strip_prefix(dir)?;
+    rest.strip_prefix('/')
+}
+
 fn last_segment(path: &str) -> &str {
     path.rsplit('/').next().unwrap_or(path)
 }
@@ -185,11 +199,55 @@ struct Detector {
     manifest_dirs: Vec<(String, usize)>,
     /// Fallback components keyed by top-level directory ("" = repo root).
     fallback: HashMap<String, usize>,
+    /// Split directories (§3.4), longest first, each with the import root its
+    /// children resolve Python imports against.
+    splits: Vec<(String, String)>,
+    /// Components a split created, keyed by component path.
+    split_components: HashMap<String, usize>,
 }
 
 impl Detector {
+    /// For a file under a split directory, the path of the component the
+    /// split assigns it to: `split/<child>` for a file in a child directory,
+    /// the split directory itself for a file sitting directly in it.
+    fn split_component_path(&self, path: &str) -> Option<String> {
+        for (split, _) in &self.splits {
+            if let Some(rel) = under(path, split) {
+                return Some(match rel.split_once('/') {
+                    Some((child, _)) => format!("{split}/{child}"),
+                    None => split.clone(),
+                });
+            }
+        }
+        None
+    }
+
+    /// The directory a file's Python module path is spelled from: the split's
+    /// import root for a split child, else the owning component's directory,
+    /// stepping into `src/` for a src-layout package.
+    fn import_root(&self, path: &str, component_path: &str) -> String {
+        for (split, root) in &self.splits {
+            if under(path, split).is_some() {
+                return root.clone();
+            }
+        }
+        let src = if component_path.is_empty() {
+            "src".to_owned()
+        } else {
+            format!("{component_path}/src")
+        };
+        if under(path, &src).is_some() {
+            src
+        } else {
+            component_path.to_owned()
+        }
+    }
+
     /// Component owning a repo-relative path, if any.
     fn owner(&self, path: &str) -> Option<usize> {
+        if let Some(component_path) = self.split_component_path(path) {
+            return self.split_components.get(&component_path).copied();
+        }
         for (dir, idx) in &self.manifest_dirs {
             if path.starts_with(dir.as_str()) && path.as_bytes().get(dir.len()) == Some(&b'/') {
                 return Some(*idx);
@@ -205,19 +263,30 @@ impl Detector {
 }
 
 /// Build the component graph from source files and manifest files, both as
-/// repo-relative `(path, contents)` pairs.
+/// repo-relative `(path, contents)` pairs. `splits` are directories whose
+/// direct children become components of their own (§3.4).
 pub fn build(
     files: &[(String, String)],
     manifests: &[(String, String)],
+    splits: &[String],
 ) -> anyhow::Result<ComponentGraph> {
+    for split in splits {
+        if split.trim_matches('/').is_empty() || split == "." {
+            anyhow::bail!(
+                "split needs a directory below the root; the root's own top-level \
+                 directories are already components (component.md §3.1 rule 3)"
+            );
+        }
+    }
     let graph = parse::parse_files(files)?;
-    Ok(build_from_graph(&graph, files, manifests))
+    Ok(build_from_graph(&graph, files, manifests, splits))
 }
 
 fn build_from_graph(
     code: &CodeGraph,
     files: &[(String, String)],
     manifests: &[(String, String)],
+    splits: &[String],
 ) -> ComponentGraph {
     // Manifest dir -> declared name, best-priority manifest wins; the repo
     // root ("") declares the workspace, never a component.
@@ -244,6 +313,8 @@ fn build_from_graph(
     let mut detector = Detector {
         manifest_dirs: Vec::new(),
         fallback: HashMap::new(),
+        splits: Vec::new(),
+        split_components: HashMap::new(),
     };
     for (dir, (_, name)) in &declared {
         let idx = components.len();
@@ -259,9 +330,54 @@ fn build_from_graph(
         .manifest_dirs
         .sort_by(|(a, _), (b, _)| b.len().cmp(&a.len()).then(a.cmp(b)));
 
-    // Assign files; create fallback components on demand.
+    // A split refines whatever would have owned it, so its children spell
+    // their Python imports from that owner's import root: the enclosing
+    // manifest's directory (its `src/` for a src layout), or the top-level
+    // directory for a fallback component.
+    for split in splits {
+        let split = split.trim_matches('/').to_owned();
+        let enclosing = detector
+            .manifest_dirs
+            .iter()
+            .find(|(dir, _)| split == *dir || under(&split, dir).is_some())
+            .map(|(dir, _)| dir.clone());
+        let root = match enclosing {
+            Some(dir) => {
+                let src = format!("{dir}/src");
+                if split == src || under(&split, &src).is_some() {
+                    src
+                } else {
+                    dir
+                }
+            }
+            None => split.split('/').next().unwrap_or("").to_owned(),
+        };
+        detector.splits.push((split, root));
+    }
+    detector
+        .splits
+        .sort_by(|(a, _), (b, _)| b.len().cmp(&a.len()).then(a.cmp(b)));
+
+    // Assign files; create split and fallback components on demand.
     let mut owned: Vec<Vec<usize>> = vec![Vec::new(); components.len()]; // file indices per component
     for (i, (path, _)) in files.iter().enumerate() {
+        if let Some(component_path) = detector.split_component_path(path) {
+            let idx = match detector.split_components.get(&component_path) {
+                Some(idx) => *idx,
+                None => {
+                    let idx = components.len();
+                    components.push(new_component(
+                        last_segment(&component_path).to_owned(),
+                        component_path.clone(),
+                    ));
+                    owned.push(Vec::new());
+                    detector.split_components.insert(component_path, idx);
+                    idx
+                }
+            };
+            owned[idx].push(i);
+            continue;
+        }
         let idx = match detector.owner(path) {
             Some(idx) => idx,
             None => {
@@ -302,14 +418,19 @@ fn build_from_graph(
     for idx in detector.fallback.values_mut() {
         *idx = remap[idx]; // fallback components always own at least one file
     }
+    for idx in detector.split_components.values_mut() {
+        *idx = remap[idx]; // split components are created only for a file
+    }
 
     disambiguate_names(&mut components);
 
     // Stats + fingerprints, the module -> component map for class counts, and
-    // each component's importable Python names (first path segment below the
-    // component, minus a src-layout `src/` prefix, so
-    // `packages/py/agent-core/src/agent_core/x.py` yields `agent_core`).
-    // An ambiguous name maps to None — a wrong edge is worse than a missing one.
+    // the importable Python names each component answers to: every dotted
+    // prefix of each file's module path, spelled from its import root, so
+    // `packages/py/agent-core/src/agent_core/x.py` registers `agent_core` and
+    // `agent_core.x`. A prefix two components share maps to None — a wrong
+    // edge is worse than a missing one — which is what lets a split package
+    // resolve `pkg.sub.mod` to `sub` while `pkg` alone resolves to nothing.
     let mut module_owner: HashMap<String, usize> = HashMap::new();
     let mut py_names: HashMap<String, Option<usize>> = HashMap::new();
     for (idx, file_indices) in owned.iter().enumerate() {
@@ -324,7 +445,8 @@ fn build_from_graph(
             contents.hash(&mut hasher);
             module_owner.insert(parse::module_path(path), idx);
             if Language::from_path(path) == Some(Language::Python) {
-                if let Some(name) = importable_py_name(path, &components[idx].path) {
+                let root = detector.import_root(path, &components[idx].path);
+                for name in importable_py_prefixes(path, &root) {
                     match py_names.get(&name) {
                         Some(Some(existing)) if *existing != idx => {
                             py_names.insert(name, None);
@@ -360,6 +482,7 @@ fn build_from_graph(
         edges,
         classes: placed,
         selection: Vec::new(),
+        omitted: 0,
     };
     graph.normalize();
     graph
@@ -422,17 +545,24 @@ enum Resolved {
     Unknown,
 }
 
-/// Importable top-level Python name a file contributes to its component.
-fn importable_py_name(path: &str, component_path: &str) -> Option<String> {
-    let rel = if component_path.is_empty() {
-        path
-    } else {
-        path.get(component_path.len() + 1..)?
+/// Every dotted prefix of a Python file's module path, spelled from
+/// `import_root`: `pkg/sub/mod.py` yields `pkg`, `pkg.sub`, `pkg.sub.mod`.
+/// Empty when the file is not under the root.
+fn importable_py_prefixes(path: &str, import_root: &str) -> Vec<String> {
+    let Some(rel) = under(path, import_root) else {
+        return Vec::new();
     };
-    let rel = rel.strip_prefix("src/").unwrap_or(rel);
-    let first = rel.split('/').next()?;
-    let name = first.strip_suffix(".py").unwrap_or(first);
-    (!name.is_empty()).then(|| name.to_owned())
+    let dotted = parse::module_path(rel);
+    let mut prefixes = Vec::new();
+    let mut prefix = String::new();
+    for segment in dotted.split('.').filter(|s| !s.is_empty()) {
+        if !prefix.is_empty() {
+            prefix.push('.');
+        }
+        prefix.push_str(segment);
+        prefixes.push(prefix.clone());
+    }
+    prefixes
 }
 
 fn build_edges(
@@ -442,7 +572,7 @@ fn build_edges(
     py_names: &HashMap<String, Option<usize>>,
 ) -> Vec<ComponentEdge> {
     // Bare TS specifiers match manifest names; Python absolute imports match
-    // importable top-level names derived from each component's own files.
+    // the longest registered dotted prefix of the specifier.
     let ts_names: Vec<(&str, usize)> = components
         .iter()
         .enumerate()
@@ -535,12 +665,18 @@ fn resolve_py(
             None => Resolved::Unknown,
         };
     }
-    let first = spec.split('.').next().unwrap_or(spec);
-    match py_names.get(first) {
-        Some(Some(idx)) => Resolved::Component(*idx),
-        Some(None) => Resolved::Unknown, // ambiguous
-        None => Resolved::External(first.to_owned()),
+    // Longest known prefix wins, as for TS bare specifiers. Stopping at an
+    // ambiguous prefix rather than trying a shorter one is deliberate: the
+    // shorter prefix is shared by even more components.
+    let segments: Vec<&str> = spec.split('.').collect();
+    for n in (1..=segments.len()).rev() {
+        match py_names.get(&segments[..n].join(".")) {
+            Some(Some(idx)) => return Resolved::Component(*idx),
+            Some(None) => return Resolved::Unknown,
+            None => continue,
+        }
     }
+    Resolved::External(segments[0].to_owned())
 }
 
 // --------------------------------------------------------------------- diff
@@ -722,6 +858,60 @@ pub fn scope(graph: &ComponentGraph, scope_path: &str) -> ComponentGraph {
         .collect();
     result.selection = graph.selection.clone();
 
+    result.normalize();
+    result
+}
+
+/// Keep only what a reader of a change needs (§6.3): every changed
+/// component, every added or removed edge with both its endpoints, and the
+/// unchanged neighbours an existing edge ties to a changed component. Every
+/// other component is left out and counted in `omitted`, so the trailer and
+/// the JSON can say how much of the picture is not shown. Boundary nodes
+/// carry no change of their own and survive only as neighbours.
+pub fn focus(graph: &ComponentGraph) -> ComponentGraph {
+    let changed: BTreeSet<&str> = graph
+        .components
+        .iter()
+        .filter(|c| c.change != ChangeKind::Unchanged && !c.is_boundary)
+        .map(|c| c.path.as_str())
+        .collect();
+
+    let mut keep: BTreeSet<&str> = changed.clone();
+    let mut edges: Vec<ComponentEdge> = Vec::new();
+    for edge in &graph.edges {
+        let to = match &edge.to {
+            EdgeTarget::Component(path) => Some(path.as_str()),
+            EdgeTarget::External(_) => None,
+        };
+        let touches_changed =
+            changed.contains(edge.from.as_str()) || to.is_some_and(|t| changed.contains(t));
+        if edge.change != ChangeKind::Unchanged || touches_changed {
+            keep.insert(edge.from.as_str());
+            if let Some(t) = to {
+                keep.insert(t);
+            }
+            edges.push(edge.clone());
+        }
+    }
+
+    let components: Vec<Component> = graph
+        .components
+        .iter()
+        .filter(|c| keep.contains(c.path.as_str()))
+        .cloned()
+        .collect();
+    let mut result = ComponentGraph {
+        omitted: graph.omitted + (graph.components.len() - components.len()),
+        components,
+        edges,
+        classes: graph
+            .classes
+            .iter()
+            .filter(|pc| keep.contains(pc.component.as_str()))
+            .cloned()
+            .collect(),
+        selection: graph.selection.clone(),
+    };
     result.normalize();
     result
 }
@@ -926,6 +1116,13 @@ pub fn render_mermaid(graph: &ComponentGraph, opts: &ComponentRenderOptions) -> 
     if !graph.selection.is_empty() {
         let _ = writeln!(out, "%% vizzle: selection: {}", graph.selection.join("; "));
     }
+    if graph.omitted > 0 {
+        let _ = writeln!(
+            out,
+            "%% vizzle: focus: {} unchanged component(s) not drawn",
+            graph.omitted
+        );
+    }
     out
 }
 
@@ -938,7 +1135,7 @@ pub fn render_mermaid(graph: &ComponentGraph, opts: &ComponentRenderOptions) -> 
 ///   "components": [{"name", "path", "group", "langs", "files", "classes", "change"}],
 ///   "edges": [{"from", "to", "external", "weight", "change"}],
 ///   "classes": [{"component", ...class fields}],
-///   "stats": {"components", "edges", "diff", "changes": {"added", "removed", "modified"}}
+///   "stats": {"components", "edges", "diff", "changes": {"added", "removed", "modified"}, "omitted"}
 /// }
 /// ```
 ///
@@ -1023,6 +1220,7 @@ pub fn to_json(graph: &ComponentGraph, include_classes: bool) -> String {
             "classRelations": class_relations.len(),
             "diff": graph.diff_mode(),
             "changes": crate::export::change_counts_json(&graph.change_counts()),
+            "omitted": graph.omitted,
             "selection": graph.selection,
         },
     })
@@ -1077,7 +1275,7 @@ mod tests {
     #[test]
     fn detects_components_and_edges() {
         let (files, manifests) = workspace();
-        let graph = build(&files, &manifests).unwrap();
+        let graph = build(&files, &manifests, &[]).unwrap();
 
         let names: Vec<&str> = graph.components.iter().map(|c| c.name.as_str()).collect();
         assert_eq!(names, ["svc", "py-lib", "@x/core", "scripts"]); // sorted by path
@@ -1126,7 +1324,7 @@ mod tests {
             ("a/src/x.ts", "import { y } from \"../../b/src/y\";\n"),
             ("b/src/y.ts", "export const y = 1;\n"),
         ]);
-        let graph = build(&files, &manifests).unwrap();
+        let graph = build(&files, &manifests, &[]).unwrap();
         assert_eq!(graph.edges.len(), 1);
         assert_eq!(graph.edges[0].from, "a");
         assert_eq!(graph.edges[0].to, EdgeTarget::Component("b".into()));
@@ -1146,8 +1344,8 @@ mod tests {
                 *contents = "export const h = 2;\n".into();
             }
         }
-        let base = build(&base_files, &manifests).unwrap();
-        let head = build(&head_files, &manifests).unwrap();
+        let base = build(&base_files, &manifests, &[]).unwrap();
+        let head = build(&head_files, &manifests, &[]).unwrap();
         let merged = diff(&base, &head);
 
         let change = |n: &str| {
@@ -1182,7 +1380,7 @@ mod tests {
     #[test]
     fn attaches_classes_to_their_component() {
         let (files, manifests) = workspace();
-        let graph = build(&files, &manifests).unwrap();
+        let graph = build(&files, &manifests, &[]).unwrap();
 
         let owner = |name: &str| {
             graph
@@ -1222,8 +1420,8 @@ mod tests {
             }
         }
         let merged = diff(
-            &build(&base_files, &manifests).unwrap(),
-            &build(&head_files, &manifests).unwrap(),
+            &build(&base_files, &manifests, &[]).unwrap(),
+            &build(&head_files, &manifests, &[]).unwrap(),
         );
 
         let class = |name: &str| {
@@ -1242,7 +1440,7 @@ mod tests {
     #[test]
     fn renders_mermaid_flowchart() {
         let (files, manifests) = workspace();
-        let graph = build(&files, &manifests).unwrap();
+        let graph = build(&files, &manifests, &[]).unwrap();
         let out = render_mermaid(&graph, &ComponentRenderOptions::default());
         assert!(out.starts_with("flowchart LR"));
         assert!(out.contains("subgraph sg_apps[\"apps\"]"));
@@ -1278,7 +1476,7 @@ mod tests {
     #[test]
     fn scope_empty_path_is_noop() {
         let (files, manifests) = workspace();
-        let graph = build(&files, &manifests).unwrap();
+        let graph = build(&files, &manifests, &[]).unwrap();
         let scoped = scope(&graph, "");
         assert_eq!(scoped.components.len(), graph.components.len());
         assert_eq!(scoped.edges.len(), graph.edges.len());
@@ -1288,7 +1486,7 @@ mod tests {
     #[test]
     fn scope_root_path_is_noop() {
         let (files, manifests) = workspace();
-        let graph = build(&files, &manifests).unwrap();
+        let graph = build(&files, &manifests, &[]).unwrap();
         let scoped = scope(&graph, ".");
         assert_eq!(scoped.components.len(), graph.components.len());
         assert_eq!(scoped.edges.len(), graph.edges.len());
@@ -1324,7 +1522,7 @@ mod tests {
     #[test]
     fn scope_filters_to_path_and_boundary_neighbours() {
         let (files, manifests) = workspace();
-        let graph = build(&files, &manifests).unwrap();
+        let graph = build(&files, &manifests, &[]).unwrap();
         // Workspace: apps/svc → packages/core (internal), scripts → libs/pylib (internal).
         // Scope to "apps/svc": keeps svc (in-scope) + packages/core (boundary, svc imports it).
         // scripts and libs/pylib have no edge into svc's scope → excluded.
@@ -1389,7 +1587,7 @@ mod tests {
     #[test]
     fn scope_keeps_only_edges_where_at_least_one_endpoint_is_in_scope() {
         let (files, manifests) = workspace();
-        let graph = build(&files, &manifests).unwrap();
+        let graph = build(&files, &manifests, &[]).unwrap();
         // Scope to packages/core: svc imports core → svc is boundary.
         // scripts imports libs/pylib — neither is in scope → both excluded.
         let scoped = scope(&graph, "packages/core");
@@ -1450,13 +1648,148 @@ mod tests {
         );
     }
 
+    /// One manifest, src layout, a package with two subpackages that import
+    /// each other absolutely, plus a module directly in the package.
+    fn monolith() -> (Pairs, Pairs) {
+        let files = pairs(&[
+            (
+                "svc/src/svc/main.py",
+                "from svc.api.routes import router\nclass App: ...\n",
+            ),
+            (
+                "svc/src/svc/api/routes.py",
+                "from svc.store.db import Db\nfrom typing import Any\nclass Router: ...\n",
+            ),
+            ("svc/src/svc/store/db.py", "class Db: ...\n"),
+            ("svc/src/svc/store/__init__.py", ""),
+        ]);
+        let manifests = pairs(&[("svc/pyproject.toml", "[project]\nname = \"svc\"\n")]);
+        (files, manifests)
+    }
+
+    #[test]
+    fn without_a_split_a_manifest_is_one_component_with_no_internal_edges() {
+        let (files, manifests) = monolith();
+        let graph = build(&files, &manifests, &[]).unwrap();
+        assert_eq!(graph.components.len(), 1);
+        assert!(
+            !graph
+                .edges
+                .iter()
+                .any(|e| matches!(e.to, EdgeTarget::Component(_))),
+            "self-imports are not edges"
+        );
+        // The package's own name is not an external package either: every
+        // prefix of `svc.*` is known, so it resolves to the one component.
+        assert!(
+            !graph
+                .edges
+                .iter()
+                .any(|e| e.to == EdgeTarget::External("svc".to_owned())),
+            "{:?}",
+            graph.edges
+        );
+    }
+
+    #[test]
+    fn split_makes_subpackages_components_and_resolves_dotted_imports() {
+        let (files, manifests) = monolith();
+        let graph = build(&files, &manifests, &["svc/src/svc".to_owned()]).unwrap();
+        let paths: Vec<&str> = graph.components.iter().map(|c| c.path.as_str()).collect();
+        assert_eq!(
+            paths,
+            vec!["svc/src/svc", "svc/src/svc/api", "svc/src/svc/store"]
+        );
+        let names: Vec<&str> = graph.components.iter().map(|c| c.name.as_str()).collect();
+        assert_eq!(names, vec!["svc", "api", "store"]);
+        assert!(graph
+            .components
+            .iter()
+            .all(|c| c.group == "svc/src/svc" || c.path == "svc/src/svc"));
+
+        let internal: Vec<(&str, &str)> = graph
+            .edges
+            .iter()
+            .filter_map(|e| match &e.to {
+                EdgeTarget::Component(to) => Some((e.from.as_str(), to.as_str())),
+                EdgeTarget::External(_) => None,
+            })
+            .collect();
+        assert_eq!(
+            internal,
+            vec![
+                ("svc/src/svc", "svc/src/svc/api"),
+                ("svc/src/svc/api", "svc/src/svc/store")
+            ]
+        );
+        // `typing` is still external; the package's own name never is.
+        assert!(graph
+            .edges
+            .iter()
+            .any(|e| e.to == EdgeTarget::External("typing".to_owned())));
+        assert!(!graph
+            .edges
+            .iter()
+            .any(|e| e.to == EdgeTarget::External("svc".to_owned())));
+    }
+
+    #[test]
+    fn split_at_the_root_is_refused() {
+        let (files, manifests) = monolith();
+        for bad in ["", "/", "."] {
+            assert!(
+                build(&files, &manifests, &[bad.to_owned()]).is_err(),
+                "{bad:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn focus_keeps_changed_components_their_neighbours_and_counts_the_rest() {
+        let (base_files, manifests) = monolith();
+        let mut head_files = base_files.clone();
+        // store changes; api depends on it (neighbour); the package root does
+        // not touch store and is unrelated to the change.
+        head_files[2].1 = "class Db:\n    def ping(self): ...\n".to_owned();
+        let split = ["svc/src/svc".to_owned()];
+        let base = build(&base_files, &manifests, &split).unwrap();
+        let head = build(&head_files, &manifests, &split).unwrap();
+        let merged = diff(&base, &head);
+        assert_eq!(merged.components.len(), 3);
+
+        let focused = focus(&merged);
+        let paths: Vec<&str> = focused.components.iter().map(|c| c.path.as_str()).collect();
+        assert_eq!(paths, vec!["svc/src/svc/api", "svc/src/svc/store"]);
+        assert_eq!(focused.omitted, 1);
+        assert_eq!(
+            focused.edges.len(),
+            1,
+            "only the edge into the changed component: {:?}",
+            focused.edges
+        );
+        assert!(focused.change_counts().changed());
+        assert!(render_mermaid(&focused, &ComponentRenderOptions::default())
+            .contains("%% vizzle: focus: 1 unchanged component(s) not drawn"));
+    }
+
+    #[test]
+    fn focus_on_an_unchanged_graph_draws_nothing_and_counts_everything() {
+        let (files, manifests) = monolith();
+        let split = ["svc/src/svc".to_owned()];
+        let graph = build(&files, &manifests, &split).unwrap();
+        let merged = diff(&graph, &graph);
+        let focused = focus(&merged);
+        assert!(focused.components.is_empty());
+        assert_eq!(focused.omitted, 3);
+    }
+
     #[test]
     fn scope_drops_boundary_to_boundary_edges() {
         // bridge imports both core and svc; svc imports core.
         // When scoped to pkgs/core, both svc and bridge are boundary.
         // The bridge→svc edge is boundary-to-boundary and must be dropped.
         let (files, manifests) = workspace_with_cross_boundary_edge();
-        let graph = build(&files, &manifests).unwrap();
+        let graph = build(&files, &manifests, &[]).unwrap();
         let scoped = scope(&graph, "pkgs/core");
 
         let paths: BTreeSet<&str> = scoped.components.iter().map(|c| c.path.as_str()).collect();

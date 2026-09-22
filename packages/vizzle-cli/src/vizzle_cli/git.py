@@ -67,6 +67,22 @@ def is_manifest(path: str) -> bool:
     return path.rsplit("/", 1)[-1] in MANIFEST_NAMES
 
 
+def merge_base(root: Path, base: str, head: str) -> str | None:
+    """The commit where `head` forked from `base`, or None when git has no answer.
+
+    A pull request's "base" is a moving branch. Diffing against its tip
+    charges the PR with every commit the branch gained since the fork, so a
+    reviewer sees other people's changes drawn as this one's. Diffing against
+    the fork point is what "what did this change" means for a branch.
+    """
+    try:
+        out = _run(["merge-base", base, head], cwd=root)
+    except GitError:
+        return None
+    sha = out.decode(errors="replace").strip()
+    return sha or None
+
+
 def tree_paths(root: Path, ref: str) -> list[str]:
     """Every path in the tree at `ref`."""
     out = _run(["ls-tree", "-r", "--name-only", "-z", ref], cwd=root)

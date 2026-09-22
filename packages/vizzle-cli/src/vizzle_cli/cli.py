@@ -125,6 +125,7 @@ def _write_diff_stats(
     fmt: str,
     content: str,
     changes: dict[str, int],
+    omitted: int | None = None,
 ) -> None:
     """The verdict behind a diff, for a consumer that must not read the drawing.
 
@@ -147,6 +148,8 @@ def _write_diff_stats(
     if fmt == "mermaid":
         stats["mermaidLimit"] = managed.MERMAID_LIMIT
         stats["oversized"] = len(content) > managed.MERMAID_LIMIT
+    if omitted is not None:
+        stats["omitted"] = omitted
     path.write_text(json.dumps(stats, indent=2) + "\n", encoding="utf-8")
 
 
@@ -178,6 +181,44 @@ select_options = _compose(
         help="Restrict languages (repeatable).",
     ),
 )
+
+split_option = click.option(
+    "--split",
+    "split",
+    multiple=True,
+    metavar="DIR",
+    help=(
+        "Treat each direct child directory of DIR as a component of its own "
+        "(repeatable). For a package that is one manifest but many subsystems. "
+        "Spec: component.md §3.4."
+    ),
+)
+
+
+def _split_paths(root: Path, split: tuple[str, ...], *, scope: str = "") -> list[str]:
+    """Split directories as the core wants them: relative to `root`.
+
+    Accepts each entry spelled relative to the root, relative to the scope
+    (so a flag written for `component <scope>` means the same on `diff <scope>`,
+    like `-E`), or as any path that resolves under the root.
+    """
+    out: list[str] = []
+    for given in split:
+        candidates = [Path(given)]
+        if scope:
+            candidates.append(Path(scope) / given)
+        for candidate in candidates:
+            target = candidate if candidate.is_absolute() else root / candidate
+            if target.is_dir():
+                try:
+                    out.append(target.resolve().relative_to(root.resolve()).as_posix())
+                except ValueError as exc:
+                    raise click.ClickException(f"--split {given}: not under {root}") from exc
+                break
+        else:
+            raise click.ClickException(f"--split {given}: no such directory under {root}")
+    return out
+
 
 # Where the diagram goes and what it is called. Shared by every command that emits one.
 output_options = _compose(
@@ -441,6 +482,7 @@ def render_command(src: Path, out_dir: Path, fmt: str, scale: int, background: s
 @main.command("component")
 @click.argument("path", type=click.Path(exists=True, path_type=Path), default=".")
 @select_options
+@split_option
 @click.option(
     "--group/--no-group",
     "group",
@@ -463,6 +505,7 @@ def component_diagram(
     include: tuple[str, ...],
     exclude: tuple[str, ...],
     lang: tuple[str, ...],
+    split: tuple[str, ...],
     group: bool,
     weights: bool,
     classes: bool,
@@ -479,9 +522,15 @@ def component_diagram(
     component to see the classes inside it. Spec: docs/diagram-types/component.md.
     """
     resolved_fmt = _resolve_format(fmt, output)
+    splits = _split_paths(path, split)
     if resolved_fmt == "html":
         graph_json = _core.component_json_from_dir(
-            str(path), include=list(include), exclude=list(exclude), langs=list(lang), classes=classes
+            str(path),
+            include=list(include),
+            exclude=list(exclude),
+            langs=list(lang),
+            splits=splits,
+            classes=classes,
         )
         page = build_component_html(
             graph_json,
@@ -496,6 +545,7 @@ def component_diagram(
         include=list(include),
         exclude=list(exclude),
         langs=list(lang),
+        splits=splits,
         **_component_render_kwargs(group, weights, externals, direction, title),
     )
     _emit_mermaid(diagram, output)
@@ -536,6 +586,17 @@ def _collect_diff_files(path: Path, base: str, head: str | None) -> tuple[list[t
             if contents is not None:
                 head_files.append((change.path, contents))
     return base_files, head_files
+
+
+def _fork_point(path: Path, base: str, head: str | None) -> str:
+    """Resolve `base` to where `head` (or the checked-out commit) forked from it.
+
+    For a linear history this is `base` itself, so `--base HEAD~20` is
+    unchanged. For a branch whose base has moved on, it is the merge base, so
+    the diagram describes the branch and not the base's progress since.
+    """
+    root = _repo_root(path)
+    return git.merge_base(root, base, head or "HEAD") or base
 
 
 def _collect_component_revision(root: Path, ref: str | None) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
@@ -580,6 +641,16 @@ def _collect_component_diff(path: Path, base: str, head: str | None) -> tuple[li
     default=None,
     help="Embed class detail (component type, HTML only). Default: --no-classes for component type.",
 )
+@split_option
+@click.option(
+    "--focus",
+    is_flag=True,
+    help=(
+        "Component type only: draw the changed components, the added/removed "
+        "edges, and the unchanged neighbours those touch; leave the rest out and "
+        "say how many. Spec: component.md §6.3."
+    ),
+)
 @click.option(
     "--stats",
     "stats_path",
@@ -600,6 +671,8 @@ def diff_diagram(
     diagram_type: str,
     weights: bool,
     classes: bool | None,
+    split: tuple[str, ...],
+    focus: bool,
     stats_path: Path | None,
     include: tuple[str, ...],
     exclude: tuple[str, ...],
@@ -634,11 +707,17 @@ def diff_diagram(
             "revisions held in memory. Use --group-by module."
         )
     selection = _selection_kwargs(include, exclude, lang)
+    if diagram_type != "component" and (split or focus):
+        raise click.UsageError("--split and --focus apply to --type component only")
+    # Title keeps the reader's spelling of the base; the revisions compared
+    # are the fork point and head.
+    resolved_title = title or f"changes vs {base}"
+    base = _fork_point(path, base, head)
     if diagram_type == "component":
         base_files, base_manifests, head_files, head_manifests = _collect_component_diff(path, base, head)
         scope_path = _component_scope_path(path)
+        selection["splits"] = _split_paths(_repo_root(path), split, scope=scope_path)
         effective_classes = _effective_classes_for_diff(classes)
-        resolved_title = title or f"changes vs {base}"
         resolved_format = _resolve_format(fmt, output)
         if resolved_format == "html":
             graph_json = _core.component_json_diff(
@@ -648,33 +727,39 @@ def diff_diagram(
                 head_manifests,
                 classes=effective_classes,
                 scope=scope_path,
+                focus=focus,
                 **selection,
             )
             page = build_component_html(graph_json, title=resolved_title, include_externals=externals)
+            graph_stats = json.loads(graph_json)["stats"]
             _write_diff_stats(
                 stats_path,
                 diagram_type=diagram_type,
                 fmt=resolved_format,
                 content=page,
-                changes=json.loads(graph_json)["stats"]["changes"],
+                changes=graph_stats["changes"],
+                omitted=graph_stats["omitted"],
             )
             _emit(page, output, summarize_components(graph_json))
             return
-        diagram, changes_json = _core.component_diagram_diff(
+        diagram, verdict_json = _core.component_diagram_diff(
             base_files,
             base_manifests,
             head_files,
             head_manifests,
             scope=scope_path,
+            focus=focus,
             **selection,
             **_component_render_kwargs(True, weights, externals, direction, resolved_title),
         )
+        verdict = json.loads(verdict_json)
         _write_diff_stats(
             stats_path,
             diagram_type=diagram_type,
             fmt=resolved_format,
             content=diagram,
-            changes=json.loads(changes_json),
+            changes={k: verdict[k] for k in ("added", "removed", "modified")},
+            omitted=verdict["omitted"],
         )
         _emit_mermaid(diagram, output)
         return
@@ -692,7 +777,6 @@ def diff_diagram(
             "comes from the package manifests on disk, and a diff renders two "
             "revisions held in memory. Use --group-by module."
         )
-    resolved_title = title or f"changes vs {base}"
     resolved_format = _resolve_format(fmt, output)
     if resolved_format == "html":
         graph_json = _core.graph_json_diff(base_files, head_files, **selection)
@@ -713,18 +797,19 @@ def diff_diagram(
         _emit(page, output, summarize(graph_json, show_modules=modules))
         return
 
-    diagram, changes_json = _core.class_diagram_diff(
+    diagram, verdict_json = _core.class_diagram_diff(
         base_files,
         head_files,
         **selection,
         **_render_kwargs(members, modules, grouping, externals, direction, resolved_title),
     )
+    verdict = json.loads(verdict_json)
     _write_diff_stats(
         stats_path,
         diagram_type=diagram_type,
         fmt=resolved_format,
         content=diagram,
-        changes=json.loads(changes_json),
+        changes={k: verdict[k] for k in ("added", "removed", "modified")},
     )
     _emit_mermaid(diagram, output)
 
@@ -794,7 +879,9 @@ def serve_command(
     def build_page() -> str:
         if diagram_type == "component":
             if diff_mode:
-                base_files, base_manifests, head_files, head_manifests = _collect_component_diff(path, base, head)
+                base_files, base_manifests, head_files, head_manifests = _collect_component_diff(
+                    path, _fork_point(path, base, head), head
+                )
                 scope_path = _component_scope_path(path)
                 effective_classes = _effective_classes_for_diff(classes)
                 graph_json = _core.component_json_diff(
@@ -813,7 +900,7 @@ def serve_command(
                 page_title = title or f"{path.resolve().name} — component diagram (live)"
             return build_component_html(graph_json, title=page_title, include_externals=externals)
         if diff_mode:
-            base_files, head_files = _collect_diff_files(path, base, head)
+            base_files, head_files = _collect_diff_files(path, _fork_point(path, base, head), head)
             graph_json = _core.graph_json_diff(base_files, head_files, **selection)
             page_title = title or f"changes vs {base} (live)"
         else:
