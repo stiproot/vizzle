@@ -69,18 +69,23 @@ jobs:
           set -euo pipefail
           # Pin vizzle to the latest released version to prevent runtime changes
           # to published package behavior. The pin must be bumped whenever a new
-          # release goes out; see the release checklist in CLAUDE.md.
-          uvx 'vizzle==0.6.0' diff . --base "$BASE" --type component -o diagram.mmd
+          # release goes out; see the release checklist in CLAUDE.md. It cannot
+          # be bumped on the release's own branch: the version does not exist
+          # on PyPI until the tag is pushed.
+          uvx 'vizzle==0.6.0' diff . --base "$BASE" --type component -o diagram.mmd --stats stats.json
           uvx 'vizzle==0.6.0' diff . --base "$BASE" --type component -o diagram.html
 
-          # Change markers are emitted only when something actually changed, so
-          # their absence is the signal for "this PR did not touch the shape".
-          if grep -qE 'vizzle(Added|Removed|Modified)' diagram.mmd; then
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-          fi
-          echo "bytes=$(wc -c < diagram.mmd)" >> "$GITHUB_OUTPUT"
+          # The verdict comes from --stats, never from the diagram text. The
+          # class names in the mermaid (diffAdded, ...) are a rendering choice
+          # and have already changed once; a grep on them reads every PR as
+          # "no structural change" the day they change again.
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          stats = json.load(open("stats.json", encoding="utf-8"))
+          print(f"changed={'true' if stats['changed'] else 'false'}")
+          print(f"oversized={'true' if stats.get('oversized') else 'false'}")
+          print(f"chars={stats['chars']}")
+          PY
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: steps.applicable.outputs.sources != '0'
@@ -94,13 +99,14 @@ jobs:
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
         env:
           CHANGED: ${{ steps.render.outputs.changed }}
+          OVERSIZED: ${{ steps.render.outputs.oversized }}
+          CHARS: ${{ steps.render.outputs.chars }}
         with:
           script: |
             const fs = require('fs');
             // Hidden marker so each run edits its own comment instead of
             // adding one per push — a 12-commit PR should not have 12 diagrams.
             const MARKER = '<!-- vizzle-component-diff -->';
-            const LIMIT = 60000; // GitHub caps a comment at 65536 characters.
 
             let body;
             if (process.env.CHANGED !== 'true') {
@@ -109,9 +115,11 @@ jobs:
             } else {
               const mmd = fs.readFileSync('diagram.mmd', 'utf8');
               const run = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
-              if (mmd.length > LIMIT) {
+              // `oversized` is vizzle's judgement against mermaid's own layout
+              // ceiling, which is lower than GitHub's comment cap.
+              if (process.env.OVERSIZED === 'true') {
                 body = `${MARKER}\n### Component diagram\n\n` +
-                  `The diagram is ${mmd.length} characters, past what a comment can hold. ` +
+                  `The diagram is ${process.env.CHARS} characters, past what a comment can hold. ` +
                   `Download the interactive version from [the workflow run](${run}).`;
               } else {
                 body = `${MARKER}\n### What this changed in the shape of the application\n\n` +
