@@ -202,7 +202,7 @@ one it could resolve.
 
 **Diff output** marks every element: `✚` added, `✖` removed, `✱` modified.
 A member is modified when its signature *or its body* changed, so a method
-rewritten behind the same signature is `✱` and a docstring-only edit is too.
+rewritten behind the same signature is `✱`; a docstring-only edit is not.
 Unchanged elements in touched files appear as context so the change keeps its
 surroundings.
 

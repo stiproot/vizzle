@@ -331,11 +331,12 @@ rarely touches a signature. That PR changed 25 definitions in 13 files across
 7 components; a signature-only fingerprint saw 5 of them, drew five of the
 seven components as changed with nothing inside, and left out `worker.py`,
 the file that changed most. The body hash is the raw text of the definition
-(a method's `def` through its last line; a field's assignment). It is *not*
-normalised: whitespace is significant in Python, and a reformatted or
-re-documented member did change — the diff reports what happened, not what
-it guesses the author meant. A docstring-only edit therefore reads as `✱`;
-excluding comments and docstrings is a possible refinement, not a bug.
+(a method's `def` through its last line; a field's assignment) **with the
+docstring left out**: a docstring edit is documentation, not behaviour, and two
+of the six `✱` methods on #17759 were docstring-only noise. The rest is *not*
+normalised: whitespace is significant in Python, and a reformatted member did
+change — the diff reports what happened, not what it guesses the author
+meant. Comments stay in the hash; they sit among the statements they explain.
 Removed members are re-attached to the class so the diagram can show them
 struck through. Unchanged classes in touched files render as context.
 

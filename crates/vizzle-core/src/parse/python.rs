@@ -327,7 +327,7 @@ fn extract_method(func: Node, src: &str, decorators: &[String], members: &mut Ve
         .map(|r| clean_type(&text(r, src)));
 
     if is_property {
-        push_field(name, returns, text_hash(func, src), members);
+        push_field(name, returns, def_hash(func, src), members);
         return;
     }
 
@@ -345,10 +345,46 @@ fn extract_method(func: Node, src: &str, decorators: &[String], members: &mut Ve
             .iter()
             .any(|d| d.ends_with("staticmethod") || d.ends_with("classmethod")),
         is_abstract: decorators.iter().any(|d| d.contains("abstractmethod")),
-        body_hash: text_hash(func, src),
+        body_hash: def_hash(func, src),
         name,
         ..Default::default()
     });
+}
+
+/// [`Member::body_hash`] for a `def`: its text with the docstring left out.
+/// A docstring edit is documentation, not a change to what the function
+/// does, and reads as noise next to the real changes in a diff (two of the
+/// six `✱` methods on kikimora PR #17759 were docstring-only). Comments stay
+/// in: they sit among the statements they explain, and separating them is
+/// not worth the parser it would take.
+fn def_hash(func: Node, src: &str) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let range = func.byte_range();
+    let Some(body) = func.child_by_field_name("body") else {
+        return text_hash(func, src);
+    };
+    // Header and body are hashed as two trimmed pieces whether or not there
+    // is a docstring, so adding or removing one is not a change either: the
+    // whitespace that framed it must not survive as a difference.
+    let header = src[range.start..body.start_byte()].trim_end();
+    let rest_from = docstring(func).map_or(body.start_byte(), |doc| doc.end);
+    let rest = src[rest_from..range.end].trim_start();
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    header.hash(&mut hasher);
+    rest.hash(&mut hasher);
+    hasher.finish()
+}
+
+/// The byte range of a `def`'s docstring: a bare string as the first
+/// statement of its body.
+fn docstring(func: Node) -> Option<std::ops::Range<usize>> {
+    let body = func.child_by_field_name("body")?;
+    let first = body.named_child(0)?;
+    if first.kind() != "expression_statement" {
+        return None;
+    }
+    let expr = first.named_child(0)?;
+    (expr.kind() == "string").then(|| first.byte_range())
 }
 
 fn push_field(name: String, ty: Option<String>, body_hash: u64, members: &mut Vec<Member>) {
@@ -546,5 +582,31 @@ class Point:
         assert_eq!(by_name("Runner").annotation.as_deref(), Some("abstract"));
         assert_eq!(by_name("Point").annotation.as_deref(), Some("dataclass"));
         assert!(by_name("Runner").members[0].is_abstract);
+    }
+
+    #[test]
+    fn a_docstring_edit_does_not_change_the_body_hash_but_a_body_edit_does() {
+        let hash_of = |src: &str| parse_src(src).classes[0].members[0].body_hash;
+        let before =
+            "class A:\n    def go(self):\n        \"\"\"Old words.\"\"\"\n        return 1\n";
+        let reworded = "class A:\n    def go(self):\n        \"\"\"New words, same code.\"\"\"\n        return 1\n";
+        let rewritten =
+            "class A:\n    def go(self):\n        \"\"\"Old words.\"\"\"\n        return 2\n";
+        let undocumented = "class A:\n    def go(self):\n        return 1\n";
+        assert_eq!(
+            hash_of(before),
+            hash_of(reworded),
+            "documentation is not behaviour"
+        );
+        assert_ne!(hash_of(before), hash_of(rewritten));
+        // Adding or removing the docstring is not a change either.
+        assert_eq!(hash_of(before), hash_of(undocumented));
+        // A string that is not the first statement is code, and counts.
+        let with_string_later = "class A:\n    def go(self):\n        x = 1\n        \"\"\"not a docstring\"\"\"\n        return 1\n";
+        let with_string_later_changed = "class A:\n    def go(self):\n        x = 1\n        \"\"\"also not\"\"\"\n        return 1\n";
+        assert_ne!(
+            hash_of(with_string_later),
+            hash_of(with_string_later_changed)
+        );
     }
 }
