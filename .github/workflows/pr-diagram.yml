@@ -72,8 +72,8 @@ jobs:
           # release goes out; see the release checklist in CLAUDE.md. It cannot
           # be bumped on the release's own branch: the version does not exist
           # on PyPI until the tag is pushed.
-          uvx 'vizzle==0.6.0' diff . --base "$BASE" --type component -o diagram.mmd --stats stats.json
-          uvx 'vizzle==0.6.0' diff . --base "$BASE" --type component -o diagram.html
+          uvx 'vizzle==0.8.0' diff . --base "$BASE" --type component -o diagram.mmd --stats stats.json
+          uvx 'vizzle==0.8.0' diff . --base "$BASE" --type component -o diagram.html
 
           # The verdict comes from --stats, never from the diagram text. The
           # class names in the mermaid (diffAdded, ...) are a rendering choice
