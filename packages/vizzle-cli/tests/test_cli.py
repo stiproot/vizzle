@@ -886,3 +886,23 @@ def test_component_diff_zoom_of_no_change_has_no_classes(monolith: Path, tmp_pat
     stats = _stats(out / "s.json")
     assert stats["changed"] is False
     assert stats["zoom"]["classes"] == 0
+
+
+def test_component_diff_html_carries_changed_files_per_component(monolith: Path, tmp_path: Path) -> None:
+    """The drill-down explains a changed component with no class change by its files."""
+    (monolith / "svc/src/svc/store/db.py").write_text("class Db:\n    def ping(self): ...\n")
+    (monolith / "svc/src/svc/api/util.py").write_text("VALUE = 1\n")  # no class: only a file
+    out = tmp_path / "d.html"
+    result = CliRunner().invoke(
+        main, ["diff", str(monolith), "--type", "component", "--split", "svc/src/svc", "--classes", "-o", str(out)]
+    )
+    assert result.exit_code == 0, result.output
+    html = out.read_text(encoding="utf-8")
+    payload = json.loads(
+        re.search(r'<script id="graph-data" type="application/json">(.*?)</script>', html, re.S).group(1)
+    )
+    by_path = {c["path"]: c for c in payload["components"]}
+    assert by_path["svc/src/svc/store"]["changedFiles"] == ["db.py"]
+    assert by_path["svc/src/svc/api"]["change"] == "modified"
+    assert by_path["svc/src/svc/api"]["changedFiles"] == ["util.py"]
+    assert by_path["svc/src/svc"]["changedFiles"] == []

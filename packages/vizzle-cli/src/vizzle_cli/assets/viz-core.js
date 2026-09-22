@@ -63,18 +63,29 @@
   }
 
   /* Size a class box to its contents; `scale` shrinks it for nested use. */
-  function classBoxLayout(cls, { showMembers = true, showModule = true, scale = 1, maxWidth } = {}) {
+  /* Layout of one class box. `foldUnchanged` is the diff lens: only the members
+   * that changed are rows, and one trailing row says how many were left out,
+   * so a 300-member class with two new methods is a box with two rows and a
+   * count rather than 300 rows of context around two signals. */
+  function classBoxLayout(
+    cls,
+    { showMembers = true, showModule = true, scale = 1, maxWidth, foldUnchanged = false } = {}
+  ) {
     const charWidth = BOX.charWidth * scale;
     const rowH = BOX.rowH * scale;
-    const members = showMembers ? cls.members || [] : [];
+    const all = showMembers ? cls.members || [] : [];
+    const members = foldUnchanged ? all.filter((m) => m.change && m.change !== "unchanged") : all;
+    const folded = foldUnchanged ? all.length - members.length : 0;
     const fields = members.filter((m) => !m.isMethod);
     const methods = members.filter((m) => m.isMethod);
     const rows = [...fields, ...methods];
     const header = cls.name + mark(cls.change);
+    const foldedNote = folded ? `… ${folded} unchanged member${folded === 1 ? "" : "s"}` : "";
     const widest = Math.max(
       header.length + 4,
       showModule && cls.module ? cls.module.length : 0,
       ...rows.map((m) => memberText(m).length),
+      foldedNote.length,
       12
     );
     const w = Math.min(maxWidth || BOX.maxWidth, widest * charWidth + BOX.padX * 2);
@@ -83,8 +94,9 @@
       (cls.annotation ? 14 * scale : 0) +
       (fields.length ? BOX.sep + fields.length * rowH : 0) +
       (methods.length ? BOX.sep + methods.length * rowH : 0) +
-      (rows.length ? 6 : 2);
-    return { w, h, fields, methods, scale, showModule, charWidth, rowH };
+      (folded ? BOX.sep + rowH : 0) +
+      (rows.length || folded ? 6 : 2);
+    return { w, h, fields, methods, folded, foldedNote, scale, showModule, charWidth, rowH };
   }
 
   /* Draw the box into `g`, which is assumed empty. */
@@ -133,6 +145,13 @@
         .attr("stroke", colors.stroke).attr("stroke-width", 0.8);
       y += 3;
       for (const m of section) {
+        // A changed member gets a band in its change colour behind the row, so
+        // the change reads at a glance and not only from the marker glyph.
+        if (diff && m.change && m.change !== "unchanged") {
+          g.append("rect")
+            .attr("x", 1).attr("y", y).attr("width", w - 2).attr("height", rowH)
+            .attr("fill", PALETTE[m.change].fill).attr("opacity", 0.9);
+        }
         y += rowH - 3 * scale;
         g.append("text")
           .attr("x", BOX.padX).attr("y", y)
@@ -143,6 +162,18 @@
           .text(truncate(memberText(m), (w - BOX.padX * 2) / charWidth));
         y += 3 * scale;
       }
+    }
+    if (layout.folded) {
+      y += 3;
+      g.append("line")
+        .attr("x1", 0).attr("x2", w).attr("y1", y).attr("y2", y)
+        .attr("stroke", colors.stroke).attr("stroke-width", 0.8);
+      y += rowH;
+      g.append("text")
+        .attr("x", BOX.padX).attr("y", y)
+        .attr("font-size", font(11)).attr("font-style", "italic")
+        .attr("fill", "var(--context-ink)")
+        .text(layout.foldedNote);
     }
   }
 

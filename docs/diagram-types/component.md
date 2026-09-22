@@ -259,6 +259,35 @@ The payload carries `classes[]` (each tagged with its owning `component`) and
 `classRelations[]`, both in the same shape the class diagram uses.
 `--no-classes` omits them for a leaner page.
 
+**The diff lens inside an opened component (0.9.0).** Under a diff, opening a
+changed component used to show every class it owns, the changed ones coloured
+but lost among hundreds of grey context boxes: on the kikimora harness,
+8 changed classes among 369. Measured with a reader on 2026-09-22: "it is
+actually not clear what changed". So under the diff lens the drill-down
+answers that question first:
+
+- **The header says how much changed** before the box is opened:
+  `3 of 216 classes changed`, or `no class changed · 2 files changed`.
+- **Opening shows the changes only.** The class diagram inside a changed
+  component holds just the classes that changed, at full contrast, with the
+  relations among them. Each changed class shows only its changed members,
+  each row banded in its change colour (green added, red removed and struck
+  through, amber modified), and one trailing row `… N unchanged members`, the
+  same fold the mermaid zoom (§6.4) uses. A link at the bottom,
+  `show N unchanged classes`, switches that component to everything it owns
+  (and back), rebuilding only that component's diagram.
+- **A component that changed with no class change still opens**, on a note
+  saying so and naming the files that changed. That needs the payload to
+  carry `changedFiles[]` per component (paths relative to the component),
+  computed in the diff from per-file content hashes; an added or removed
+  component lists all its files. Without it, a modified box holding only
+  wiring or migrations was a question the page could not answer.
+
+Unchanged components open exactly as before. Outside a diff nothing changes.
+Verified headless on PR tesslio/monorepo#17682: `persistence` opens on its 3
+changed classes with 10 banded member rows and `show 213 unchanged classes`;
+the toggle goes 3 → 216 → 3.
+
 Relations that cross a component boundary are not drawn inside a box — they
 belong at the component level, where the dependency edge already says it.
 

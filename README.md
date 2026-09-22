@@ -121,7 +121,9 @@ self-contained page — d3 v7 is inlined, no network needed — that renders the
 class graph as SVG with **zoom** (scroll), **pan** (drag the background),
 draggable class boxes, a fit-to-view button, and a live filter box. Diff
 pages color whole classes *and* individual member rows (removed members are
-struck through):
+struck through). In a component diff, opening a changed component shows only
+the classes and members that changed, banded in their change colour, with the
+rest folded behind a count and a link to show them:
 
 ```sh
 uvx vizzle class ~/code/repo/h -o h-classes.html
