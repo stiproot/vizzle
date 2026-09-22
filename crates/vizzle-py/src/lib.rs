@@ -39,6 +39,7 @@ fn options(
         grouping: Grouping::parse(grouping).map_err(PyValueError::new_err)?,
         component_of: Default::default(),
         changed_members_only: false,
+        highlight: None,
         include_externals,
         direction,
         title,
@@ -53,6 +54,9 @@ fn options(
     include = vec![],
     exclude = vec![],
     langs = vec![],
+    highlight = vec![],
+    around = vec![],
+    depth = 1,
     show_members = true,
     show_modules = false,
     grouping = "none",
@@ -66,6 +70,9 @@ fn class_diagram_from_dir(
     include: Vec<String>,
     exclude: Vec<String>,
     langs: Vec<String>,
+    highlight: Vec<String>,
+    around: Vec<String>,
+    depth: usize,
     show_members: bool,
     show_modules: bool,
     grouping: &str,
@@ -87,7 +94,13 @@ fn class_diagram_from_dir(
         direction,
         title,
     )?;
-    vc::diagram_from_dir(std::path::Path::new(root), &select, &render).map_err(to_py_err)
+    vc::diagram_from_dir(
+        std::path::Path::new(root),
+        &select,
+        &render,
+        &lens(highlight, around, depth),
+    )
+    .map_err(to_py_err)
 }
 
 /// Render a Mermaid class diagram from `(relative_path, contents)` pairs.
@@ -197,6 +210,15 @@ fn component_options(
         include_externals,
         direction,
         title,
+        highlight: None,
+    }
+}
+
+fn lens(highlight: Vec<String>, around: Vec<String>, depth: usize) -> vc::Lens {
+    vc::Lens {
+        highlight,
+        around,
+        depth,
     }
 }
 
@@ -209,6 +231,9 @@ fn component_options(
     exclude = vec![],
     langs = vec![],
     splits = vec![],
+    highlight = vec![],
+    around = vec![],
+    depth = 1,
     group = true,
     weights = false,
     include_externals = false,
@@ -222,6 +247,9 @@ fn component_diagram_from_dir(
     exclude: Vec<String>,
     langs: Vec<String>,
     splits: Vec<String>,
+    highlight: Vec<String>,
+    around: Vec<String>,
+    depth: usize,
     group: bool,
     weights: bool,
     include_externals: bool,
@@ -235,12 +263,19 @@ fn component_diagram_from_dir(
         splits,
     };
     let render = component_options(group, weights, include_externals, direction, title);
-    vc::component_diagram_from_dir(std::path::Path::new(root), &select, &render).map_err(to_py_err)
+    vc::component_diagram_from_dir(
+        std::path::Path::new(root),
+        &select,
+        &render,
+        &lens(highlight, around, depth),
+    )
+    .map_err(to_py_err)
 }
 
 /// Export the component graph under `root` as JSON (for external renderers).
 #[pyfunction]
-#[pyo3(signature = (root, *, include = vec![], exclude = vec![], langs = vec![], splits = vec![], classes = true))]
+#[pyo3(signature = (root, *, include = vec![], exclude = vec![], langs = vec![], splits = vec![], classes = true, highlight = vec![], around = vec![], depth = 1))]
+#[allow(clippy::too_many_arguments)]
 fn component_json_from_dir(
     root: &str,
     include: Vec<String>,
@@ -248,6 +283,9 @@ fn component_json_from_dir(
     langs: Vec<String>,
     splits: Vec<String>,
     classes: bool,
+    highlight: Vec<String>,
+    around: Vec<String>,
+    depth: usize,
 ) -> PyResult<String> {
     let select = SelectOptions {
         include,
@@ -255,7 +293,13 @@ fn component_json_from_dir(
         langs,
         splits,
     };
-    vc::component_json_from_dir(std::path::Path::new(root), &select, classes).map_err(to_py_err)
+    vc::component_json_from_dir(
+        std::path::Path::new(root),
+        &select,
+        classes,
+        &lens(highlight, around, depth),
+    )
+    .map_err(to_py_err)
 }
 
 /// Render a change-highlighted component diagram from two full revisions.
@@ -387,12 +431,16 @@ fn diff_palette_css() -> String {
 
 /// Export the class graph under `root` as JSON (for external renderers).
 #[pyfunction]
-#[pyo3(signature = (root, *, include = vec![], exclude = vec![], langs = vec![]))]
+#[pyo3(signature = (root, *, include = vec![], exclude = vec![], langs = vec![], highlight = vec![], around = vec![], depth = 1))]
+#[allow(clippy::too_many_arguments)]
 fn graph_json_from_dir(
     root: &str,
     include: Vec<String>,
     exclude: Vec<String>,
     langs: Vec<String>,
+    highlight: Vec<String>,
+    around: Vec<String>,
+    depth: usize,
 ) -> PyResult<String> {
     let select = SelectOptions {
         include,
@@ -400,7 +448,12 @@ fn graph_json_from_dir(
         langs,
         splits: vec![],
     };
-    vc::json_from_dir(std::path::Path::new(root), &select).map_err(to_py_err)
+    vc::json_from_dir(
+        std::path::Path::new(root),
+        &select,
+        &lens(highlight, around, depth),
+    )
+    .map_err(to_py_err)
 }
 
 /// Export a change-annotated class graph from base/head revisions as JSON.

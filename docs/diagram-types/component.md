@@ -259,6 +259,35 @@ The payload carries `classes[]` (each tagged with its owning `component`) and
 `classRelations[]`, both in the same shape the class diagram uses.
 `--no-classes` omits them for a leaner page.
 
+**The diff lens inside an opened component (0.9.0).** Under a diff, opening a
+changed component used to show every class it owns, the changed ones coloured
+but lost among hundreds of grey context boxes: on the kikimora harness,
+8 changed classes among 369. Measured with a reader on 2026-09-22: "it is
+actually not clear what changed". So under the diff lens the drill-down
+answers that question first:
+
+- **The header says how much changed** before the box is opened:
+  `3 of 216 classes changed`, or `no class changed · 2 files changed`.
+- **Opening shows the changes only.** The class diagram inside a changed
+  component holds just the classes that changed, at full contrast, with the
+  relations among them. Each changed class shows only its changed members,
+  each row banded in its change colour (green added, red removed and struck
+  through, amber modified), and one trailing row `… N unchanged members`, the
+  same fold the mermaid zoom (§6.4) uses. A link at the bottom,
+  `show N unchanged classes`, switches that component to everything it owns
+  (and back), rebuilding only that component's diagram.
+- **A component that changed with no class change still opens**, on a note
+  saying so and naming the files that changed. That needs the payload to
+  carry `changedFiles[]` per component (paths relative to the component),
+  computed in the diff from per-file content hashes; an added or removed
+  component lists all its files. Without it, a modified box holding only
+  wiring or migrations was a question the page could not answer.
+
+Unchanged components open exactly as before. Outside a diff nothing changes.
+Verified headless on PR tesslio/monorepo#17682: `persistence` opens on its 3
+changed classes with 10 banded member rows and `show 213 unchanged classes`;
+the toggle goes 3 → 216 → 3.
+
 Relations that cross a component boundary are not drawn inside a box — they
 belong at the component level, where the dependency edge already says it.
 
@@ -448,8 +477,8 @@ a diff is a hairball in which the two changed boxes are hard to find.
 - the edges among those.
 
 Everything else is left out and **counted**: the trailer says
-`focus: N unchanged component(s) not drawn`, and `stats.omitted` / the
-`--stats` sidecar carry N, so a consumer can say so in prose. Boundary nodes
+`N component(s) not drawn`, and `stats.omitted` / the `--stats` sidecar carry
+N, so a consumer can say so in prose (the same trailer serves `--around`). Boundary nodes
 carry no change of their own and survive only as neighbours. When nothing
 changed, focus draws nothing and counts everything; `--stats` already says
 `changed: false`.
@@ -492,7 +521,7 @@ moved, and what exactly moved inside it.
 ## 7. CLI surface
 
 ```sh
-vizzle component <repo> [-o out.mmd|out.html] [--split DIR] [flags]     # full graph
+vizzle component <repo> [-o out.mmd|out.html] [--split DIR] [--highlight NAME] [--around NAME --depth N] [flags]
 vizzle diff <repo> --type component [--base ... --head ...] [--split DIR] [--focus] [--zoom classes.mmd] [--stats verdict.json]
 vizzle serve <repo> --type component [--diff]
 ```
@@ -511,7 +540,11 @@ change verdict and rendered size as JSON for tooling. `--split DIR` (§3.4, on
 are the two knobs for a single-manifest service; `--zoom FILE` (§6.4, `diff`,
 mermaid only) writes the class-level view beside the component diagram, and
 `--stats` then carries `zoom: {classes, chars, oversized}`. `serve` does not
-take `--split` yet.
+take `--split` yet. `--highlight NAME` and `--around NAME --depth N`
+(`component` only) are the reader's lens from class.md §7b: names match a
+component's display name or its path, `--around` walks dependency edges, the
+mermaid carries `:::highlight` / `:::context` on the node lines, and the JSON
+gains `"highlight"` per component plus `stats.highlight`.
 
 ## 8. Future: provided interfaces
 

@@ -38,6 +38,7 @@ const { classBoxLayout, drawClassBox, relationStyle } = vizzle;
 const { draggableNodes, externalStub, buildLinks, gridCells, arrowMarker } = vizzle;
 
 const DIFF = graph.stats.diff;
+const LENS = Array.isArray(graph.stats.highlight);   // --highlight / --around was used
 const CHAR_W = 7.25, PAD_X = 14;
 const HEAD_H = 58;                       // collapsed component height
 const INNER_PAD = 14;                    // gap between the class diagram and its component box
@@ -62,9 +63,21 @@ for (const relation of graph.classRelations || []) {
   relationsByComponent.get(from).push(relation);
 }
 
-function statsLine(c) {
+const isChanged = (x) => x.change && x.change !== "unchanged";
+
+function statsLine(c, classes) {
   const parts = [];
-  parts.push(c.classes ? `${c.classes} class${c.classes === 1 ? "" : "es"}` : `${c.files} file${c.files === 1 ? "" : "s"}`);
+  // Diff lens: a changed component says how much of it changed, before it is
+  // opened. "8 of 369 classes changed" is the answer to the question the
+  // yellow box raises; "no class changed" is an answer too.
+  if (DIFF && isChanged(c) && c.change !== "removed") {
+    const changed = classes.filter(isChanged).length;
+    if (changed) parts.push(`${changed} of ${classes.length} class${classes.length === 1 ? "" : "es"} changed`);
+    else if (classes.length) parts.push(`no class changed · ${(c.changedFiles || []).length || c.files} file${(c.changedFiles || []).length === 1 ? "" : "s"} changed`);
+    else parts.push(`${(c.changedFiles || []).length || c.files} file${(c.changedFiles || []).length === 1 ? "" : "s"} changed`);
+  } else {
+    parts.push(c.classes ? `${c.classes} class${c.classes === 1 ? "" : "es"}` : `${c.files} file${c.files === 1 ? "" : "s"}`);
+  }
   if (c.langs.length) {
     parts.push(c.langs.map((l) => ({ typescript: "ts", python: "py" })[l] || l).join("/"));
   }
@@ -74,10 +87,14 @@ function statsLine(c) {
 function buildNode(c) {
   const classes = classesByComponent.get(c.path) || [];
   const header = c.name + mark(c.change);
-  const sub = statsLine(c);
+  const sub = statsLine(c, classes);
   const widest = Math.max(header.length + 2, sub.length, "«component»".length);
   const w = Math.min(340, widest * CHAR_W + PAD_X * 2);
-  return { id: c.path, comp: c, sub, classes, expanded: false, w, h: HEAD_H, baseW: w, external: false };
+  // `detail` is what an opened component shows: in the diff lens a changed
+  // component opens on its changes only ("changes"), and a click on the
+  // folded-classes note switches it to everything ("all").
+  const detail = DIFF && isChanged(c) && classes.some(isChanged) ? "changes" : "all";
+  return { id: c.path, comp: c, sub, classes, detail, expanded: false, w, h: HEAD_H, baseW: w, external: false };
 }
 
 const nodes = graph.components.map(buildNode);
@@ -102,9 +119,23 @@ const links = buildLinks(graph.edges, byId, config.includeExternals, (e) => ({
 // once at load — a small force pass over its own classes and relations — then
 // only shown or hidden, never rebuilt.
 function buildExplosion(node) {
-  if (!node.classes.length) return null;
-  const boxes = node.classes.map((cls) => {
-    const box = classBoxLayout(cls, { showMembers: true, showModule: false, scale: INNER_SCALE });
+  const changedOnly = node.detail === "changes";
+  const shown = changedOnly ? node.classes.filter(isChanged) : node.classes;
+  const hidden = node.classes.length - shown.length;
+  // A changed component with no class change still opens: on a note that
+  // says so and names the files that did change, so the yellow box is never
+  // a question the page cannot answer.
+  const noteLines = [];
+  if (!shown.length) {
+    if (!node.classes.length && !(node.comp.changedFiles || []).length) return null;
+    noteLines.push(DIFF && isChanged(node.comp) ? "no class changed in this component" : "no classes");
+  }
+  if (DIFF && isChanged(node.comp) && (node.comp.changedFiles || []).length) {
+    const files = node.comp.changedFiles;
+    noteLines.push(`${files.length} file${files.length === 1 ? "" : "s"} changed: ${files.slice(0, 6).join(", ")}${files.length > 6 ? ` … +${files.length - 6}` : ""}`);
+  }
+  const boxes = shown.map((cls) => {
+    const box = classBoxLayout(cls, { showMembers: true, showModule: false, scale: INNER_SCALE, foldUnchanged: changedOnly });
     return { id: cls.qualified, cls, box, w: box.w, h: box.h };
   });
   const byId = new Map(boxes.map((b) => [b.id, b]));
@@ -112,12 +143,21 @@ function buildExplosion(node) {
     .filter((r) => byId.has(r.from) && byId.has(r.to))
     .map((r) => ({ source: r.from, target: r.to, kind: r.kind }));
 
-  packBoxes(boxes, links);
+  if (boxes.length) packBoxes(boxes, links);
+  const noteH = noteLines.length ? noteLines.length * 16 + 6 : 0;
+  const controlH = (hidden > 0 || (!changedOnly && DIFF && isChanged(node.comp) && node.classes.some(isChanged))) ? 22 : 0;
+  const bodyW = boxes.length ? d3.max(boxes, (b) => b.x + b.w / 2) : 0;
+  const noteW = d3.max(noteLines, (l) => l.length * 6.8) || 0;
   return {
     boxes,
     links,
-    w: d3.max(boxes, (b) => b.x + b.w / 2),
-    h: d3.max(boxes, (b) => b.y + b.h / 2),
+    noteLines,
+    hidden,
+    changedOnly,
+    noteH,
+    controlH,
+    w: Math.max(bodyW, noteW, 220),
+    h: (boxes.length ? d3.max(boxes, (b) => b.y + b.h / 2) : 0) + noteH + controlH,
   };
 }
 
@@ -389,8 +429,8 @@ function drawNode(sel) {
     const isBoundary = !!d.comp.boundary;
     const colors = d.external ? vizzle.PALETTE.external
       : isBoundary ? vizzle.PALETTE.boundary
-      : colorsFor(d.comp.change, DIFF);
-    const ink = d.external || isBoundary ? "var(--muted)" : inkFor(d.comp.change, DIFF);
+      : vizzle.lensColors(LENS ? !!d.comp.highlight : undefined, d.comp.change, DIFF);
+    const ink = d.external || isBoundary ? "var(--muted)" : vizzle.lensInk(LENS ? !!d.comp.highlight : undefined, d.comp.change, DIFF);
     // Boundary nodes are pure context: no change mark even if they changed elsewhere.
     const nameText = d.comp.name + (isBoundary ? "" : mark(d.comp.change));
 
@@ -437,7 +477,7 @@ function drawNode(sel) {
           event.stopPropagation();
           setExpanded(d, !d.expanded, { reveal: true });
         });
-      toggle.append("title").text(`show / hide ${d.classes.length} classes`);
+      toggle.append("title").text(d.classes.length ? `show / hide ${d.classes.length} classes` : "show / hide what changed here");
       toggle.append("circle").attr("r", 8).attr("fill", "var(--panel)").attr("stroke", colors.stroke);
       toggle.append("text").attr("class", "toggle-sign").attr("text-anchor", "middle").attr("y", 4)
         .attr("font-size", 12).attr("fill", ink).text("+");
@@ -454,10 +494,21 @@ function buildExplosionDom(g, d) {
     .attr("display", "none")
     .attr("transform", `translate(${INNER_PAD},${HEAD_H})`);
 
+  // Notes (no class changed; changed files) sit above the boxes.
+  let noteY = 0;
+  for (const line of d.explosion.noteLines) {
+    noteY += 14;
+    layer.append("text").attr("class", "comp-note").attr("x", 4).attr("y", noteY)
+      .attr("font-size", 11).attr("font-style", "italic").attr("fill", "var(--context-ink)").text(line);
+  }
+  const bodyOffset = d.explosion.noteH;
+  const body = layer.append("g").attr("transform", `translate(0,${bodyOffset})`);
+  const target = body;
+
   const at = new Map(d.explosion.boxes.map((b) => [b.id, b]));
   const endpoint = (l, key) => at.get(typeof l[key] === "object" ? l[key].id : l[key]);
 
-  layer.append("g").selectAll("path")
+  target.append("g").selectAll("path")
     .data(d.explosion.links)
     .join("path")
     .attr("fill", "none")
@@ -474,13 +525,40 @@ function buildExplosionDom(g, d) {
     .append("title")
     .text((l) => `${endpoint(l, "source").cls.name} ${l.kind} ${endpoint(l, "target").cls.name}`);
 
-  layer.append("g").selectAll("g")
+  target.append("g").selectAll("g")
     .data(d.explosion.boxes)
     .join("g")
     .attr("transform", (b) => `translate(${b.x - b.w / 2},${b.y - b.h / 2})`)
     .each(function (b) {
       drawClassBox(d3.select(this), b.cls, b.box, { diff: DIFF });
     });
+
+  // The fold control: "show 361 unchanged classes" under a changes-only
+  // view, "show changes only" under the full one. It rebuilds this
+  // component's explosion; nothing else on the page moves except to make room.
+  if (d.explosion.controlH) {
+    const label = d.explosion.changedOnly
+      ? `show ${d.explosion.hidden} unchanged class${d.explosion.hidden === 1 ? "" : "es"}`
+      : "show changes only";
+    const y = d.explosion.h - d.explosion.controlH + 15;
+    const control = layer.append("text").attr("class", "comp-fold").attr("x", 4).attr("y", y)
+      .attr("font-size", 11.5).attr("fill", "var(--box-stroke)").attr("text-decoration", "underline")
+      .style("cursor", "pointer").text(label)
+      .on("click", (event) => {
+        event.stopPropagation();
+        d.detail = d.explosion.changedOnly ? "all" : "changes";
+        rebuildExplosion(d);
+      });
+    control.append("title").text("toggle between the classes that changed and every class in this component");
+  }
+}
+
+function rebuildExplosion(d) {
+  d.explosion = buildExplosion(d);
+  const g = node.filter((n) => n === d);
+  g.select("g.comp-explosion").remove();
+  if (d.explosion) buildExplosionDom(g, d);
+  refresh([d]);
 }
 
 /* Resize the box and re-centre its chrome — the only work a toggle does. */
@@ -558,6 +636,7 @@ vizzle.setHeader(
     (graph.stats.classes ? ` · ${graph.stats.classes} classes` : ""),
   DIFF
 );
+if (LENS) vizzle.addLegendEntry(`highlighted: ${graph.stats.highlight.length} of ${graph.stats.components} components — the rest is context`, "highlight");
 
 // Append a «boundary» legend entry if any boundary nodes are present.
 const hasBoundary = graph.components.some((c) => c.boundary);

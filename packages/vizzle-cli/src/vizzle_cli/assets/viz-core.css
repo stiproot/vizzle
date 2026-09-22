@@ -12,13 +12,9 @@
   --box-fill: #eef4ff;
   --box-stroke: #4969b0;
 
-  /* Diff lens: unchanged elements recede to context so changes carry the eye. */
-  --context-fill: #f2f4f7;
-  --context-stroke: #b6bec8;
-  --context-ink: #8b949e;
-
-  /* Change colors come from vizzle-core's palette, so the HTML and Mermaid
-     renderings of the same diagram cannot drift apart. */
+  /* Change, lens (highlight/context) and boundary colors come from
+     vizzle-core's palette, so the HTML and Mermaid renderings of the same
+     diagram cannot drift apart. */
 __PALETTE_CSS__
 }
 * { box-sizing: border-box; margin: 0; }

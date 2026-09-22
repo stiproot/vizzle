@@ -207,11 +207,14 @@ def _split_paths(root: Path, split: tuple[str, ...], *, scope: str = "") -> list
     """
     out: list[str] = []
     for given in split:
-        candidates = [Path(given)]
+        # Spellings tried in order: relative to the root, relative to the scope,
+        # then as the shell would resolve it (absolute or from the current
+        # directory) provided it lands under the root.
+        candidates = [root / given]
         if scope:
-            candidates.append(Path(scope) / given)
-        for candidate in candidates:
-            target = candidate if candidate.is_absolute() else root / candidate
+            candidates.append(root / scope / given)
+        candidates.append(Path(given))
+        for target in candidates:
             if target.is_dir():
                 try:
                     out.append(target.resolve().relative_to(root.resolve()).as_posix())
@@ -221,6 +224,41 @@ def _split_paths(root: Path, split: tuple[str, ...], *, scope: str = "") -> list
         else:
             raise click.ClickException(f"--split {given}: no such directory under {root}")
     return out
+
+
+# The reader's lens: light what a question is about, or cut down to a
+# neighbourhood. Shared by `class` and `component`; spec class.md §7b.
+lens_options = _compose(
+    click.option(
+        "--highlight",
+        "highlight",
+        multiple=True,
+        metavar="NAME",
+        help=(
+            "Light these classes/components (names or globs, comma-separable, repeatable) "
+            "and dim everything else. Unknown names are an error naming what exists."
+        ),
+    ),
+    click.option(
+        "--around",
+        "around",
+        multiple=True,
+        metavar="NAME",
+        help="Keep only this element and its neighbours within --depth hops (repeatable); the centre is lit.",
+    ),
+    click.option(
+        "--depth",
+        default=1,
+        show_default=True,
+        type=click.IntRange(min=0),
+        help="Hops kept around each --around centre.",
+    ),
+)
+
+
+def _lens_kwargs(highlight: tuple[str, ...], around: tuple[str, ...], depth: int) -> dict:
+    split = lambda values: [v.strip() for value in values for v in value.split(",") if v.strip()]  # noqa: E731
+    return {"highlight": split(highlight), "around": split(around), "depth": depth}
 
 
 # Where the diagram goes and what it is called. Shared by every command that emits one.
@@ -300,12 +338,16 @@ def main() -> None:
 @main.command("class")
 @click.argument("path", type=click.Path(exists=True, path_type=Path), default=".")
 @select_options
+@lens_options
 @render_options
 def class_diagram(
     path: Path,
     include: tuple[str, ...],
     exclude: tuple[str, ...],
     lang: tuple[str, ...],
+    highlight: tuple[str, ...],
+    around: tuple[str, ...],
+    depth: int,
     members: bool,
     modules: bool,
     group_by: str | None,
@@ -316,11 +358,17 @@ def class_diagram(
     fmt: str | None,
     output: Path | None,
 ) -> None:
-    """Generate a class diagram for the codebase at PATH."""
+    """Generate a class diagram for the codebase at PATH.
+
+    --highlight lights the named classes and dims the rest; --around NAME
+    --depth N keeps only NAME and its neighbours. Both for the reader who
+    wants the diagram to carry the question it answers.
+    """
     resolved_fmt = _resolve_format(fmt, output)
+    lens = _lens_kwargs(highlight, around, depth)
     if resolved_fmt == "html":
         graph_json = _core.graph_json_from_dir(
-            str(path), include=list(include), exclude=list(exclude), langs=list(lang)
+            str(path), include=list(include), exclude=list(exclude), langs=list(lang), **lens
         )
         page = build_html(
             graph_json,
@@ -337,6 +385,7 @@ def class_diagram(
         include=list(include),
         exclude=list(exclude),
         langs=list(lang),
+        **lens,
         **_render_kwargs(members, modules, _grouping(group_by, group), externals, direction, title),
     )
     _emit_mermaid(diagram, output)
@@ -486,6 +535,7 @@ def render_command(src: Path, out_dir: Path, fmt: str, scale: int, background: s
 @click.argument("path", type=click.Path(exists=True, path_type=Path), default=".")
 @select_options
 @split_option
+@lens_options
 @click.option(
     "--group/--no-group",
     "group",
@@ -509,6 +559,9 @@ def component_diagram(
     exclude: tuple[str, ...],
     lang: tuple[str, ...],
     split: tuple[str, ...],
+    highlight: tuple[str, ...],
+    around: tuple[str, ...],
+    depth: int,
     group: bool,
     weights: bool,
     classes: bool,
@@ -526,6 +579,7 @@ def component_diagram(
     """
     resolved_fmt = _resolve_format(fmt, output)
     splits = _split_paths(path, split)
+    lens = _lens_kwargs(highlight, around, depth)
     if resolved_fmt == "html":
         graph_json = _core.component_json_from_dir(
             str(path),
@@ -534,6 +588,7 @@ def component_diagram(
             langs=list(lang),
             splits=splits,
             classes=classes,
+            **lens,
         )
         page = build_component_html(
             graph_json,
@@ -549,6 +604,7 @@ def component_diagram(
         exclude=list(exclude),
         langs=list(lang),
         splits=splits,
+        **lens,
         **_component_render_kwargs(group, weights, externals, direction, title),
     )
     _emit_mermaid(diagram, output)

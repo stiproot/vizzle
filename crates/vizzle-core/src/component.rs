@@ -40,6 +40,14 @@ pub struct Component {
     pub classes: usize,
     /// Hash of the owned files (paths + contents), for diff detection.
     pub fingerprint: u64,
+    /// Per-file content hashes, keyed by path relative to the component, so a
+    /// diff can say *which* files changed and not only that some did.
+    pub file_hashes: BTreeMap<String, u64>,
+    /// Files added, removed or changed relative to the base revision, relative
+    /// to the component; empty for an unchanged component or outside a diff.
+    /// This is how a component that changed without any class changing can
+    /// still explain itself (§5.3).
+    pub changed_files: Vec<String>,
     pub change: ChangeKind,
     /// True if this component is outside the scope but shares an edge with an in-scope component.
     pub is_boundary: bool,
@@ -436,6 +444,7 @@ fn build_from_graph(
     for (idx, file_indices) in owned.iter().enumerate() {
         let mut langs: BTreeSet<&'static str> = BTreeSet::new();
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        let mut file_hashes: BTreeMap<String, u64> = BTreeMap::new();
         for &i in file_indices {
             let (path, contents) = &files[i];
             if let Some(lang) = Language::from_path(path) {
@@ -443,6 +452,12 @@ fn build_from_graph(
             }
             path.hash(&mut hasher);
             contents.hash(&mut hasher);
+            let mut file_hasher = std::collections::hash_map::DefaultHasher::new();
+            contents.hash(&mut file_hasher);
+            let rel = under(path, &components[idx].path)
+                .unwrap_or(path)
+                .to_owned();
+            file_hashes.insert(rel, file_hasher.finish());
             module_owner.insert(parse::module_path(path), idx);
             if Language::from_path(path) == Some(Language::Python) {
                 let root = detector.import_root(path, &components[idx].path);
@@ -463,6 +478,7 @@ fn build_from_graph(
         component.files = file_indices.len();
         component.langs = langs.into_iter().collect();
         component.fingerprint = hasher.finish();
+        component.file_hashes = file_hashes;
     }
     let mut placed: Vec<PlacedClass> = Vec::new();
     for class in &code.classes {
@@ -499,6 +515,8 @@ fn new_component(name: String, path: String) -> Component {
         files: 0,
         classes: 0,
         fingerprint: 0,
+        file_hashes: BTreeMap::new(),
+        changed_files: Vec::new(),
         change: ChangeKind::Unchanged,
         is_boundary: false,
     }
@@ -700,12 +718,17 @@ pub fn diff(base: &ComponentGraph, head: &ComponentGraph) -> ComponentGraph {
             Some(old) if old.fingerprint == component.fingerprint => ChangeKind::Unchanged,
             Some(_) => ChangeKind::Modified,
         };
+        component.changed_files = match base_by_path.get(component.path.as_str()) {
+            Some(old) => changed_files(&old.file_hashes, &component.file_hashes),
+            None => component.file_hashes.keys().cloned().collect(),
+        };
         merged.components.push(component);
     }
     for component in &base.components {
         if !head_paths.contains(component.path.as_str()) {
             let mut component = component.clone();
             component.change = ChangeKind::Removed;
+            component.changed_files = component.file_hashes.keys().cloned().collect();
             merged.components.push(component);
         }
     }
@@ -741,6 +764,23 @@ pub fn diff(base: &ComponentGraph, head: &ComponentGraph) -> ComponentGraph {
     merged.selection = head.selection.clone();
     merged.normalize();
     merged
+}
+
+/// Files present on one side only, or present on both with different
+/// contents. Sorted, so the list is stable.
+fn changed_files(base: &BTreeMap<String, u64>, head: &BTreeMap<String, u64>) -> Vec<String> {
+    let mut out: BTreeSet<&str> = BTreeSet::new();
+    for (path, hash) in head {
+        if base.get(path) != Some(hash) {
+            out.insert(path);
+        }
+    }
+    for path in base.keys() {
+        if !head.contains_key(path) {
+            out.insert(path);
+        }
+    }
+    out.into_iter().map(str::to_owned).collect()
 }
 
 /// Annotate the drill-down classes with their own change status, reusing the
@@ -960,6 +1000,8 @@ pub struct ComponentRenderOptions {
     pub include_externals: bool,
     pub direction: Option<String>,
     pub title: Option<String>,
+    /// The reader's lens (§7): component paths to light; the rest is context.
+    pub highlight: Option<BTreeSet<String>>,
 }
 
 impl Default for ComponentRenderOptions {
@@ -970,6 +1012,7 @@ impl Default for ComponentRenderOptions {
             include_externals: false,
             direction: None,
             title: None,
+            highlight: None,
         }
     }
 }
@@ -1026,9 +1069,16 @@ pub fn render_mermaid(graph: &ComponentGraph, opts: &ComponentRenderOptions) -> 
             } else {
                 "«component»"
             };
+            let lens = match &opts.highlight {
+                Some(lit) if lit.contains(&component.path) => {
+                    format!(":::{}", palette::MERMAID_HIGHLIGHT)
+                }
+                Some(_) => format!(":::{}", palette::MERMAID_CONTEXT),
+                None => String::new(),
+            };
             let _ = writeln!(
                 out,
-                "{indent}{}[\"{}<br/><b>{}{glyph}</b>\"]",
+                "{indent}{}[\"{}<br/><b>{}{glyph}</b>\"]{lens}",
                 node_id(&component.path),
                 stereotype,
                 escape_label(&component.name),
@@ -1137,6 +1187,16 @@ pub fn render_mermaid(graph: &ComponentGraph, opts: &ComponentRenderOptions) -> 
         }
     }
 
+    if let Some(lit) = &opts.highlight {
+        out.push_str(&palette::mermaid_lens_classdefs());
+        let _ = writeln!(
+            out,
+            "%% vizzle: highlight: {} of {} components",
+            lit.len(),
+            graph.components.len()
+        );
+    }
+
     let _ = writeln!(
         out,
         "%% vizzle: {} components, {} dependencies",
@@ -1148,12 +1208,10 @@ pub fn render_mermaid(graph: &ComponentGraph, opts: &ComponentRenderOptions) -> 
     if !graph.selection.is_empty() {
         let _ = writeln!(out, "%% vizzle: selection: {}", graph.selection.join("; "));
     }
+    // Focus and `--around` both leave components out; the count is the same
+    // fact either way, so the trailer does not name the reason.
     if graph.omitted > 0 {
-        let _ = writeln!(
-            out,
-            "%% vizzle: focus: {} unchanged component(s) not drawn",
-            graph.omitted
-        );
+        let _ = writeln!(out, "%% vizzle: {} component(s) not drawn", graph.omitted);
     }
     out
 }
@@ -1164,7 +1222,7 @@ pub fn render_mermaid(graph: &ComponentGraph, opts: &ComponentRenderOptions) -> 
 ///
 /// ```json
 /// {
-///   "components": [{"name", "path", "group", "langs", "files", "classes", "change"}],
+///   "components": [{"name", "path", "group", "langs", "files", "classes", "change", "changedFiles"}],
 ///   "edges": [{"from", "to", "external", "weight", "change"}],
 ///   "classes": [{"component", ...class fields}],
 ///   "stats": {"components", "edges", "diff", "changes": {"added", "removed", "modified"}, "omitted"}
@@ -1176,6 +1234,16 @@ pub fn render_mermaid(graph: &ComponentGraph, opts: &ComponentRenderOptions) -> 
 /// (same shape as the class diagram's export); `include_classes = false`
 /// omits it for a leaner page.
 pub fn to_json(graph: &ComponentGraph, include_classes: bool) -> String {
+    to_json_with_lens(graph, include_classes, None)
+}
+
+/// [`to_json`] with the reader's lens: `"highlight": bool` on every component
+/// and `stats.highlight` listing the lit paths. Absent without a lens.
+pub fn to_json_with_lens(
+    graph: &ComponentGraph,
+    include_classes: bool,
+    highlight: Option<&BTreeSet<String>>,
+) -> String {
     let components: Vec<Value> = graph
         .components
         .iter()
@@ -1188,6 +1256,8 @@ pub fn to_json(graph: &ComponentGraph, include_classes: bool) -> String {
                 "files": c.files,
                 "classes": c.classes,
                 "change": change_str(c.change),
+                "changedFiles": c.changed_files,
+                "highlight": highlight.map(|lit| lit.contains(&c.path)),
                 "boundary": c.is_boundary,
             })
         })
@@ -1254,6 +1324,7 @@ pub fn to_json(graph: &ComponentGraph, include_classes: bool) -> String {
             "changes": crate::export::change_counts_json(&graph.change_counts()),
             "omitted": graph.omitted,
             "selection": graph.selection,
+            "highlight": highlight.map(|lit| lit.iter().collect::<Vec<_>>()),
         },
     })
     .to_string()
@@ -1801,7 +1872,7 @@ mod tests {
         );
         assert!(focused.change_counts().changed());
         assert!(render_mermaid(&focused, &ComponentRenderOptions::default())
-            .contains("%% vizzle: focus: 1 unchanged component(s) not drawn"));
+            .contains("%% vizzle: 1 component(s) not drawn"));
     }
 
     #[test]
@@ -1888,6 +1959,50 @@ mod tests {
         let graph = build(&files, &manifests, &["svc/src/svc".to_owned()]).unwrap();
         let (classes, _) = zoom(&diff(&graph, &graph));
         assert!(classes.classes.is_empty());
+    }
+
+    #[test]
+    fn diff_names_the_files_that_changed_in_each_component() {
+        let (base_files, manifests) = monolith();
+        let mut head_files = base_files.clone();
+        head_files[2].1 = "class Db:\n    def ping(self): ...\n".to_owned(); // store/db.py changed
+        head_files.push((
+            "svc/src/svc/store/cache.py".to_owned(),
+            "class Cache: ...\n".to_owned(),
+        ));
+        head_files.push((
+            "svc/src/svc/audit/log.py".to_owned(),
+            "class Log: ...\n".to_owned(),
+        )); // new component
+        let split = ["svc/src/svc".to_owned()];
+        let merged = diff(
+            &build(&base_files, &manifests, &split).unwrap(),
+            &build(&head_files, &manifests, &split).unwrap(),
+        );
+        let by_path: HashMap<&str, &Component> = merged
+            .components
+            .iter()
+            .map(|c| (c.path.as_str(), c))
+            .collect();
+        assert_eq!(
+            by_path["svc/src/svc/store"].changed_files,
+            vec!["cache.py", "db.py"]
+        );
+        assert_eq!(by_path["svc/src/svc/store"].change, ChangeKind::Modified);
+        assert!(by_path["svc/src/svc/api"].changed_files.is_empty());
+        assert_eq!(by_path["svc/src/svc/audit"].change, ChangeKind::Added);
+        assert_eq!(by_path["svc/src/svc/audit"].changed_files, vec!["log.py"]);
+        let json: serde_json::Value = serde_json::from_str(&to_json(&merged, false)).unwrap();
+        let store = json["components"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|c| c["path"] == "svc/src/svc/store")
+            .unwrap();
+        assert_eq!(
+            store["changedFiles"],
+            serde_json::json!(["cache.py", "db.py"])
+        );
     }
 
     #[test]

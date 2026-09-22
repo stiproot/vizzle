@@ -75,7 +75,27 @@ pub(crate) fn class_json(class: &Class) -> Value {
 /// }
 /// ```
 pub fn to_json(graph: &CodeGraph) -> String {
-    let classes: Vec<Value> = graph.classes.iter().map(class_json).collect();
+    to_json_with_lens(graph, None)
+}
+
+/// [`to_json`] with the reader's lens: each class gains `"highlight": bool`
+/// and `stats.highlight` lists the lit qualified names, so the page can dim
+/// the rest the way the mermaid does. Without a lens neither key appears.
+pub fn to_json_with_lens(
+    graph: &CodeGraph,
+    highlight: Option<&std::collections::BTreeSet<String>>,
+) -> String {
+    let classes: Vec<Value> = graph
+        .classes
+        .iter()
+        .map(|c| {
+            let mut v = class_json(c);
+            if let Some(lit) = highlight {
+                v["highlight"] = Value::Bool(lit.contains(&c.qualified));
+            }
+            v
+        })
+        .collect();
 
     let relations: Vec<Value> = resolve_all_relations(graph)
         .iter()
@@ -84,15 +104,19 @@ pub fn to_json(graph: &CodeGraph) -> String {
 
     let changes = graph.change_counts();
 
+    let mut stats = json!({
+        "classes": graph.classes.len(),
+        "relations": relations.len(),
+        "diff": changes.changed(),
+        "changes": change_counts_json(&changes),
+    });
+    if let Some(lit) = highlight {
+        stats["highlight"] = json!(lit.iter().collect::<Vec<_>>());
+    }
     json!({
         "classes": classes,
         "relations": relations,
-        "stats": {
-            "classes": graph.classes.len(),
-            "relations": relations.len(),
-            "diff": changes.changed(),
-            "changes": change_counts_json(&changes),
-        },
+        "stats": stats,
     })
     .to_string()
 }

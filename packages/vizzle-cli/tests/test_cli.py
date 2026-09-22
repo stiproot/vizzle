@@ -767,7 +767,7 @@ def test_component_diff_split_and_focus_draw_the_change_and_its_neighbours(monol
     assert "<b>store ✱</b>" in result.output
     assert "<b>api</b>" in result.output
     assert "<b>audit" not in result.output
-    assert "%% vizzle: focus: 2 unchanged component(s) not drawn" in result.output
+    assert "%% vizzle: 2 component(s) not drawn" in result.output
     stats = _stats(stats_path)
     assert stats["changed"] is True
     assert stats["changes"] == {"added": 0, "removed": 0, "modified": 1}
@@ -886,3 +886,90 @@ def test_component_diff_zoom_of_no_change_has_no_classes(monolith: Path, tmp_pat
     stats = _stats(out / "s.json")
     assert stats["changed"] is False
     assert stats["zoom"]["classes"] == 0
+
+
+def test_component_diff_html_carries_changed_files_per_component(monolith: Path, tmp_path: Path) -> None:
+    """The drill-down explains a changed component with no class change by its files."""
+    (monolith / "svc/src/svc/store/db.py").write_text("class Db:\n    def ping(self): ...\n")
+    (monolith / "svc/src/svc/api/util.py").write_text("VALUE = 1\n")  # no class: only a file
+    out = tmp_path / "d.html"
+    result = CliRunner().invoke(
+        main, ["diff", str(monolith), "--type", "component", "--split", "svc/src/svc", "--classes", "-o", str(out)]
+    )
+    assert result.exit_code == 0, result.output
+    html = out.read_text(encoding="utf-8")
+    payload = json.loads(
+        re.search(r'<script id="graph-data" type="application/json">(.*?)</script>', html, re.S).group(1)
+    )
+    by_path = {c["path"]: c for c in payload["components"]}
+    assert by_path["svc/src/svc/store"]["changedFiles"] == ["db.py"]
+    assert by_path["svc/src/svc/api"]["change"] == "modified"
+    assert by_path["svc/src/svc/api"]["changedFiles"] == ["util.py"]
+    assert by_path["svc/src/svc"]["changedFiles"] == []
+
+
+@pytest.fixture()
+def chain(tmp_path: Path) -> Path:
+    """Base <- Mid <- Leaf, plus Alone with no relation, in one committed package."""
+    git(tmp_path, "init")
+    (tmp_path / "pkg").mkdir()
+    (tmp_path / "pkg/mod.py").write_text(
+        "class Base:\n    def run(self) -> int: ...\n\n"
+        "class Mid(Base): ...\n\nclass Leaf(Mid): ...\n\nclass Alone: ...\n"
+    )
+    git(tmp_path, "add", ".")
+    git(tmp_path, "commit", "-m", "base")
+    return tmp_path
+
+
+def test_class_highlight_lights_the_named_classes_and_dims_the_rest(chain: Path) -> None:
+    result = CliRunner().invoke(main, ["class", str(chain), "--highlight", "Mid,Leaf"])
+    assert result.exit_code == 0, result.output
+    assert 'class pkg_mod_Mid["pkg.mod.Mid"]:::highlight' in result.output
+    assert 'class pkg_mod_Leaf["pkg.mod.Leaf"]:::highlight' in result.output
+    assert 'class pkg_mod_Alone["pkg.mod.Alone"]:::context' in result.output
+    assert ":::context" in result.output.split('class pkg_mod_Base["pkg.mod.Base"]')[1].split("\n")[0]
+    assert "classDef highlight fill:#ddf4ff" in result.output
+    assert "classDef context fill:#f2f4f7" in result.output
+    assert "%% vizzle: highlight: 2 of 4 classes" in result.output
+
+
+def test_class_highlight_unknown_name_names_what_exists(chain: Path) -> None:
+    result = CliRunner().invoke(main, ["class", str(chain), "--highlight", "Nope"])
+    assert result.exit_code != 0
+    assert "no class matches `Nope`" in result.output
+    assert "Alone, Base, Leaf, Mid" in result.output
+
+
+def test_class_around_keeps_the_neighbourhood_and_lights_the_centre(chain: Path) -> None:
+    result = CliRunner().invoke(main, ["class", str(chain), "--around", "Mid", "--depth", "1"])
+    assert result.exit_code == 0, result.output
+    assert "pkg_mod_Alone" not in result.output, "Alone has no relation to Mid"
+    assert 'class pkg_mod_Mid["pkg.mod.Mid"]:::highlight' in result.output
+    assert 'class pkg_mod_Base["pkg.mod.Base"]:::context' in result.output
+    assert "%% vizzle: 3 classes" in result.output
+
+
+def test_class_highlight_html_carries_the_lens(chain: Path, tmp_path: Path) -> None:
+    out = tmp_path / "c.html"
+    result = CliRunner().invoke(main, ["class", str(chain), "--highlight", "Mid", "-o", str(out)])
+    assert result.exit_code == 0, result.output
+    payload = json.loads(
+        re.search(
+            r'<script id="graph-data" type="application/json">(.*?)</script>', out.read_text(encoding="utf-8"), re.S
+        ).group(1)
+    )
+    assert payload["stats"]["highlight"] == ["pkg.mod.Mid"]
+    flags = {c["name"]: c["highlight"] for c in payload["classes"]}
+    assert flags == {"Alone": False, "Base": False, "Leaf": False, "Mid": True}
+
+
+def test_component_highlight_lights_a_component_by_name_or_path(workspace: Path) -> None:
+    by_name = CliRunner().invoke(main, ["component", str(workspace), "--highlight", "@w/core"])
+    assert by_name.exit_code == 0, by_name.output
+    assert ":::highlight" in by_name.output.split("packages_core")[1].split("\n")[0]
+    assert "c_apps_svc[" in by_name.output and by_name.output.count(":::context") == 2
+    by_path = CliRunner().invoke(main, ["component", str(workspace), "--around", "apps/svc"])
+    assert by_path.exit_code == 0, by_path.output
+    assert "packages_util" not in by_path.output, "util is not a neighbour of svc"
+    assert "%% vizzle: highlight: 1 of 2 components" in by_path.output

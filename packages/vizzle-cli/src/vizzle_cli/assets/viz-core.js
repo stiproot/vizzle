@@ -22,7 +22,22 @@
     // Boundary: outside scope, kept because an edge crosses into it. Pure context
     // even when it changed elsewhere — colours come from palette.rs BOUNDARY.
     boundary: { fill: "var(--boundary-fill)", stroke: "var(--boundary-stroke)" },
+    // The reader's lens (--highlight): lit elements, from palette.rs HIGHLIGHT.
+    highlight: { fill: "var(--highlight-fill)", stroke: "var(--highlight-stroke)" },
   };
+  /* Colours for an element under the reader's lens. `lit` is true, false, or
+   * undefined when no lens is active; the lens outranks change colouring
+   * because a lit element is the subject whatever else happened to it. */
+  function lensColors(lit, change, diffMode) {
+    if (lit === true) return PALETTE.highlight;
+    if (lit === false) return PALETTE.context;
+    return colorsFor(change, diffMode);
+  }
+  function lensInk(lit, change, diffMode) {
+    if (lit === true) return PALETTE.highlight.stroke;
+    if (lit === false) return "var(--context-ink)";
+    return inkFor(change, diffMode);
+  }
 
   /* Colors for one element. Under the diff lens unchanged elements recede,
    * so the eye lands on what actually changed. */
@@ -63,18 +78,29 @@
   }
 
   /* Size a class box to its contents; `scale` shrinks it for nested use. */
-  function classBoxLayout(cls, { showMembers = true, showModule = true, scale = 1, maxWidth } = {}) {
+  /* Layout of one class box. `foldUnchanged` is the diff lens: only the members
+   * that changed are rows, and one trailing row says how many were left out,
+   * so a 300-member class with two new methods is a box with two rows and a
+   * count rather than 300 rows of context around two signals. */
+  function classBoxLayout(
+    cls,
+    { showMembers = true, showModule = true, scale = 1, maxWidth, foldUnchanged = false } = {}
+  ) {
     const charWidth = BOX.charWidth * scale;
     const rowH = BOX.rowH * scale;
-    const members = showMembers ? cls.members || [] : [];
+    const all = showMembers ? cls.members || [] : [];
+    const members = foldUnchanged ? all.filter((m) => m.change && m.change !== "unchanged") : all;
+    const folded = foldUnchanged ? all.length - members.length : 0;
     const fields = members.filter((m) => !m.isMethod);
     const methods = members.filter((m) => m.isMethod);
     const rows = [...fields, ...methods];
     const header = cls.name + mark(cls.change);
+    const foldedNote = folded ? `… ${folded} unchanged member${folded === 1 ? "" : "s"}` : "";
     const widest = Math.max(
       header.length + 4,
       showModule && cls.module ? cls.module.length : 0,
       ...rows.map((m) => memberText(m).length),
+      foldedNote.length,
       12
     );
     const w = Math.min(maxWidth || BOX.maxWidth, widest * charWidth + BOX.padX * 2);
@@ -83,15 +109,16 @@
       (cls.annotation ? 14 * scale : 0) +
       (fields.length ? BOX.sep + fields.length * rowH : 0) +
       (methods.length ? BOX.sep + methods.length * rowH : 0) +
-      (rows.length ? 6 : 2);
-    return { w, h, fields, methods, scale, showModule, charWidth, rowH };
+      (folded ? BOX.sep + rowH : 0) +
+      (rows.length || folded ? 6 : 2);
+    return { w, h, fields, methods, folded, foldedNote, scale, showModule, charWidth, rowH };
   }
 
   /* Draw the box into `g`, which is assumed empty. */
-  function drawClassBox(g, cls, layout, { diff = false, external = false } = {}) {
+  function drawClassBox(g, cls, layout, { diff = false, external = false, highlight } = {}) {
     const { w, h, fields, methods, scale, showModule, charWidth, rowH } = layout;
-    const colors = external ? PALETTE.external : colorsFor(cls.change, diff);
-    const ink = external ? "var(--muted)" : inkFor(cls.change, diff);
+    const colors = external ? PALETTE.external : lensColors(highlight, cls.change, diff);
+    const ink = external ? "var(--muted)" : lensInk(highlight, cls.change, diff);
     const font = (size) => size * scale;
 
     g.append("title").text(cls.qualified || cls.name);
@@ -133,6 +160,13 @@
         .attr("stroke", colors.stroke).attr("stroke-width", 0.8);
       y += 3;
       for (const m of section) {
+        // A changed member gets a band in its change colour behind the row, so
+        // the change reads at a glance and not only from the marker glyph.
+        if (diff && m.change && m.change !== "unchanged") {
+          g.append("rect")
+            .attr("x", 1).attr("y", y).attr("width", w - 2).attr("height", rowH)
+            .attr("fill", PALETTE[m.change].fill).attr("opacity", 0.9);
+        }
         y += rowH - 3 * scale;
         g.append("text")
           .attr("x", BOX.padX).attr("y", y)
@@ -143,6 +177,18 @@
           .text(truncate(memberText(m), (w - BOX.padX * 2) / charWidth));
         y += 3 * scale;
       }
+    }
+    if (layout.folded) {
+      y += 3;
+      g.append("line")
+        .attr("x1", 0).attr("x2", w).attr("y1", y).attr("y2", y)
+        .attr("stroke", colors.stroke).attr("stroke-width", 0.8);
+      y += rowH;
+      g.append("text")
+        .attr("x", BOX.padX).attr("y", y)
+        .attr("font-size", font(11)).attr("font-style", "italic")
+        .attr("fill", "var(--context-ink)")
+        .text(layout.foldedNote);
     }
   }
 
@@ -341,10 +387,28 @@
     legend.hidden = false;
   }
 
+  /* One more legend line, with a chip in the named palette entry. Used for
+   * the things a page can only know at load: the lens, a boundary, the
+   * selection. Reveals the legend if it was hidden. */
+  function addLegendEntry(text, paletteKey) {
+    const legend = document.getElementById("legend");
+    if (!legend) return;
+    const entry = document.createElement("span");
+    const colors = paletteKey ? PALETTE[paletteKey] : null;
+    entry.innerHTML =
+      (colors ? `<span class="chip" style="background:${colors.fill};border-color:${colors.stroke}"></span>` : "") +
+      text;
+    legend.appendChild(entry);
+    legend.hidden = false;
+  }
+
   window.vizzle = {
     PALETTE,
     BOX,
     colorsFor,
+    lensColors,
+    lensInk,
+    addLegendEntry,
     inkFor,
     mark,
     truncate,
