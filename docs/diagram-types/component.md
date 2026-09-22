@@ -274,7 +274,7 @@ readable.
 
 **The verdict is data, not drawing.** A consumer that acts on a diff (a CI
 step deciding whether to post it, and where) must not learn "did anything
-change" by grepping the mermaid for `vizzleAdded` or a glyph: those are
+change" by grepping the mermaid for `diffAdded` or a glyph: those are
 palette and rendering choices, free to change between releases. The JSON
 export carries `stats.changes = {added, removed, modified}` tallied over
 components *and* edges (so a pure rewiring still counts), and `stats.diff` is
@@ -316,7 +316,7 @@ cross-boundary edge". The legend reflects the scope when active.
 
 **Boundary nodes as pure context:** A boundary node renders as context regardless
 of whether it changed outside the scope. It receives no change glyph (✚ ✖ ✱),
-no change fill/stroke class (vizzleAdded etc.), and no change stereotype label.
+no change fill/stroke class (diffAdded etc.), and no change stereotype label.
 The rule: if `is_boundary`, apply only the boundary style; change annotations from
 outside the scope are irrelevant to a reviewer focused on `<path>`.
 

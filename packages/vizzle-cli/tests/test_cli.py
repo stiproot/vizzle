@@ -53,8 +53,8 @@ def test_class_diagram(repo: Path) -> None:
 def test_diff_diagram(repo: Path) -> None:
     result = CliRunner().invoke(main, ["diff", str(repo)])
     assert result.exit_code == 0, result.output
-    assert 'cssClass "app_Fresh" vizzleAdded' in result.output
-    assert 'cssClass "app_Old" vizzleRemoved' in result.output
+    assert 'cssClass "app_Fresh" diffAdded' in result.output
+    assert 'cssClass "app_Old" diffRemoved' in result.output
     # classDef statements must trail the attachments (mermaid 11 quirk).
     assert result.output.rindex("classDef") > result.output.rindex("cssClass")
 
@@ -303,7 +303,7 @@ def test_component_diff_change_confined_to_excluded_paths_is_no_change(workspace
 
     unfiltered = CliRunner().invoke(main, ["diff", str(workspace), "--type", "component"])
     assert unfiltered.exit_code == 0, unfiltered.output
-    assert "vizzleModified" in unfiltered.output
+    assert "diffModified" in unfiltered.output
 
     filtered = CliRunner().invoke(main, ["diff", str(workspace), "--type", "component", "-E", FIXTURE_GLOB])
     assert filtered.exit_code == 0, filtered.output

@@ -497,7 +497,7 @@ mod tests {
         let head = parse_file("m.py", "class A:\n    pass\nclass B:\n    pass\n").unwrap();
         let merged = crate::diff::diff_graphs(&base, &head);
         let out = render(&merged, &RenderOptions::default());
-        assert!(out.contains("classDef vizzleAdded"));
-        assert!(out.contains("cssClass \"m_B\" vizzleAdded"));
+        assert!(out.contains("classDef diffAdded"));
+        assert!(out.contains("cssClass \"m_B\" diffAdded"));
     }
 }

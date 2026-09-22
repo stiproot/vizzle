@@ -880,7 +880,7 @@ pub fn render_mermaid(graph: &ComponentGraph, opts: &ComponentRenderOptions) -> 
             .map(|c| node_id(&c.path))
             .collect();
         if !boundary_nodes.is_empty() {
-            let _ = writeln!(out, "    class {} vizzleBoundary", boundary_nodes.join(","));
+            let _ = writeln!(out, "    class {} diffBoundary", boundary_nodes.join(","));
         }
     }
 
