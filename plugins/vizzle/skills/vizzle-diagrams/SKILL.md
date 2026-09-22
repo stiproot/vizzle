@@ -63,6 +63,18 @@ Useful additions:
 - `--externals` — add a node per external package (npm/PyPI).
 - `-E 'tests/*'` — exclude paths *before* detection, removing those components.
 
+**Pointing at something.** When the diagram is there to make a point — an
+incident's code path, the two classes a change is about — say so, and let
+vizzle light them instead of appending your own styling to the mermaid:
+
+```sh
+uvx vizzle class <path> --no-members --highlight LaunchRunRequest,TaskAgent   # lit; the rest dimmed
+uvx vizzle class <path> --around TaskAgent --depth 1                          # only it and its neighbours
+uvx vizzle component <path> --highlight persistence --around orchestrator     # same for components
+```
+
+An unknown name errors and lists what exists. Works for `-f html` too.
+
 ### 2. Then, only if you need class-level detail: scope it
 
 ```sh

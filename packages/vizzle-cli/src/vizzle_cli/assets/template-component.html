@@ -38,6 +38,7 @@ const { classBoxLayout, drawClassBox, relationStyle } = vizzle;
 const { draggableNodes, externalStub, buildLinks, gridCells, arrowMarker } = vizzle;
 
 const DIFF = graph.stats.diff;
+const LENS = Array.isArray(graph.stats.highlight);   // --highlight / --around was used
 const CHAR_W = 7.25, PAD_X = 14;
 const HEAD_H = 58;                       // collapsed component height
 const INNER_PAD = 14;                    // gap between the class diagram and its component box
@@ -428,8 +429,8 @@ function drawNode(sel) {
     const isBoundary = !!d.comp.boundary;
     const colors = d.external ? vizzle.PALETTE.external
       : isBoundary ? vizzle.PALETTE.boundary
-      : colorsFor(d.comp.change, DIFF);
-    const ink = d.external || isBoundary ? "var(--muted)" : inkFor(d.comp.change, DIFF);
+      : vizzle.lensColors(LENS ? !!d.comp.highlight : undefined, d.comp.change, DIFF);
+    const ink = d.external || isBoundary ? "var(--muted)" : vizzle.lensInk(LENS ? !!d.comp.highlight : undefined, d.comp.change, DIFF);
     // Boundary nodes are pure context: no change mark even if they changed elsewhere.
     const nameText = d.comp.name + (isBoundary ? "" : mark(d.comp.change));
 
@@ -635,6 +636,7 @@ vizzle.setHeader(
     (graph.stats.classes ? ` · ${graph.stats.classes} classes` : ""),
   DIFF
 );
+if (LENS) vizzle.addLegendEntry(`highlighted: ${graph.stats.highlight.length} of ${graph.stats.components} components — the rest is context`, "highlight");
 
 // Append a «boundary» legend entry if any boundary nodes are present.
 const hasBoundary = graph.components.some((c) => c.boundary);

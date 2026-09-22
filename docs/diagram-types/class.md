@@ -321,12 +321,53 @@ struck through. Unchanged classes in touched files render as context.
 `vizzle diff` parses only the files git reports as changed — unlike the
 component diff, which needs both revisions in full.
 
+## 7b. The reader's lens: `--highlight` and `--around`
+
+**Observed 2026-09-22**, in a consumer explaining an incident with
+`vizzle class <pkg> --no-members`: two of 25 classes mattered, and the reader
+saw 25 identical boxes. The agent appended its own `classDef`/`cssClass` layer
+to the mermaid, which meant knowing vizzle's ids, hoping the text stayed
+appendable, and re-inventing a palette vizzle owns. So the lens is vizzle's:
+
+- **`--highlight NAME`** (repeatable, comma-separable; names or globs matched
+  against the short and the qualified name) lights the named classes in the
+  palette's `HIGHLIGHT` blue and draws every other class as `CONTEXT` grey —
+  the same grey the diff lens uses for unchanged elements, so "not the
+  subject" reads the same everywhere. The diagram carries the question it
+  answers.
+- **`--around NAME --depth N`** (repeatable; `N` defaults to 1) prunes to the
+  classes within `N` relations of the centre, undirected, ignoring relations
+  to external types; the centre is lit. For the case where dimming forty
+  boxes is still forty boxes.
+- **An unknown name is an error** that names what exists (`no class matches
+  \`Nope\`; available: Alone, Base, Leaf, Mid`), so a typo is caught rather
+  than drawn as an empty lens.
+- **Both formats.** Mermaid carries the lens on the class line itself
+  (`class id["…"]:::highlight` / `:::context`, then `classDef highlight` and
+  `classDef context` from `palette.rs`); the JSON export gains
+  `"highlight": bool` per class and `stats.highlight`, and the HTML page lights
+  and dims with the same palette and adds a legend line.
+- **Component diagrams take the same options** (`component.md` §7), matching
+  a component's display name or path, walking dependency edges for `--around`.
+
+The inline `:::` form was chosen over a detached `cssClass` line because it
+cannot be separated from the line it styles. Measured 2026-09-22 with
+mermaid-cli 11.17.0: both forms render, with and without namespaces and with
+member bodies, so the diff output's `cssClass` lines stay as they are (they
+are proven live on GitHub); the consumer report that `cssClass` did not apply
+was not reproducible here and is noted, not acted on.
+
+Not a diff: `--highlight`/`--around` are for `class` and `component`;
+`diff` has `--focus` (component.md §6.3) for the same job with the change as
+the centre.
+
 ## 8. CLI surface
 
 ```sh
 vizzle class <repo> [-o out.mmd|out.html] [-I glob] [-E glob] [-l python|typescript]
                    [--no-members] [--group] [--externals] [--direction LR] [--title]
                    [--modules]                        # §2.5, off by default
+                   [--highlight NAME,…] [--around NAME --depth N]   # §7b, the reader's lens
 vizzle diff <repo> [--base REV] [--head REV]          # --type class is the default
                    [--stats verdict.json]            # changed / counts / size as JSON, for tooling
 vizzle serve <repo> [--diff]

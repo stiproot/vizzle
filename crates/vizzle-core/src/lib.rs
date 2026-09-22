@@ -11,6 +11,7 @@ pub mod component;
 pub mod curated;
 pub mod diff;
 pub mod export;
+pub mod highlight;
 pub mod mermaid;
 pub mod model;
 pub mod palette;
@@ -23,6 +24,7 @@ use std::path::Path;
 use anyhow::Result;
 
 pub use component::ComponentRenderOptions;
+pub use highlight::Lens;
 pub use mermaid::{Grouping, RenderOptions};
 pub use model::ChangeCounts;
 
@@ -112,10 +114,15 @@ pub fn diagram_from_dir(
     root: &Path,
     select: &SelectOptions,
     render: &RenderOptions,
+    lens: &Lens,
 ) -> Result<String> {
     let files = walk::collect_files(root, &select.include, &select.exclude, &select.languages()?)?;
+    let graph = parse::parse_files(&files)?;
+    let (graph, lit) = apply_class_lens(graph, lens)?;
+    let mut render = render.clone();
+    render.highlight = lit;
     if render.grouping != Grouping::Component {
-        return diagram_from_files(&files, render);
+        return Ok(mermaid::render(&graph, &render));
     }
     let manifests = walk::collect_manifests(root)?;
     let components = component::build(&files, &manifests, &select.splits)?;
@@ -124,7 +131,6 @@ pub fn diagram_from_dir(
         .iter()
         .map(|c| (c.path.as_str(), c.name.as_str()))
         .collect();
-    let mut render = render.clone();
     render.component_of = components
         .classes
         .iter()
@@ -136,7 +142,83 @@ pub fn diagram_from_dir(
             (placed.class.qualified.clone(), name.to_owned())
         })
         .collect();
-    diagram_from_files(&files, &render)
+    Ok(mermaid::render(&graph, &render))
+}
+
+/// Apply the reader's lens to a class graph: prune to the `around`
+/// neighbourhood, then work out which classes are lit (the explicit
+/// highlights plus every `around` centre). `None` means no lens.
+fn apply_class_lens(
+    graph: model::CodeGraph,
+    lens: &Lens,
+) -> Result<(model::CodeGraph, Option<std::collections::BTreeSet<String>>)> {
+    if lens.is_empty() {
+        return Ok((graph, None));
+    }
+    let candidates = |g: &model::CodeGraph| {
+        g.classes
+            .iter()
+            .map(|c| (c.name.clone(), c.qualified.clone()))
+            .collect::<Vec<_>>()
+    };
+    let cands = candidates(&graph);
+    let centres = highlight::select(
+        "class",
+        &lens.around,
+        cands.iter().map(|(s, f)| (s.as_str(), f.as_str())),
+    )?;
+    let graph = if centres.is_empty() {
+        graph
+    } else {
+        highlight::around_classes(&graph, &centres, lens.depth)
+    };
+    let cands = candidates(&graph);
+    let mut lit = highlight::select(
+        "class",
+        &lens.highlight,
+        cands.iter().map(|(s, f)| (s.as_str(), f.as_str())),
+    )?;
+    lit.extend(centres);
+    Ok((graph, Some(lit)))
+}
+
+/// The component counterpart of [`apply_class_lens`]; names match a
+/// component's display name or its path.
+fn apply_component_lens(
+    graph: component::ComponentGraph,
+    lens: &Lens,
+) -> Result<(
+    component::ComponentGraph,
+    Option<std::collections::BTreeSet<String>>,
+)> {
+    if lens.is_empty() {
+        return Ok((graph, None));
+    }
+    let candidates = |g: &component::ComponentGraph| {
+        g.components
+            .iter()
+            .map(|c| (c.name.clone(), c.path.clone()))
+            .collect::<Vec<_>>()
+    };
+    let cands = candidates(&graph);
+    let centres = highlight::select(
+        "component",
+        &lens.around,
+        cands.iter().map(|(s, f)| (s.as_str(), f.as_str())),
+    )?;
+    let graph = if centres.is_empty() {
+        graph
+    } else {
+        highlight::around_components(&graph, &centres, lens.depth)
+    };
+    let cands = candidates(&graph);
+    let mut lit = highlight::select(
+        "component",
+        &lens.highlight,
+        cands.iter().map(|(s, f)| (s.as_str(), f.as_str())),
+    )?;
+    lit.extend(centres);
+    Ok((graph, Some(lit)))
 }
 
 /// Render a class diagram from in-memory `(relative_path, contents)` pairs.
@@ -194,10 +276,11 @@ pub fn curated_from_dir(root: &Path, select: &SelectOptions, manifest: &str) -> 
 }
 
 /// Export the class graph for every supported source file under `root` as JSON.
-pub fn json_from_dir(root: &Path, select: &SelectOptions) -> Result<String> {
+pub fn json_from_dir(root: &Path, select: &SelectOptions, lens: &Lens) -> Result<String> {
     let files = walk::collect_files(root, &select.include, &select.exclude, &select.languages()?)?;
     let graph = parse::parse_files(&files)?;
-    Ok(export::to_json(&graph))
+    let (graph, lit) = apply_class_lens(graph, lens)?;
+    Ok(export::to_json_with_lens(&graph, lit.as_ref()))
 }
 
 /// Render a component diagram (modules + dependency edges) for the repo at `root`.
@@ -205,9 +288,13 @@ pub fn component_diagram_from_dir(
     root: &Path,
     select: &SelectOptions,
     render: &ComponentRenderOptions,
+    lens: &Lens,
 ) -> Result<String> {
     let graph = component_graph_from_dir(root, select)?;
-    Ok(component::render_mermaid(&graph, render))
+    let (graph, lit) = apply_component_lens(graph, lens)?;
+    let mut render = render.clone();
+    render.highlight = lit;
+    Ok(component::render_mermaid(&graph, &render))
 }
 
 /// Export the component graph for the repo at `root` as JSON.
@@ -216,9 +303,15 @@ pub fn component_json_from_dir(
     root: &Path,
     select: &SelectOptions,
     include_classes: bool,
+    lens: &Lens,
 ) -> Result<String> {
     let graph = component_graph_from_dir(root, select)?;
-    Ok(component::to_json(&graph, include_classes))
+    let (graph, lit) = apply_component_lens(graph, lens)?;
+    Ok(component::to_json_with_lens(
+        &graph,
+        include_classes,
+        lit.as_ref(),
+    ))
 }
 
 fn component_graph_from_dir(
@@ -265,6 +358,7 @@ pub fn component_diff_diagram(
             grouping: Grouping::Component,
             component_of,
             changed_members_only: true,
+            highlight: None,
             include_externals: false,
             direction: render.direction.clone(),
             title: render

@@ -108,6 +108,11 @@ uvx vizzle diff ~/code/repo/h --type component
 # never has to read the diagram text
 uvx vizzle diff ~/code/repo/h --type component -o changes.mmd --stats verdict.json
 
+# make a point: light the classes an explanation is about and dim the rest,
+# or keep only a class and its neighbours
+uvx vizzle class src --no-members --highlight LaunchRunRequest,TaskAgent
+uvx vizzle class src --around TaskAgent --depth 1
+
 # one manifest but many subsystems: split the package into its subpackages,
 # focus the diff on the changed ones and their neighbours, and zoom into the
 # classes that changed inside them

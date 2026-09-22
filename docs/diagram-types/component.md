@@ -477,8 +477,8 @@ a diff is a hairball in which the two changed boxes are hard to find.
 - the edges among those.
 
 Everything else is left out and **counted**: the trailer says
-`focus: N unchanged component(s) not drawn`, and `stats.omitted` / the
-`--stats` sidecar carry N, so a consumer can say so in prose. Boundary nodes
+`N component(s) not drawn`, and `stats.omitted` / the `--stats` sidecar carry
+N, so a consumer can say so in prose (the same trailer serves `--around`). Boundary nodes
 carry no change of their own and survive only as neighbours. When nothing
 changed, focus draws nothing and counts everything; `--stats` already says
 `changed: false`.
@@ -521,7 +521,7 @@ moved, and what exactly moved inside it.
 ## 7. CLI surface
 
 ```sh
-vizzle component <repo> [-o out.mmd|out.html] [--split DIR] [flags]     # full graph
+vizzle component <repo> [-o out.mmd|out.html] [--split DIR] [--highlight NAME] [--around NAME --depth N] [flags]
 vizzle diff <repo> --type component [--base ... --head ...] [--split DIR] [--focus] [--zoom classes.mmd] [--stats verdict.json]
 vizzle serve <repo> --type component [--diff]
 ```
@@ -540,7 +540,11 @@ change verdict and rendered size as JSON for tooling. `--split DIR` (§3.4, on
 are the two knobs for a single-manifest service; `--zoom FILE` (§6.4, `diff`,
 mermaid only) writes the class-level view beside the component diagram, and
 `--stats` then carries `zoom: {classes, chars, oversized}`. `serve` does not
-take `--split` yet.
+take `--split` yet. `--highlight NAME` and `--around NAME --depth N`
+(`component` only) are the reader's lens from class.md §7b: names match a
+component's display name or its path, `--around` walks dependency edges, the
+mermaid carries `:::highlight` / `:::context` on the node lines, and the JSON
+gains `"highlight"` per component plus `stats.highlight`.
 
 ## 8. Future: provided interfaces
 

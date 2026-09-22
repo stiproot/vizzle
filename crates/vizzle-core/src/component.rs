@@ -1000,6 +1000,8 @@ pub struct ComponentRenderOptions {
     pub include_externals: bool,
     pub direction: Option<String>,
     pub title: Option<String>,
+    /// The reader's lens (§7): component paths to light; the rest is context.
+    pub highlight: Option<BTreeSet<String>>,
 }
 
 impl Default for ComponentRenderOptions {
@@ -1010,6 +1012,7 @@ impl Default for ComponentRenderOptions {
             include_externals: false,
             direction: None,
             title: None,
+            highlight: None,
         }
     }
 }
@@ -1066,9 +1069,16 @@ pub fn render_mermaid(graph: &ComponentGraph, opts: &ComponentRenderOptions) -> 
             } else {
                 "«component»"
             };
+            let lens = match &opts.highlight {
+                Some(lit) if lit.contains(&component.path) => {
+                    format!(":::{}", palette::MERMAID_HIGHLIGHT)
+                }
+                Some(_) => format!(":::{}", palette::MERMAID_CONTEXT),
+                None => String::new(),
+            };
             let _ = writeln!(
                 out,
-                "{indent}{}[\"{}<br/><b>{}{glyph}</b>\"]",
+                "{indent}{}[\"{}<br/><b>{}{glyph}</b>\"]{lens}",
                 node_id(&component.path),
                 stereotype,
                 escape_label(&component.name),
@@ -1177,6 +1187,16 @@ pub fn render_mermaid(graph: &ComponentGraph, opts: &ComponentRenderOptions) -> 
         }
     }
 
+    if let Some(lit) = &opts.highlight {
+        out.push_str(&palette::mermaid_lens_classdefs());
+        let _ = writeln!(
+            out,
+            "%% vizzle: highlight: {} of {} components",
+            lit.len(),
+            graph.components.len()
+        );
+    }
+
     let _ = writeln!(
         out,
         "%% vizzle: {} components, {} dependencies",
@@ -1188,12 +1208,10 @@ pub fn render_mermaid(graph: &ComponentGraph, opts: &ComponentRenderOptions) -> 
     if !graph.selection.is_empty() {
         let _ = writeln!(out, "%% vizzle: selection: {}", graph.selection.join("; "));
     }
+    // Focus and `--around` both leave components out; the count is the same
+    // fact either way, so the trailer does not name the reason.
     if graph.omitted > 0 {
-        let _ = writeln!(
-            out,
-            "%% vizzle: focus: {} unchanged component(s) not drawn",
-            graph.omitted
-        );
+        let _ = writeln!(out, "%% vizzle: {} component(s) not drawn", graph.omitted);
     }
     out
 }
@@ -1216,6 +1234,16 @@ pub fn render_mermaid(graph: &ComponentGraph, opts: &ComponentRenderOptions) -> 
 /// (same shape as the class diagram's export); `include_classes = false`
 /// omits it for a leaner page.
 pub fn to_json(graph: &ComponentGraph, include_classes: bool) -> String {
+    to_json_with_lens(graph, include_classes, None)
+}
+
+/// [`to_json`] with the reader's lens: `"highlight": bool` on every component
+/// and `stats.highlight` listing the lit paths. Absent without a lens.
+pub fn to_json_with_lens(
+    graph: &ComponentGraph,
+    include_classes: bool,
+    highlight: Option<&BTreeSet<String>>,
+) -> String {
     let components: Vec<Value> = graph
         .components
         .iter()
@@ -1229,6 +1257,7 @@ pub fn to_json(graph: &ComponentGraph, include_classes: bool) -> String {
                 "classes": c.classes,
                 "change": change_str(c.change),
                 "changedFiles": c.changed_files,
+                "highlight": highlight.map(|lit| lit.contains(&c.path)),
                 "boundary": c.is_boundary,
             })
         })
@@ -1295,6 +1324,7 @@ pub fn to_json(graph: &ComponentGraph, include_classes: bool) -> String {
             "changes": crate::export::change_counts_json(&graph.change_counts()),
             "omitted": graph.omitted,
             "selection": graph.selection,
+            "highlight": highlight.map(|lit| lit.iter().collect::<Vec<_>>()),
         },
     })
     .to_string()
@@ -1842,7 +1872,7 @@ mod tests {
         );
         assert!(focused.change_counts().changed());
         assert!(render_mermaid(&focused, &ComponentRenderOptions::default())
-            .contains("%% vizzle: focus: 1 unchanged component(s) not drawn"));
+            .contains("%% vizzle: 1 component(s) not drawn"));
     }
 
     #[test]

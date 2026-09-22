@@ -35,6 +35,47 @@ pub const BOUNDARY: BoundaryColors = BoundaryColors {
     color: "#57606a",
 };
 
+/// The reader's lens (`--highlight`): the elements a question is about, and
+/// the context they sit in. Context is the same grey the HTML diff lens uses
+/// for unchanged elements, so "not the subject" reads the same everywhere.
+pub struct LensColors {
+    pub fill: &'static str,
+    pub stroke: &'static str,
+    pub color: &'static str,
+}
+
+pub const HIGHLIGHT: LensColors = LensColors {
+    fill: "#ddf4ff",
+    stroke: "#0969da",
+    color: "#0969da",
+};
+
+pub const CONTEXT: LensColors = LensColors {
+    fill: "#f2f4f7",
+    stroke: "#b6bec8",
+    color: "#8b949e",
+};
+
+/// Mermaid class names for the lens; unbranded like the diff classes.
+pub const MERMAID_HIGHLIGHT: &str = "highlight";
+pub const MERMAID_CONTEXT: &str = "context";
+
+/// The `classDef` lines for the lens, emitted last like the diff block.
+pub fn mermaid_lens_classdefs() -> String {
+    format!(
+        "    classDef {MERMAID_HIGHLIGHT} fill:{},stroke:{},stroke-width:3px,color:{}\n    classDef {MERMAID_CONTEXT} fill:{},stroke:{},color:{}\n",
+        HIGHLIGHT.fill, HIGHLIGHT.stroke, HIGHLIGHT.color, CONTEXT.fill, CONTEXT.stroke, CONTEXT.color
+    )
+}
+
+/// CSS custom properties for the lens colours.
+pub fn css_lens_variables() -> String {
+    format!(
+        "  --highlight-fill: {};\n  --highlight-stroke: {};\n  --context-fill: {};\n  --context-stroke: {};\n  --context-ink: {};\n",
+        HIGHLIGHT.fill, HIGHLIGHT.stroke, CONTEXT.fill, CONTEXT.stroke, CONTEXT.color
+    )
+}
+
 pub const CHANGE_COLORS: [ChangeColors; 3] = [
     ChangeColors {
         name: "added",
@@ -123,7 +164,7 @@ pub fn css_variables() -> String {
             )
         })
         .collect();
-    change_vars + &css_boundary_variables()
+    change_vars + &css_boundary_variables() + &css_lens_variables()
 }
 
 #[cfg(test)]

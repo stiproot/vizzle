@@ -22,7 +22,22 @@
     // Boundary: outside scope, kept because an edge crosses into it. Pure context
     // even when it changed elsewhere — colours come from palette.rs BOUNDARY.
     boundary: { fill: "var(--boundary-fill)", stroke: "var(--boundary-stroke)" },
+    // The reader's lens (--highlight): lit elements, from palette.rs HIGHLIGHT.
+    highlight: { fill: "var(--highlight-fill)", stroke: "var(--highlight-stroke)" },
   };
+  /* Colours for an element under the reader's lens. `lit` is true, false, or
+   * undefined when no lens is active; the lens outranks change colouring
+   * because a lit element is the subject whatever else happened to it. */
+  function lensColors(lit, change, diffMode) {
+    if (lit === true) return PALETTE.highlight;
+    if (lit === false) return PALETTE.context;
+    return colorsFor(change, diffMode);
+  }
+  function lensInk(lit, change, diffMode) {
+    if (lit === true) return PALETTE.highlight.stroke;
+    if (lit === false) return "var(--context-ink)";
+    return inkFor(change, diffMode);
+  }
 
   /* Colors for one element. Under the diff lens unchanged elements recede,
    * so the eye lands on what actually changed. */
@@ -100,10 +115,10 @@
   }
 
   /* Draw the box into `g`, which is assumed empty. */
-  function drawClassBox(g, cls, layout, { diff = false, external = false } = {}) {
+  function drawClassBox(g, cls, layout, { diff = false, external = false, highlight } = {}) {
     const { w, h, fields, methods, scale, showModule, charWidth, rowH } = layout;
-    const colors = external ? PALETTE.external : colorsFor(cls.change, diff);
-    const ink = external ? "var(--muted)" : inkFor(cls.change, diff);
+    const colors = external ? PALETTE.external : lensColors(highlight, cls.change, diff);
+    const ink = external ? "var(--muted)" : lensInk(highlight, cls.change, diff);
     const font = (size) => size * scale;
 
     g.append("title").text(cls.qualified || cls.name);
@@ -372,10 +387,28 @@
     legend.hidden = false;
   }
 
+  /* One more legend line, with a chip in the named palette entry. Used for
+   * the things a page can only know at load: the lens, a boundary, the
+   * selection. Reveals the legend if it was hidden. */
+  function addLegendEntry(text, paletteKey) {
+    const legend = document.getElementById("legend");
+    if (!legend) return;
+    const entry = document.createElement("span");
+    const colors = paletteKey ? PALETTE[paletteKey] : null;
+    entry.innerHTML =
+      (colors ? `<span class="chip" style="background:${colors.fill};border-color:${colors.stroke}"></span>` : "") +
+      text;
+    legend.appendChild(entry);
+    legend.hidden = false;
+  }
+
   window.vizzle = {
     PALETTE,
     BOX,
     colorsFor,
+    lensColors,
+    lensInk,
+    addLegendEntry,
     inkFor,
     mark,
     truncate,

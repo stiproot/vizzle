@@ -30,6 +30,7 @@ __VIZ_CORE_CSS__
 const graph = JSON.parse(document.getElementById("graph-data").textContent);
 const config = JSON.parse(document.getElementById("config-data").textContent);
 const { classBoxLayout, drawClassBox, relationStyle, nodeTransform, linkPath } = vizzle;
+const LENS = Array.isArray(graph.stats.highlight);   // --highlight / --around was used
 const { draggableNodes, externalStub, buildLinks, gridCells, arrowMarker } = vizzle;
 
 const DIFF = graph.stats.diff;
@@ -115,7 +116,7 @@ const node = view.append("g")
 function drawClass(sel) {
   sel.attr("transform", nodeTransform);
   sel.each(function (d) {
-    drawClassBox(d3.select(this), d.cls, d.box, { diff: DIFF, external: d.external });
+    drawClassBox(d3.select(this), d.cls, d.box, { diff: DIFF, external: d.external, highlight: LENS && !d.external ? !!d.cls.highlight : undefined });
   });
 }
 
@@ -130,6 +131,7 @@ const matches = (n, query) => n.cls.qualified.toLowerCase().includes(query);
 vizzle.attachFilter("search", { nodes: node, edges: edge, matches });
 
 vizzle.setHeader(`${graph.stats.classes} classes · ${graph.stats.relations} relations`, DIFF);
+if (LENS) vizzle.addLegendEntry(`highlighted: ${graph.stats.highlight.length} of ${graph.stats.classes} classes — the rest is context`, "highlight");
 </script>
 </body>
 </html>

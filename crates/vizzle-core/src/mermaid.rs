@@ -55,6 +55,9 @@ pub struct RenderOptions {
     /// how many did not (component.md §6.4). A 300-member class with two
     /// changed methods is otherwise 300 rows of context around two signals.
     pub changed_members_only: bool,
+    /// The reader's lens (class.md §7b): qualified names to light; every other
+    /// class is drawn as context. `None` means no lens.
+    pub highlight: Option<std::collections::BTreeSet<String>>,
     /// Emit inheritance edges to types that were not found in the parsed set
     /// (mermaid will auto-create empty nodes for them).
     pub include_externals: bool,
@@ -71,6 +74,7 @@ impl Default for RenderOptions {
             grouping: Grouping::default(),
             component_of: HashMap::new(),
             changed_members_only: false,
+            highlight: None,
             include_externals: false,
             direction: None,
             title: None,
@@ -202,6 +206,15 @@ pub fn render(graph: &CodeGraph, opts: &RenderOptions) -> String {
         }
         out.push_str(&palette::mermaid_classdefs());
     }
+    if let Some(lit) = &opts.highlight {
+        out.push_str(&palette::mermaid_lens_classdefs());
+        let _ = writeln!(
+            out,
+            "%% vizzle: highlight: {} of {} classes",
+            lit.len(),
+            graph.classes.len()
+        );
+    }
 
     let _ = writeln!(
         out,
@@ -231,13 +244,21 @@ fn write_class(
         label.push_str(class.change.glyph());
     }
 
+    // The lens rides the class line itself (`:::name`): measured to render
+    // where a detached `cssClass` line did not for one consumer, and it
+    // cannot be separated from the line it styles.
+    let lens = match &opts.highlight {
+        Some(lit) if lit.contains(&class.qualified) => format!(":::{}", palette::MERMAID_HIGHLIGHT),
+        Some(_) => format!(":::{}", palette::MERMAID_CONTEXT),
+        None => String::new(),
+    };
     let has_body = class.annotation.is_some() || (opts.show_members && !class.members.is_empty());
     if !has_body {
-        let _ = writeln!(out, "{indent}class {id}[\"{label}\"]");
+        let _ = writeln!(out, "{indent}class {id}[\"{label}\"]{lens}");
         return;
     }
 
-    let _ = writeln!(out, "{indent}class {id}[\"{label}\"] {{");
+    let _ = writeln!(out, "{indent}class {id}[\"{label}\"]{lens} {{");
     if let Some(annotation) = &class.annotation {
         let _ = writeln!(out, "{indent}    <<{annotation}>>");
     }
