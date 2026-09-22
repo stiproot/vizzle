@@ -47,10 +47,11 @@ pub(crate) fn class_json(class: &Class) -> Value {
         "name": class.name,
         "qualified": class.qualified,
         "module": class.module,
+        "file": class.file,
         "lang": class.lang.name(),
         "annotation": class.annotation,
         "change": change_str(class.change),
-        "members": class.members.iter().map(|m| json!({
+        "members": class.drawn_members().map(|m| json!({
             "name": m.name,
             "visibility": m.visibility.sigil().to_string(),
             "detail": m.detail,
@@ -67,7 +68,7 @@ pub(crate) fn class_json(class: &Class) -> Value {
 ///
 /// ```json
 /// {
-///   "classes": [{"name", "qualified", "module", "lang", "annotation",
+///   "classes": [{"name", "qualified", "module", "file", "lang", "annotation",
 ///                "change", "members": [{"name", "visibility", "detail",
 ///                "returns", "isMethod", "isStatic", "isAbstract", "change"}]}],
 ///   "relations": [{"from", "to", "kind", "external"}],
@@ -141,5 +142,28 @@ mod tests {
         assert_eq!(internal["to"], "pkg.mod.Base");
         let external = relations.iter().find(|r| r["external"] == true).unwrap();
         assert_eq!(external["to"], "External");
+    }
+
+    #[test]
+    fn exports_the_file_and_only_the_drawn_members() {
+        let graph = parse_file(
+            "pkg/mod.py",
+            "def _helper(): ...\ndef api(): ...\nclass C:\n    def _m(self): ...\n",
+        )
+        .unwrap();
+        let value: serde_json::Value = serde_json::from_str(&to_json(&graph)).unwrap();
+        let classes = value["classes"].as_array().unwrap();
+        let by_name = |n: &str| classes.iter().find(|c| c["name"] == n).unwrap();
+        assert_eq!(by_name("C")["file"], "pkg/mod.py");
+        // A class's private method is its shape and is exported; an unchanged
+        // private module function is not surface and is not.
+        assert_eq!(by_name("C")["members"].as_array().unwrap().len(), 1);
+        let module_members: Vec<&str> = by_name("mod")["members"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|m| m["name"].as_str().unwrap())
+            .collect();
+        assert_eq!(module_members, vec!["api"]);
     }
 }

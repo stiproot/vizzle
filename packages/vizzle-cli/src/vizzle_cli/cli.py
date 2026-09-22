@@ -125,6 +125,7 @@ def _write_diff_stats(
     fmt: str,
     content: str,
     changes: dict[str, int],
+    edges: dict[str, int] | None = None,
     omitted: int | None = None,
     zoom: dict[str, object] | None = None,
 ) -> None:
@@ -136,6 +137,8 @@ def _write_diff_stats(
     and glyphs that are free to change between releases; this file is the
     contract instead. `chars` is the rendered size; for mermaid the ceiling it
     is measured against comes along, so the consumer only has to compare.
+    `edges` (component diffs) counts the dependency edges alone, so a consumer
+    can tell "the application was rewired" from "a component changed inside".
     """
     if path is None:
         return
@@ -149,6 +152,8 @@ def _write_diff_stats(
     if fmt == "mermaid":
         stats["mermaidLimit"] = managed.MERMAID_LIMIT
         stats["oversized"] = len(content) > managed.MERMAID_LIMIT
+    if edges is not None:
+        stats["edges"] = edges
     if omitted is not None:
         stats["omitted"] = omitted
     if zoom is not None:
@@ -840,6 +845,7 @@ def diff_diagram(
             fmt=resolved_format,
             content=diagram,
             changes={k: verdict[k] for k in ("added", "removed", "modified")},
+            edges=verdict["edges"],
             omitted=verdict["omitted"],
             zoom=zoom_stats,
         )

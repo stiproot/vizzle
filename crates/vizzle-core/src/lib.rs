@@ -25,7 +25,7 @@ use anyhow::Result;
 
 pub use component::ComponentRenderOptions;
 pub use highlight::Lens;
-pub use mermaid::{Grouping, RenderOptions};
+pub use mermaid::{Grouping, Params, RenderOptions};
 pub use model::ChangeCounts;
 
 /// Which part of a component diff to show: the scope path (§6.1) and whether
@@ -47,7 +47,14 @@ pub struct DiffView {
 #[derive(Debug, Clone)]
 pub struct DiffDiagram {
     pub mermaid: String,
+    /// Elements that changed: classes for a class diff; components *and*
+    /// edges for a component diff.
     pub changes: ChangeCounts,
+    /// The edges alone, for a component diff: a consumer deciding whether
+    /// the application was rewired needs this apart from the component
+    /// counts, because a body-level change modifies a component without
+    /// touching an edge. Zero for a class diff, which has no edges.
+    pub edge_changes: ChangeCounts,
     /// Unchanged components a focus pass left out; 0 without `--focus`.
     pub omitted: usize,
     /// The class-level view inside the changed components, when asked for:
@@ -243,6 +250,7 @@ pub fn diff_diagram(
     Ok(DiffDiagram {
         mermaid: mermaid::render(&merged, render),
         changes: merged.change_counts(),
+        edge_changes: ChangeCounts::default(),
         omitted: 0,
         zoom: None,
         zoom_classes: 0,
@@ -358,9 +366,20 @@ pub fn component_diff_diagram(
             grouping: Grouping::Component,
             component_of,
             changed_members_only: true,
+            // Several files share a component's namespace; without the file
+            // a reader cannot tell which class came from which.
+            show_files: true,
+            // A reader, not a linter: `handle(issue, result)` says what a
+            // twelve-parameter typed signature only buries.
+            params: Params::NamesOnly,
             highlight: None,
             include_externals: false,
-            direction: render.direction.clone(),
+            // Left-to-right unless the caller chose. Most zoom relations point
+            // at one or two changed types, and mermaid's default top-to-bottom
+            // ranks every source into a single row: measured on kikimora PR
+            // #17759, 8756 x 894 px against 2917 x 3217 for LR. A PR comment
+            // scrolls down, not sideways.
+            direction: render.direction.clone().or_else(|| Some("LR".to_owned())),
             title: render
                 .title
                 .as_ref()
@@ -373,6 +392,7 @@ pub fn component_diff_diagram(
     Ok(DiffDiagram {
         mermaid: component::render_mermaid(&merged, render),
         changes: merged.change_counts(),
+        edge_changes: ChangeCounts::tally(merged.edges.iter().map(|e| e.change)),
         omitted: merged.omitted,
         zoom,
         zoom_classes,

@@ -1954,6 +1954,43 @@ mod tests {
     }
 
     #[test]
+    fn zoom_sees_a_body_change_and_names_the_file() {
+        let (mut base_files, manifests) = monolith();
+        base_files[2].1 = "class Db:\n    def close(self):\n        pass\n".to_owned();
+        let mut head_files = base_files.clone();
+        // Db.close() keeps its signature and changes its body: the kind of
+        // change a bug fix makes, and the kind the zoom used to miss.
+        head_files[2].1 = "class Db:\n    def close(self):\n        self.conn.close()\n".to_owned();
+        let split = ["svc/src/svc".to_owned()];
+        let base = build(&base_files, &manifests, &split).unwrap();
+        let head = build(&head_files, &manifests, &split).unwrap();
+        let merged = diff(&base, &head);
+        assert_eq!(
+            ChangeCounts::tally(merged.edges.iter().map(|e| e.change)),
+            ChangeCounts::default(),
+            "nothing was rewired"
+        );
+
+        let (classes, component_of) = zoom(&merged);
+        let out = crate::mermaid::render(
+            &classes,
+            &crate::mermaid::RenderOptions {
+                grouping: crate::mermaid::Grouping::Component,
+                component_of,
+                changed_members_only: true,
+                show_files: true,
+                ..Default::default()
+            },
+        );
+        assert!(out.contains("namespace store {"), "{out}");
+        assert!(
+            out.contains("<<db.py>>"),
+            "the file rides the stereotype line: {out}"
+        );
+        assert!(out.contains("+close() ✱"), "{out}");
+    }
+
+    #[test]
     fn zoom_of_an_unchanged_diff_is_empty() {
         let (files, manifests) = monolith();
         let graph = build(&files, &manifests, &["svc/src/svc".to_owned()]).unwrap();

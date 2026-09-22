@@ -155,6 +155,15 @@ classes to 507 and the Mermaid from 111 KB to 201 KB.
 agent pays to read one (§2.6 of `docs/distribution.md`). The
 default stays "named types"; `--modules` says "and the functions too".
 
+**Private module-level functions are parsed but not drawn** (2026-09-22). A
+leading-underscore `def` is not module surface, so a comprehension diagram
+leaves it out. It *is* code a change can touch — on kikimora PR #17759 two of
+the three files that changed most did so only in private helpers — so the
+parser keeps it with its visibility, and a renderer draws it only under the
+diff lens when it changed (`Class::drawn_members`). TypeScript's non-exported
+functions are still dropped at parse time; the same treatment is the obvious
+follow-up when a diff misses one.
+
 ## 3. Extraction
 
 tree-sitter parses each file into an AST; one extractor per language walks it.
@@ -311,10 +320,22 @@ Change colors come from vizzle-core's palette in both formats (see
 | Element | Added | Removed | Modified |
 |---|---|---|---|
 | Class | only at head | only at base | same key, different fingerprint |
-| Member | new name | gone at head | same name, changed signature |
+| Member | new name | gone at head | same name, changed signature **or body** |
 
 Classes are keyed by qualified name and fingerprinted over their members,
-bases, stereotype and language; members are fingerprinted over their signature.
+bases, stereotype and language; members are fingerprinted over their signature
+**and a hash of their defining source text** (`Member::body_hash`).
+
+Why the body counts (decided 2026-09-22, on kikimora PR #17759): a bug fix
+rarely touches a signature. That PR changed 25 definitions in 13 files across
+7 components; a signature-only fingerprint saw 5 of them, drew five of the
+seven components as changed with nothing inside, and left out `worker.py`,
+the file that changed most. The body hash is the raw text of the definition
+(a method's `def` through its last line; a field's assignment). It is *not*
+normalised: whitespace is significant in Python, and a reformatted or
+re-documented member did change — the diff reports what happened, not what
+it guesses the author meant. A docstring-only edit therefore reads as `✱`;
+excluding comments and docstrings is a possible refinement, not a bug.
 Removed members are re-attached to the class so the diagram can show them
 struck through. Unchanged classes in touched files render as context.
 

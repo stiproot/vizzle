@@ -518,6 +518,37 @@ changed members, 2,752 characters. `Worker` shows its two new methods and
 the comment answers both questions a reviewer has: what part of the shape
 moved, and what exactly moved inside it.
 
+**Revised 2026-09-22, on kikimora PR #17759**, where the zoom drew 5 classes
+in 2 of 7 changed components and the focused component diagram drew 33 of 39
+components. Two changes:
+
+- **Bodies count.** Members are fingerprinted over signature *and* body
+  (class.md §7), so a method whose body changed is drawn `✱`. On that PR the
+  zoom went from 5 classes in 2 components to 17 in all 7, including
+  `Worker` with its four changed methods and "… 298 unchanged members".
+- **Every box names its file.** Several files share a component's namespace,
+  and a reader could not tell which class came from which. The file's base
+  name rides the stereotype line — `<<enumeration · run.py>>`,
+  `<<worker.py>>` for a plain class — and a module box is titled by its file
+  (`worker.py ✱`, `<<module>>`). Mermaid draws one stereotype line per class,
+  so the file shares it rather than adding a second; nested namespaces are
+  not available, and a namespace cannot carry a display label, which rules
+  out one namespace per file. Member rows carry parameter *names* only
+  (`handle(issue, result)`), because a twelve-parameter typed signature
+  rendered the whole diagram a screen wide.
+- **Left-to-right by default.** Most zoom relations point at one or two
+  changed types (on #17759, twelve `..> FailureClass`), and mermaid's default
+  top-to-bottom layout ranks every source into a single row: 8,756 × 894 px,
+  unreadable at comment width. `direction LR` stacks the namespaces instead,
+  2,917 × 3,217 px, and a PR comment scrolls down, not sideways. `--direction`
+  still overrides it.
+
+The zoom is now the picture a reviewer reads; the component diagram earns its
+place only when an edge was added or removed. For that decision the `--stats`
+sidecar carries `edges: {added, removed, modified}` apart from the component
+counts, since a body-level change modifies a component without touching an
+edge.
+
 ## 7. CLI surface
 
 ```sh

@@ -39,6 +39,8 @@ fn options(
         grouping: Grouping::parse(grouping).map_err(PyValueError::new_err)?,
         component_of: Default::default(),
         changed_members_only: false,
+        show_files: false,
+        params: vc::Params::Typed,
         highlight: None,
         include_externals,
         direction,
@@ -181,9 +183,11 @@ fn class_diagram_diff(
 
 /// `(mermaid, verdict_json, zoom)`: the diagram, its verdict and the optional
 /// class-level zoom, as the CLI wants them. The verdict is the change counts
-/// plus `omitted` (components a focus pass left out) and `zoomClasses`.
+/// plus `edges` (the edge counts alone), `omitted` (components a focus pass
+/// left out) and `zoomClasses`.
 fn diff_pair(diagram: vc::DiffDiagram) -> (String, String, Option<String>) {
     let mut verdict = vc::export::change_counts_json(&diagram.changes);
+    verdict["edges"] = vc::export::change_counts_json(&diagram.edge_changes);
     verdict["omitted"] = diagram.omitted.into();
     verdict["zoomClasses"] = diagram.zoom_classes.into();
     (diagram.mermaid, verdict.to_string(), diagram.zoom)

@@ -3,7 +3,7 @@
 use anyhow::{Context, Result};
 use tree_sitter::{Node, Parser};
 
-use super::{clean_type, text};
+use super::{clean_type, text, text_hash};
 use crate::model::*;
 
 pub fn parse(module: &str, source: &str) -> Result<CodeGraph> {
@@ -169,6 +169,7 @@ fn extract_class(node: Node, src: &str, module: &str, graph: &mut CodeGraph) {
     graph.classes.push(Class {
         qualified,
         module: module.to_owned(),
+        file: String::new(),
         annotation: is_abstract.then(|| "abstract".to_owned()),
         bases,
         members,
@@ -215,6 +216,7 @@ fn extract_interface(node: Node, src: &str, module: &str, graph: &mut CodeGraph)
     graph.classes.push(Class {
         qualified,
         module: module.to_owned(),
+        file: String::new(),
         annotation: Some("interface".to_owned()),
         bases,
         members,
@@ -286,6 +288,7 @@ fn extract_type_alias(node: Node, src: &str, module: &str, graph: &mut CodeGraph
     graph.classes.push(Class {
         qualified,
         module: module.to_owned(),
+        file: String::new(),
         annotation: Some(annotation.to_owned()),
         bases,
         members,
@@ -363,6 +366,7 @@ fn extract_schema_struct(node: Node, src: &str, module: &str, graph: &mut CodeGr
     graph.classes.push(Class {
         qualified: qualified(module, &name),
         module: module.to_owned(),
+        file: String::new(),
         annotation: Some("schema".to_owned()),
         bases: Vec::new(),
         members: schema_fields(literal, src),
@@ -433,6 +437,7 @@ fn schema_fields(object: Node, src: &str) -> Vec<Member> {
             name: text(key, src).trim_matches(['"', '\'']).to_owned(),
             type_refs: vec![detail.clone()],
             detail,
+            body_hash: text_hash(pair, src),
             ..Default::default()
         });
     }
@@ -489,6 +494,7 @@ fn extract_module_const(node: Node, src: &str, members: &mut Vec<Member>) {
         members.push(Member {
             name: text(name, src),
             detail: clean_type(annotation.trim_start_matches(':').trim()),
+            body_hash: text_hash(decl, src),
             ..Default::default()
         });
     }
@@ -525,6 +531,7 @@ fn extract_enum(node: Node, src: &str, module: &str, graph: &mut CodeGraph) {
             if let Some(variant) = variant {
                 members.push(Member {
                     name: variant,
+                    body_hash: text_hash(item, src),
                     ..Default::default()
                 });
             }
@@ -533,6 +540,7 @@ fn extract_enum(node: Node, src: &str, module: &str, graph: &mut CodeGraph) {
     graph.classes.push(Class {
         qualified: qualified(module, &name),
         module: module.to_owned(),
+        file: String::new(),
         annotation: Some("enumeration".to_owned()),
         bases: Vec::new(),
         members,
@@ -578,6 +586,7 @@ fn extract_method(node: Node, src: &str, is_abstract: bool, members: &mut Vec<Me
                             visibility: modifier_visibility(p, src),
                             detail: ty.clone().unwrap_or_default(),
                             type_refs: ty.into_iter().collect(),
+                            body_hash: text_hash(p, src),
                             name: text(pattern, src),
                             ..Default::default()
                         });
@@ -608,6 +617,7 @@ fn extract_method(node: Node, src: &str, is_abstract: bool, members: &mut Vec<Me
         is_method: true,
         is_static: has_keyword(node, "static", src),
         is_abstract,
+        body_hash: text_hash(node, src),
         name,
         ..Default::default()
     });
@@ -626,6 +636,7 @@ fn extract_property(node: Node, src: &str, members: &mut Vec<Member>) {
         detail: ty.clone().unwrap_or_default(),
         type_refs: ty.into_iter().collect(),
         is_static: has_keyword(node, "static", src),
+        body_hash: text_hash(node, src),
         name,
         ..Default::default()
     });

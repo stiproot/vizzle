@@ -24,6 +24,7 @@ pub(super) fn push_module_box(
     graph.classes.push(Class {
         qualified: module.to_owned(),
         module: module.to_owned(),
+        file: String::new(),
         annotation: Some(MODULE_ANNOTATION.to_owned()),
         bases: Vec::new(),
         members,
@@ -60,8 +61,13 @@ pub fn parse_file(rel_path: &str, source: &str) -> Result<CodeGraph> {
         Language::Python => python::parse(&module, source),
         Language::TypeScript => typescript::parse(&module, source),
     }?;
+    // The parsers see a module, not a path; the file is stamped on here, once,
+    // so neither language has to carry it through every extractor.
     for import in &mut graph.imports {
         import.file = rel_path.to_owned();
+    }
+    for class in &mut graph.classes {
+        class.file = rel_path.to_owned();
     }
     Ok(graph)
 }
@@ -83,6 +89,17 @@ pub fn parse_files(files: &[(String, String)]) -> Result<CodeGraph> {
 /// Shared helper: node text as owned string.
 pub(crate) fn text(node: tree_sitter::Node, src: &str) -> String {
     src[node.byte_range()].to_owned()
+}
+
+/// Hash of a node's source text, for [`Member::body_hash`]. The text is
+/// hashed as written: whitespace is significant in Python, and a reformatted
+/// or re-documented member *did* change, which the diff should say rather
+/// than guess at intent.
+pub(crate) fn text_hash(node: tree_sitter::Node, src: &str) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    src[node.byte_range()].hash(&mut hasher);
+    hasher.finish()
 }
 
 /// Compact a type expression for display inside a mermaid member row.

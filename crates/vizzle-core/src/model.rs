@@ -115,20 +115,30 @@ pub struct Member {
     pub is_method: bool,
     pub is_static: bool,
     pub is_abstract: bool,
+    /// Hash of the member's defining source text — a method's whole
+    /// definition, a field's assignment. Two revisions of a member with the
+    /// same signature and different bodies are a change a reviewer must see
+    /// (class.md §7): a bug fix rarely touches a signature, and a diff that
+    /// fingerprints signatures alone draws the fix's component as changed
+    /// with nothing inside it. Zero when the parser had no text to hash.
+    pub body_hash: u64,
     pub change: ChangeKind,
 }
 
 impl Member {
-    /// A stable fingerprint used to detect modifications between revisions.
+    /// A stable fingerprint used to detect modifications between revisions:
+    /// the signature and the body. Two members that differ only in body
+    /// carry the same name, so [`crate::diff`] reads them as `Modified`.
     pub fn fingerprint(&self) -> String {
         format!(
-            "{}|{}|{}|{}|{}|{}",
+            "{}|{}|{}|{}|{}|{}|{}",
             self.name,
             self.detail,
             self.returns.as_deref().unwrap_or(""),
             self.is_method,
             self.is_static,
-            self.is_abstract
+            self.is_abstract,
+            self.body_hash
         )
     }
 }
@@ -187,6 +197,10 @@ pub struct Class {
     pub qualified: String,
     /// Dotted module path derived from the file path, e.g. `apps.dapr_agent.main`.
     pub module: String,
+    /// Repo-relative path of the defining file, e.g. `apps/dapr_agent/main.py`.
+    /// The module path is derived from it and loses the extension and the
+    /// `__init__` spelling; the file is what a reader opens.
+    pub file: String,
     /// UML stereotype: `interface`, `abstract`, `enumeration`, ...
     pub annotation: Option<String>,
     pub bases: Vec<Relation>,
@@ -196,6 +210,29 @@ pub struct Class {
 }
 
 impl Class {
+    /// Whether this is a `<<module>>` box (class.md §2.4) rather than a type.
+    pub fn is_module_box(&self) -> bool {
+        self.annotation.as_deref() == Some(MODULE_ANNOTATION)
+    }
+
+    /// The file's base name — `worker.py`, `index.ts` — which is how the
+    /// zoom (component.md §6.4) tells a reader where a class lives.
+    pub fn file_name(&self) -> &str {
+        self.file.rsplit('/').next().unwrap_or(&self.file)
+    }
+
+    /// The members a renderer draws. A module box holds every module-level
+    /// function the parser saw, private helpers included, because a diff has
+    /// to notice a changed helper; but a helper is not module surface
+    /// (class.md §2.5), so an *unchanged* private one is never drawn. Types
+    /// draw all their members — a class's private methods are its shape.
+    pub fn drawn_members(&self) -> impl Iterator<Item = &Member> {
+        let module_box = self.is_module_box();
+        self.members.iter().filter(move |m| {
+            !module_box || m.visibility == Visibility::Public || m.change != ChangeKind::Unchanged
+        })
+    }
+
     pub fn fingerprint(&self) -> String {
         let mut members: Vec<String> = self.members.iter().map(Member::fingerprint).collect();
         members.sort();
@@ -261,7 +298,7 @@ impl CodeGraph {
             classes: self
                 .classes
                 .iter()
-                .filter(|c| c.annotation.as_deref() != Some(MODULE_ANNOTATION))
+                .filter(|c| !c.is_module_box())
                 .cloned()
                 .collect(),
             ..self.clone()

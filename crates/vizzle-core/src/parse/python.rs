@@ -3,7 +3,7 @@
 use anyhow::{Context, Result};
 use tree_sitter::{Node, Parser};
 
-use super::{clean_type, text};
+use super::{clean_type, text, text_hash};
 use crate::model::*;
 
 pub fn parse(module: &str, source: &str) -> Result<CodeGraph> {
@@ -105,24 +105,21 @@ fn extract_module_const(stmt: Node, src: &str, members: &mut Vec<Member>) {
     members.push(Member {
         name,
         detail,
+        body_hash: text_hash(assign, src),
         ..Default::default()
     });
 }
 
-/// A module-level `def`. Private helpers (leading underscore) are not module
-/// surface and are dropped; the shape is otherwise a method's.
+/// A module-level `def`; the shape is a method's. Private helpers (leading
+/// underscore) are kept with their visibility so a diff can notice one that
+/// changed; the renderer leaves an unchanged one out
+/// ([`Class::drawn_members`]), because a helper is not module surface.
 fn extract_module_function(
     func: Node,
     src: &str,
     decorators: &[String],
     members: &mut Vec<Member>,
 ) {
-    let Some(name_node) = func.child_by_field_name("name") else {
-        return;
-    };
-    if text(name_node, src).starts_with('_') {
-        return;
-    }
     extract_method(func, src, decorators, members);
 }
 
@@ -251,6 +248,7 @@ fn extract_class(
         name: local_name,
         qualified,
         module: module.to_owned(),
+        file: String::new(),
         annotation,
         bases,
         members,
@@ -299,7 +297,7 @@ fn extract_field(assignment: Node, src: &str, members: &mut Vec<Member>) {
     let ty = assignment
         .child_by_field_name("type")
         .map(|t| clean_type(&text(t, src)));
-    push_field(name, ty, members);
+    push_field(name, ty, text_hash(assignment, src), members);
 }
 
 fn extract_method(func: Node, src: &str, decorators: &[String], members: &mut Vec<Member>) {
@@ -329,7 +327,7 @@ fn extract_method(func: Node, src: &str, decorators: &[String], members: &mut Ve
         .map(|r| clean_type(&text(r, src)));
 
     if is_property {
-        push_field(name, returns, members);
+        push_field(name, returns, text_hash(func, src), members);
         return;
     }
 
@@ -347,12 +345,13 @@ fn extract_method(func: Node, src: &str, decorators: &[String], members: &mut Ve
             .iter()
             .any(|d| d.ends_with("staticmethod") || d.ends_with("classmethod")),
         is_abstract: decorators.iter().any(|d| d.contains("abstractmethod")),
+        body_hash: text_hash(func, src),
         name,
         ..Default::default()
     });
 }
 
-fn push_field(name: String, ty: Option<String>, members: &mut Vec<Member>) {
+fn push_field(name: String, ty: Option<String>, body_hash: u64, members: &mut Vec<Member>) {
     if members.iter().any(|m| !m.is_method && m.name == name) {
         return;
     }
@@ -360,6 +359,7 @@ fn push_field(name: String, ty: Option<String>, members: &mut Vec<Member>) {
         visibility: visibility_of(&name),
         detail: ty.clone().unwrap_or_default(),
         type_refs: ty.into_iter().collect(),
+        body_hash,
         name,
         ..Default::default()
     });
@@ -379,7 +379,7 @@ fn extract_self_assignments(node: Node, src: &str, members: &mut Vec<Member>) {
                             let ty = child
                                 .child_by_field_name("type")
                                 .map(|t| clean_type(&text(t, src)));
-                            push_field(text(attr, src), ty, members);
+                            push_field(text(attr, src), ty, text_hash(child, src), members);
                         }
                     }
                 }
@@ -476,7 +476,13 @@ class NotAFunction:
             .find(|c| c.annotation.as_deref() == Some("module"))
             .expect("a module box for the public module-level functions");
         let names: Vec<&str> = module.members.iter().map(|m| m.name.as_str()).collect();
-        assert_eq!(names, vec!["build", "flush"], "sorted, public only");
+        assert_eq!(
+            names,
+            vec!["_private_helper", "build", "flush"],
+            "sorted; the private helper is parsed so a diff can see it change"
+        );
+        let drawn: Vec<&str> = module.drawn_members().map(|m| m.name.as_str()).collect();
+        assert_eq!(drawn, vec!["build", "flush"], "but only surface is drawn");
         assert!(module.members.iter().all(|m| m.is_method));
         // The class's own method must not leak into the module box.
         assert!(!names.contains(&"method"));

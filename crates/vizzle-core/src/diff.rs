@@ -106,4 +106,41 @@ mod tests {
         assert_eq!(member("new").change, ChangeKind::Added);
         assert_eq!(member("old").change, ChangeKind::Removed);
     }
+
+    #[test]
+    fn a_body_change_behind_an_unchanged_signature_is_modified() {
+        // A bug fix rarely touches a signature. Fingerprinting signatures alone
+        // read this as Unchanged and drew the component as changed with
+        // nothing inside it (kikimora PR #17759, 2026-09-22).
+        let base = graph("class W:\n    def handle(self, r) -> None:\n        return None\n    def same(self): ...\n");
+        let head = graph("class W:\n    def handle(self, r) -> None:\n        self.log(r)\n    def same(self): ...\n");
+        let merged = diff_graphs(&base, &head);
+        let w = &merged.classes[0];
+        assert_eq!(w.change, ChangeKind::Modified);
+        let member = |n: &str| w.members.iter().find(|m| m.name == n).unwrap().change;
+        assert_eq!(member("handle"), ChangeKind::Modified);
+        assert_eq!(member("same"), ChangeKind::Unchanged);
+    }
+
+    #[test]
+    fn a_changed_private_module_function_marks_its_module_box() {
+        let base = graph("def _helper(x):\n    return x\n\ndef api():\n    return _helper(1)\n");
+        let head =
+            graph("def _helper(x):\n    return x + 1\n\ndef api():\n    return _helper(1)\n");
+        let merged = diff_graphs(&base, &head);
+        let module = merged.classes.iter().find(|c| c.is_module_box()).unwrap();
+        assert_eq!(module.change, ChangeKind::Modified);
+        let drawn: Vec<(&str, ChangeKind)> = module
+            .drawn_members()
+            .map(|m| (m.name.as_str(), m.change))
+            .collect();
+        assert_eq!(
+            drawn,
+            vec![
+                ("_helper", ChangeKind::Modified),
+                ("api", ChangeKind::Unchanged)
+            ],
+            "the changed helper is drawn; an unchanged one would not be"
+        );
+    }
 }
