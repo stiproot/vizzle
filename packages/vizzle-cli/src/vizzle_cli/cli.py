@@ -126,6 +126,7 @@ def _write_diff_stats(
     content: str,
     changes: dict[str, int],
     omitted: int | None = None,
+    zoom: dict[str, object] | None = None,
 ) -> None:
     """The verdict behind a diff, for a consumer that must not read the drawing.
 
@@ -150,6 +151,8 @@ def _write_diff_stats(
         stats["oversized"] = len(content) > managed.MERMAID_LIMIT
     if omitted is not None:
         stats["omitted"] = omitted
+    if zoom is not None:
+        stats["zoom"] = zoom
     path.write_text(json.dumps(stats, indent=2) + "\n", encoding="utf-8")
 
 
@@ -652,6 +655,17 @@ def _collect_component_diff(path: Path, base: str, head: str | None) -> tuple[li
     ),
 )
 @click.option(
+    "--zoom",
+    "zoom_path",
+    type=click.Path(dir_okay=False, path_type=Path),
+    default=None,
+    help=(
+        "Component type, mermaid only: also write a classDiagram of the changed "
+        "classes inside the changed components to FILE, changed members only, one "
+        "namespace per component. Spec: component.md §6.4."
+    ),
+)
+@click.option(
     "--stats",
     "stats_path",
     type=click.Path(dir_okay=False, path_type=Path),
@@ -673,6 +687,7 @@ def diff_diagram(
     classes: bool | None,
     split: tuple[str, ...],
     focus: bool,
+    zoom_path: Path | None,
     stats_path: Path | None,
     include: tuple[str, ...],
     exclude: tuple[str, ...],
@@ -707,8 +722,8 @@ def diff_diagram(
             "revisions held in memory. Use --group-by module."
         )
     selection = _selection_kwargs(include, exclude, lang)
-    if diagram_type != "component" and (split or focus):
-        raise click.UsageError("--split and --focus apply to --type component only")
+    if diagram_type != "component" and (split or focus or zoom_path):
+        raise click.UsageError("--split, --focus and --zoom apply to --type component only")
     # Title keeps the reader's spelling of the base; the revisions compared
     # are the fork point and head.
     resolved_title = title or f"changes vs {base}"
@@ -742,17 +757,27 @@ def diff_diagram(
             )
             _emit(page, output, summarize_components(graph_json))
             return
-        diagram, verdict_json = _core.component_diagram_diff(
+        diagram, verdict_json, zoom = _core.component_diagram_diff(
             base_files,
             base_manifests,
             head_files,
             head_manifests,
             scope=scope_path,
             focus=focus,
+            zoom=zoom_path is not None,
             **selection,
             **_component_render_kwargs(True, weights, externals, direction, resolved_title),
         )
         verdict = json.loads(verdict_json)
+        zoom_stats: dict[str, object] | None = None
+        if zoom_path is not None and zoom is not None:
+            zoom_path.write_text(zoom, encoding="utf-8")
+            zoom_stats = {
+                "classes": verdict["zoomClasses"],
+                "chars": len(zoom),
+                "oversized": len(zoom) > managed.MERMAID_LIMIT,
+            }
+            click.echo(f"wrote {zoom_path}  ({verdict['zoomClasses']} changed classes)", err=True)
         _write_diff_stats(
             stats_path,
             diagram_type=diagram_type,
@@ -760,6 +785,7 @@ def diff_diagram(
             content=diagram,
             changes={k: verdict[k] for k in ("added", "removed", "modified")},
             omitted=verdict["omitted"],
+            zoom=zoom_stats,
         )
         _emit_mermaid(diagram, output)
         return
@@ -797,7 +823,7 @@ def diff_diagram(
         _emit(page, output, summarize(graph_json, show_modules=modules))
         return
 
-    diagram, verdict_json = _core.class_diagram_diff(
+    diagram, verdict_json, _ = _core.class_diagram_diff(
         base_files,
         head_files,
         **selection,

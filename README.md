@@ -109,8 +109,9 @@ uvx vizzle diff ~/code/repo/h --type component
 uvx vizzle diff ~/code/repo/h --type component -o changes.mmd --stats verdict.json
 
 # one manifest but many subsystems: split the package into its subpackages,
-# and focus the diff on the changed ones and their neighbours
-uvx vizzle diff . --type component --split src/mypkg --focus
+# focus the diff on the changed ones and their neighbours, and zoom into the
+# classes that changed inside them
+uvx vizzle diff . --type component --split src/mypkg --focus -o shape.mmd --zoom inside.mmd
 ```
 
 ### Interactive HTML (d3)

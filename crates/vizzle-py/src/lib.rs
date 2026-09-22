@@ -38,6 +38,7 @@ fn options(
         show_modules,
         grouping: Grouping::parse(grouping).map_err(PyValueError::new_err)?,
         component_of: Default::default(),
+        changed_members_only: false,
         include_externals,
         direction,
         title,
@@ -150,7 +151,7 @@ fn class_diagram_diff(
     include_externals: bool,
     direction: Option<String>,
     title: Option<String>,
-) -> PyResult<(String, String)> {
+) -> PyResult<(String, String, Option<String>)> {
     let render = options(
         show_members,
         show_modules,
@@ -165,19 +166,21 @@ fn class_diagram_diff(
     Ok(diff_pair(diagram))
 }
 
-/// `(mermaid, verdict_json)`: the diagram and its verdict, as the CLI wants
-/// them. The verdict is the change counts plus `omitted`, the components a
-/// focus pass left out.
-fn diff_pair(diagram: vc::DiffDiagram) -> (String, String) {
+/// `(mermaid, verdict_json, zoom)`: the diagram, its verdict and the optional
+/// class-level zoom, as the CLI wants them. The verdict is the change counts
+/// plus `omitted` (components a focus pass left out) and `zoomClasses`.
+fn diff_pair(diagram: vc::DiffDiagram) -> (String, String, Option<String>) {
     let mut verdict = vc::export::change_counts_json(&diagram.changes);
     verdict["omitted"] = diagram.omitted.into();
-    (diagram.mermaid, verdict.to_string())
+    verdict["zoomClasses"] = diagram.zoom_classes.into();
+    (diagram.mermaid, verdict.to_string(), diagram.zoom)
 }
 
-fn diff_view(scope: Option<String>, focus: bool) -> vc::DiffView {
+fn diff_view(scope: Option<String>, focus: bool, zoom: bool) -> vc::DiffView {
     vc::DiffView {
         scope: scope.unwrap_or_default(),
         focus,
+        zoom,
     }
 }
 
@@ -269,6 +272,7 @@ fn component_json_from_dir(
     langs = vec![],
     splits = vec![],
     focus = false,
+    zoom = false,
     group = true,
     weights = false,
     include_externals = false,
@@ -287,16 +291,17 @@ fn component_diagram_diff(
     langs: Vec<String>,
     splits: Vec<String>,
     focus: bool,
+    zoom: bool,
     group: bool,
     weights: bool,
     include_externals: bool,
     direction: Option<String>,
     title: Option<String>,
     scope: Option<String>,
-) -> PyResult<(String, String)> {
+) -> PyResult<(String, String, Option<String>)> {
     let render = component_options(group, weights, include_externals, direction, title);
     let select = selection(include, exclude, langs, splits);
-    let view = diff_view(scope, focus);
+    let view = diff_view(scope, focus, zoom);
     let diagram = vc::component_diff_diagram(
         &base_files,
         &base_manifests,
@@ -341,7 +346,7 @@ fn component_json_diff(
     scope: Option<String>,
 ) -> PyResult<String> {
     let select = selection(include, exclude, langs, splits);
-    let view = diff_view(scope, focus);
+    let view = diff_view(scope, focus, false);
     vc::component_json_diff(
         &base_files,
         &base_manifests,

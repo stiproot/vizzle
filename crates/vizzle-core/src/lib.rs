@@ -35,6 +35,9 @@ pub struct DiffView {
     pub scope: String,
     /// Draw only the changed components, changed edges and their neighbours.
     pub focus: bool,
+    /// Also render the class-level view inside the changed components
+    /// (component.md §6.4); it comes back as [`DiffDiagram::zoom`].
+    pub zoom: bool,
 }
 
 /// A rendered diff together with the verdict behind it, so a caller that must
@@ -45,6 +48,12 @@ pub struct DiffDiagram {
     pub changes: ChangeCounts,
     /// Unchanged components a focus pass left out; 0 without `--focus`.
     pub omitted: usize,
+    /// The class-level view inside the changed components, when asked for:
+    /// a `classDiagram` of the changed classes, changed members only, one
+    /// namespace per component. Empty of classes when nothing changed.
+    pub zoom: Option<String>,
+    /// How many classes the zoom draws; 0 lets a consumer skip an empty one.
+    pub zoom_classes: usize,
 }
 
 /// A file set as the entry points take it: repo-relative `(path, contents)` pairs.
@@ -153,6 +162,8 @@ pub fn diff_diagram(
         mermaid: mermaid::render(&merged, render),
         changes: merged.change_counts(),
         omitted: 0,
+        zoom: None,
+        zoom_classes: 0,
     })
 }
 
@@ -243,10 +254,34 @@ pub fn component_diff_diagram(
         select,
         view,
     )?;
+    let (zoom, zoom_classes) = if view.zoom {
+        let (classes, component_of) = component::zoom(&merged);
+        let count = classes.classes.len();
+        let opts = RenderOptions {
+            show_members: true,
+            // Module boxes carry module-level functions; a changed migration
+            // or script is exactly that and belongs in the zoom.
+            show_modules: true,
+            grouping: Grouping::Component,
+            component_of,
+            changed_members_only: true,
+            include_externals: false,
+            direction: render.direction.clone(),
+            title: render
+                .title
+                .as_ref()
+                .map(|t| format!("{t} — inside the changed components")),
+        };
+        (Some(mermaid::render(&classes, &opts)), count)
+    } else {
+        (None, 0)
+    };
     Ok(DiffDiagram {
         mermaid: component::render_mermaid(&merged, render),
         changes: merged.change_counts(),
         omitted: merged.omitted,
+        zoom,
+        zoom_classes,
     })
 }
 
@@ -378,6 +413,7 @@ mod tests {
                 scope: "".to_owned(),
 
                 focus: false,
+                zoom: false,
             },
             false,
         )
@@ -409,6 +445,7 @@ mod tests {
                 scope: "pkgs/core".to_owned(),
 
                 focus: false,
+                zoom: false,
             },
             false,
         )
@@ -428,6 +465,7 @@ mod tests {
                 scope: "pkgs/core".to_owned(),
 
                 focus: false,
+                zoom: false,
             },
             false,
         )

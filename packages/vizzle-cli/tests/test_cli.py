@@ -814,3 +814,75 @@ def test_component_diff_measures_from_the_fork_point_not_the_base_tip(monolith: 
     assert "<b>audit</b>" in result.output, "main's own change must read as unchanged context"
     assert _stats(stats_path)["changes"] == {"added": 0, "removed": 0, "modified": 1}
     assert "changes vs main" in result.output, "the title keeps the reader's spelling"
+
+
+def test_component_diff_zoom_draws_changed_classes_with_changed_members_only(monolith: Path, tmp_path: Path) -> None:
+    (monolith / "svc/src/svc/store/db.py").write_text("class Db:\n    def ping(self): ...\n\nclass Untouched: ...\n")
+    (monolith / "svc/src/svc/api/routes.py").write_text(
+        "from svc.store.db import Db\nclass Router:\n    def a(self): ...\n    def b(self): ...\n    def c(self): ...\n"
+    )
+    git(monolith, "commit", "-qam", "seed unchanged members")
+    (monolith / "svc/src/svc/api/routes.py").write_text(
+        "from svc.store.db import Db\nclass Router:\n    def a(self): ...\n"
+        "    def b(self): ...\n    def c(self): ...\n    def d(self): ...\n"
+    )
+    out = tmp_path / "out"
+    out.mkdir()
+    result = CliRunner().invoke(
+        main,
+        [
+            "diff",
+            str(monolith),
+            "--type",
+            "component",
+            "--split",
+            "svc/src/svc",
+            "--focus",
+            "-o",
+            str(out / "d.mmd"),
+            "--zoom",
+            str(out / "z.mmd"),
+            "--stats",
+            str(out / "s.json"),
+        ],
+    )
+    assert result.exit_code == 0, result.output
+
+    zoom = (out / "z.mmd").read_text(encoding="utf-8")
+    assert zoom.startswith("classDiagram") or "\nclassDiagram" in zoom, zoom
+    assert "namespace api {" in zoom
+    assert "+d() ✚" in zoom
+    assert "… 3 unchanged members" in zoom
+    # Db and Untouched did not change in this revision; store is not a changed component.
+    assert "Untouched" not in zoom and "namespace store" not in zoom, zoom
+
+    stats = _stats(out / "s.json")
+    assert stats["zoom"]["classes"] == 1
+    assert stats["zoom"]["chars"] == len(zoom)
+    assert stats["zoom"]["oversized"] is False
+
+
+def test_component_diff_zoom_of_no_change_has_no_classes(monolith: Path, tmp_path: Path) -> None:
+    out = tmp_path / "out"
+    out.mkdir()
+    result = CliRunner().invoke(
+        main,
+        [
+            "diff",
+            str(monolith),
+            "--type",
+            "component",
+            "--split",
+            "svc/src/svc",
+            "-o",
+            str(out / "d.mmd"),
+            "--zoom",
+            str(out / "z.mmd"),
+            "--stats",
+            str(out / "s.json"),
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    stats = _stats(out / "s.json")
+    assert stats["changed"] is False
+    assert stats["zoom"]["classes"] == 0

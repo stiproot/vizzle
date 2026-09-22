@@ -916,6 +916,38 @@ pub fn focus(graph: &ComponentGraph) -> ComponentGraph {
     result
 }
 
+/// The class-level view inside a diff's changed components (§6.4): every
+/// changed class that lives in a changed, non-boundary component, together
+/// with the map from class to component name that lets the class renderer
+/// group them into one namespace per component. Unchanged classes are left
+/// out; the renderer's `changed_members_only` does the same for members.
+pub fn zoom(graph: &ComponentGraph) -> (CodeGraph, HashMap<String, String>) {
+    let changed_components: HashMap<&str, &str> = graph
+        .components
+        .iter()
+        .filter(|c| c.change != ChangeKind::Unchanged && !c.is_boundary)
+        .map(|c| (c.path.as_str(), c.name.as_str()))
+        .collect();
+    let mut classes = Vec::new();
+    let mut component_of = HashMap::new();
+    for placed in &graph.classes {
+        if placed.class.change == ChangeKind::Unchanged {
+            continue;
+        }
+        if let Some(name) = changed_components.get(placed.component.as_str()) {
+            component_of.insert(placed.class.qualified.clone(), (*name).to_owned());
+            classes.push(placed.class.clone());
+        }
+    }
+    (
+        CodeGraph {
+            classes,
+            imports: Vec::new(),
+        },
+        component_of,
+    )
+}
+
 // ------------------------------------------------------------------- render
 
 #[derive(Debug, Clone)]
@@ -1781,6 +1813,81 @@ mod tests {
         let focused = focus(&merged);
         assert!(focused.components.is_empty());
         assert_eq!(focused.omitted, 3);
+    }
+
+    #[test]
+    fn zoom_draws_only_changed_classes_and_members_inside_changed_components() {
+        let (base_files, manifests) = monolith();
+        let mut head_files = base_files.clone();
+        // Db gains ping(); Router (in api, unchanged component) is untouched.
+        head_files[2].1 =
+            "class Db:\n    def ping(self): ...\n    def close(self): ...\n".to_owned();
+        let split = ["svc/src/svc".to_owned()];
+        let base = build(&base_files, &manifests, &split).unwrap();
+        let head = build(&head_files, &manifests, &split).unwrap();
+        let merged = diff(&base, &head);
+
+        let (classes, component_of) = zoom(&merged);
+        let names: Vec<&str> = classes
+            .classes
+            .iter()
+            .map(|c| c.qualified.as_str())
+            .collect();
+        assert_eq!(names, vec!["svc.src.svc.store.db.Db"], "{names:?}");
+        assert_eq!(component_of["svc.src.svc.store.db.Db"], "store");
+
+        let out = crate::mermaid::render(
+            &classes,
+            &crate::mermaid::RenderOptions {
+                grouping: crate::mermaid::Grouping::Component,
+                component_of,
+                changed_members_only: true,
+                ..Default::default()
+            },
+        );
+        assert!(out.contains("namespace store {"), "{out}");
+        assert!(out.contains("+ping() ✚"), "{out}");
+        assert!(out.contains("+close() ✚"), "{out}");
+        assert!(!out.contains("Router"), "{out}");
+    }
+
+    #[test]
+    fn zoom_hides_unchanged_members_behind_a_count() {
+        let files_base = pairs(&[(
+            "svc/src/svc/store/db.py",
+            "class Db:\n    def a(self): ...\n    def b(self): ...\n    def c(self): ...\n",
+        )]);
+        let files_head = pairs(&[(
+            "svc/src/svc/store/db.py",
+            "class Db:\n    def a(self): ...\n    def b(self): ...\n    def c(self): ...\n    def d(self): ...\n",
+        )]);
+        let manifests = pairs(&[("svc/pyproject.toml", "[project]\nname = \"svc\"\n")]);
+        let split = ["svc/src/svc".to_owned()];
+        let merged = diff(
+            &build(&files_base, &manifests, &split).unwrap(),
+            &build(&files_head, &manifests, &split).unwrap(),
+        );
+        let (classes, component_of) = zoom(&merged);
+        let out = crate::mermaid::render(
+            &classes,
+            &crate::mermaid::RenderOptions {
+                grouping: crate::mermaid::Grouping::Component,
+                component_of,
+                changed_members_only: true,
+                ..Default::default()
+            },
+        );
+        assert!(out.contains("+d() ✚"), "{out}");
+        assert!(out.contains("… 3 unchanged members"), "{out}");
+        assert!(!out.contains("+a()"), "{out}");
+    }
+
+    #[test]
+    fn zoom_of_an_unchanged_diff_is_empty() {
+        let (files, manifests) = monolith();
+        let graph = build(&files, &manifests, &["svc/src/svc".to_owned()]).unwrap();
+        let (classes, _) = zoom(&diff(&graph, &graph));
+        assert!(classes.classes.is_empty());
     }
 
     #[test]

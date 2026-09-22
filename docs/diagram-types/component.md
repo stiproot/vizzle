@@ -463,11 +463,37 @@ because `orchestrator` is a hub with twenty neighbours; a tighter mode
 (changed components and changed edges only) is the next step if reviewers
 find neighbours noise rather than signal.
 
+### 6.4 Zoom: the classes inside the changed components (`--zoom FILE`)
+
+Mermaid draws one diagram type per fence: a `flowchart` cannot hold a
+`classDiagram`, so class detail cannot nest inside a component box the way
+the HTML view drills down. The zoom is the same drill-down as a **second
+diagram**: a `classDiagram` with one `namespace` per changed component,
+holding only the classes that changed, and inside each class only the
+members that changed (✚ ✖ ✱) plus one row saying `… N unchanged members`.
+Relations among the drawn classes are kept. Boundary components and
+unchanged components contribute nothing. When the diff changed nothing, the
+zoom has no classes, and the sidecar says so (`zoom.classes: 0`) so a
+consumer can leave it out.
+
+Why changed members only: a 300-method class with two new methods is
+otherwise 300 rows of context around two signals, and the class diagram's
+whole-file context is what put the class-level diff of a service at 204k
+characters. Module boxes are kept here (unlike the class diagram's default):
+a changed migration or script is module-level functions, and it belongs in
+the picture.
+
+Measured on PR #17682: 5 changed classes across 3 changed components, 14
+changed members, 2,752 characters. `Worker` shows its two new methods and
+"… 300 unchanged members". Read with the focused component diagram above it,
+the comment answers both questions a reviewer has: what part of the shape
+moved, and what exactly moved inside it.
+
 ## 7. CLI surface
 
 ```sh
 vizzle component <repo> [-o out.mmd|out.html] [--split DIR] [flags]     # full graph
-vizzle diff <repo> --type component [--base ... --head ...] [--split DIR] [--focus] [--stats verdict.json]
+vizzle diff <repo> --type component [--base ... --head ...] [--split DIR] [--focus] [--zoom classes.mmd] [--stats verdict.json]
 vizzle serve <repo> --type component [--diff]
 ```
 
@@ -482,8 +508,10 @@ so existing invocations are untouched. `--stats FILE` (diff only, §6) writes th
 change verdict and rendered size as JSON for tooling. `--split DIR` (§3.4, on
 `component` and `diff`; repeatable; spelled relative to the walk root, or on
 `diff` also relative to the scope like `-E`) and `--focus` (§6.3, `diff` only)
-are the two knobs for a single-manifest service. `serve` does not take
-`--split` yet.
+are the two knobs for a single-manifest service; `--zoom FILE` (§6.4, `diff`,
+mermaid only) writes the class-level view beside the component diagram, and
+`--stats` then carries `zoom: {classes, chars, oversized}`. `serve` does not
+take `--split` yet.
 
 ## 8. Future: provided interfaces
 

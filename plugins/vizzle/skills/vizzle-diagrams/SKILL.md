@@ -122,6 +122,7 @@ uvx vizzle diff <path> --type component -E '**/tests/fixtures/**'   # drop fixtu
 uvx vizzle diff <path> --type component --classes        # include class detail in HTML
 uvx vizzle diff <path> --type component -o d.mmd --stats verdict.json   # + machine-readable verdict
 uvx vizzle diff <path> --type component --split <path>/src/<pkg> --focus  # one-manifest service: see below
+uvx vizzle diff <path> --type component --split <dir> --focus -o shape.mmd --zoom inside.mmd   # + the classes that changed
 ```
 
 **One manifest, many subsystems?** If the repo (or the path) is a single
@@ -132,6 +133,10 @@ component, and `pkg.sub.mod` imports resolve to `sub`. Then add `--focus` to a
 diff so it draws only the changed components, changed edges and their
 neighbours, and states how many it left out. `vizzle component <path> --split
 <dir>` shows the same split without a diff.
+
+Then `--zoom FILE` writes a second diagram: the changed classes inside the
+changed components, changed members only, one namespace per component. Shape
+first, detail second; the two together are the review.
 
 `--base` is resolved to the fork point (`git merge-base`) automatically, so
 `--base main` on a branch describes the branch, not what `main` gained since.
