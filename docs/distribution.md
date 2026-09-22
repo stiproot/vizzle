@@ -244,8 +244,10 @@ not worth pursuing — the rename is done and cost 214 lines.
 
 **Consequences already absorbed:** crates `vizzle-core` / `vizzle-py`, PyPI
 `vizzle` / `vizzle-core`, Python modules `vizzle_core` / `vizzle_cli`, the
-frontend global `window.vizzle`, and the Mermaid classDefs `vizzleAdded` /
-`vizzleRemoved` / `vizzleModified`. The shared assets keep their `viz-core.*`
+frontend global `window.vizzle`. The Mermaid classDefs are the one place the brand was
+**taken back out** (2026-09-22): they are `diffAdded` / `diffRemoved` / `diffModified` /
+`diffBoundary`, because that text lands in diagram source consumers post to pull requests,
+where a tool name is noise for the reader. The shared assets keep their `viz-core.*`
 names — `viz` was never the brand.
 
 ## 4. Decision: one distribution, not two

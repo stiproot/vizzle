@@ -150,7 +150,7 @@ Drop `--type component` for a class-level diff of what you touched.
 JSON: `changed` (bool), `changes` (`added`/`removed`/`modified` counts),
 `chars` (rendered size) and, for mermaid, `mermaidLimit` and `oversized`. Never
 decide "did anything change" or "will this fit in a comment" by searching the
-diagram text for `vizzleAdded` or a `✚`: those are rendering choices and can
+diagram text for `diffAdded` or a `✚`: those are rendering choices and can
 change in any release, and a script keyed on them fails silently as "no
 change".
 
