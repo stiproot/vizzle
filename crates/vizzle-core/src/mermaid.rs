@@ -61,6 +61,18 @@ pub struct RenderOptions {
     /// Emit inheritance edges to types that were not found in the parsed set
     /// (mermaid will auto-create empty nodes for them).
     pub include_externals: bool,
+    /// Say which file each class lives in (component.md §6.4): the file's
+    /// base name shares the stereotype line (`<<enumeration · run.py>>`, or
+    /// `<<worker.py>>` for a plain class), and a module box is titled by its
+    /// file. For a diagram grouped by component, where several files sit in
+    /// one namespace and a reader cannot otherwise tell which class came
+    /// from which.
+    pub show_files: bool,
+    /// How much of a signature each member row carries. Typed is the
+    /// exhaustive default; names-only is for a diagram people read rather
+    /// than mine, where a twelve-parameter typed signature is a wall of text
+    /// (curated-diagrams.md §5.1, component.md §6.4).
+    pub params: Params,
     /// Mermaid layout direction (TB, LR, ...).
     pub direction: Option<String>,
     pub title: Option<String>,
@@ -71,6 +83,8 @@ impl Default for RenderOptions {
         Self {
             show_members: true,
             show_modules: false,
+            show_files: false,
+            params: Params::Typed,
             grouping: Grouping::default(),
             component_of: HashMap::new(),
             changed_members_only: false,
@@ -234,10 +248,13 @@ fn write_class(
     indent: &str,
 ) {
     let id = &ids[class.qualified.as_str()];
-    let label = if opts.grouping == Grouping::None {
-        class.qualified.clone()
-    } else {
-        class.name.clone()
+    // An in-memory graph has no file to name; the option is then a no-op
+    // rather than an empty stereotype.
+    let file = (opts.show_files && !class.file.is_empty()).then(|| class.file_name());
+    let label = match file {
+        Some(file) if class.is_module_box() => file.to_owned(),
+        _ if opts.grouping == Grouping::None => class.qualified.clone(),
+        _ => class.name.clone(),
     };
     let mut label = escape_label(&label);
     if diff_mode {
@@ -252,20 +269,30 @@ fn write_class(
         Some(_) => format!(":::{}", palette::MERMAID_CONTEXT),
         None => String::new(),
     };
-    let has_body = class.annotation.is_some() || (opts.show_members && !class.members.is_empty());
+    // Mermaid draws one stereotype line per class, so the file shares it with
+    // the UML stereotype when the class has one. A module box is already
+    // titled by its file, and keeps `<<module>>` alone.
+    let annotation = match (&class.annotation, file) {
+        (Some(_), Some(_)) if class.is_module_box() => class.annotation.clone(),
+        (Some(stereotype), Some(file)) => Some(format!("{stereotype} · {file}")),
+        (None, Some(file)) => Some(file.to_owned()),
+        (stereotype, None) => stereotype.clone(),
+    };
+    let has_body =
+        annotation.is_some() || (opts.show_members && class.drawn_members().next().is_some());
     if !has_body {
         let _ = writeln!(out, "{indent}class {id}[\"{label}\"]{lens}");
         return;
     }
 
     let _ = writeln!(out, "{indent}class {id}[\"{label}\"]{lens} {{");
-    if let Some(annotation) = &class.annotation {
+    if let Some(annotation) = &annotation {
         let _ = writeln!(out, "{indent}    <<{annotation}>>");
     }
     if opts.show_members {
         let changed_only = opts.changed_members_only && diff_mode;
         let mut hidden = 0usize;
-        for member in &class.members {
+        for member in class.drawn_members() {
             if changed_only && member.change == ChangeKind::Unchanged {
                 hidden += 1;
                 continue;
@@ -273,7 +300,7 @@ fn write_class(
             let _ = writeln!(
                 out,
                 "{indent}    {}",
-                member_row(member, diff_mode, Params::Typed)
+                member_row(member, diff_mode, opts.params)
             );
         }
         if hidden > 0 {
@@ -290,8 +317,8 @@ fn write_class(
 /// How much of a signature a member line carries. An exhaustive diagram wants
 /// the types; a curated one is read by people and wants the shape
 /// (curated-diagrams.md §5.1).
-#[derive(Clone, Copy, PartialEq)]
-pub(crate) enum Params {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Params {
     Typed,
     NamesOnly,
 }
@@ -538,5 +565,71 @@ mod tests {
         let out = render(&merged, &RenderOptions::default());
         assert!(out.contains("classDef diffAdded"));
         assert!(out.contains("cssClass \"m_B\" diffAdded"));
+    }
+
+    #[test]
+    fn show_files_puts_the_file_on_the_stereotype_line() {
+        let graph = crate::parse::parse_files(&[(
+            "pkg/run.py".to_owned(),
+            "from enum import Enum\nclass FailureClass(Enum):\n    A = 1\nclass Plain:\n    x: int\nLIMIT = 3\n".to_owned(),
+        )])
+        .unwrap();
+        let out = render(
+            &graph,
+            &RenderOptions {
+                show_modules: true,
+                show_files: true,
+                ..Default::default()
+            },
+        );
+        // A stereotype shares the line with the file; a plain class gets the
+        // file alone; a module box is titled by its file and keeps <<module>>.
+        assert!(out.contains("<<enumeration · run.py>>"), "{out}");
+        assert!(out.contains("<<run.py>>"), "{out}");
+        assert!(out.contains("class pkg_run[\"run.py\"] {"), "{out}");
+        assert!(out.contains("<<module>>"), "{out}");
+        // Off by default, so every existing diagram is unchanged.
+        let plain = render(
+            &graph,
+            &RenderOptions {
+                show_modules: true,
+                ..Default::default()
+            },
+        );
+        assert!(!plain.contains("run.py"), "{plain}");
+    }
+
+    #[test]
+    fn names_only_params_drop_the_types_but_keep_the_return() {
+        let graph = parse_file(
+            "m.py",
+            "class A:\n    def go(self, issue: IssueRecord, loud: bool = False) -> str: ...\n",
+        )
+        .unwrap();
+        let out = render(
+            &graph,
+            &RenderOptions {
+                params: Params::NamesOnly,
+                ..Default::default()
+            },
+        );
+        assert!(out.contains("+go(issue, loud) str"), "{out}");
+    }
+
+    #[test]
+    fn an_unchanged_private_module_function_is_not_drawn() {
+        let graph = parse_file("m.py", "def _helper(): ...\ndef api(): ...\n").unwrap();
+        let out = render(
+            &graph,
+            &RenderOptions {
+                show_modules: true,
+                ..Default::default()
+            },
+        );
+        assert!(out.contains("+api()"), "{out}");
+        assert!(
+            !out.contains("_helper"),
+            "not module surface (class.md §2.5): {out}"
+        );
     }
 }

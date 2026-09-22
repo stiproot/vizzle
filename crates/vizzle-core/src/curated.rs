@@ -114,10 +114,12 @@ fn members_for<'a>(entry: &Entry, class: &'a Class) -> Result<Vec<&'a Member>> {
         .flatten()
         .collect();
     if wanted.is_empty() {
-        return Ok(class.members.iter().collect());
+        return Ok(class.drawn_members().collect());
     }
-    let by_name: HashMap<&str, &Member> =
-        class.members.iter().map(|m| (m.name.as_str(), m)).collect();
+    let by_name: HashMap<&str, &Member> = class
+        .drawn_members()
+        .map(|m| (m.name.as_str(), m))
+        .collect();
     wanted
         .iter()
         .map(|name| {

@@ -147,8 +147,12 @@ neighbours, and states how many it left out. `vizzle component <path> --split
 <dir>` shows the same split without a diff.
 
 Then `--zoom FILE` writes a second diagram: the changed classes inside the
-changed components, changed members only, one namespace per component. Shape
-first, detail second; the two together are the review.
+changed components, changed members only, one namespace per component, every
+box naming its file on the stereotype line (`<<enumeration · run.py>>`). A
+method whose *body* changed counts as changed, so a bug fix that touches no
+signature still shows where it landed. The `--stats` sidecar's `edges` block
+says whether any dependency was added or removed; when none was, the zoom is
+the review and the component diagram only says "nothing rewired".
 
 `--base` is resolved to the fork point (`git merge-base`) automatically, so
 `--base main` on a branch describes the branch, not what `main` gained since.
@@ -197,6 +201,8 @@ typed members, and inheritance, association, and dependency edges. A
 one it could resolve.
 
 **Diff output** marks every element: `✚` added, `✖` removed, `✱` modified.
+A member is modified when its signature *or its body* changed, so a method
+rewritten behind the same signature is `✱` and a docstring-only edit is too.
 Unchanged elements in touched files appear as context so the change keeps its
 surroundings.
 

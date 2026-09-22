@@ -860,6 +860,12 @@ def test_component_diff_zoom_draws_changed_classes_with_changed_members_only(mon
     assert stats["zoom"]["classes"] == 1
     assert stats["zoom"]["chars"] == len(zoom)
     assert stats["zoom"]["oversized"] is False
+    # Router gained a method; no import changed. A consumer deciding whether to
+    # draw the component diagram at all reads this, not the component counts.
+    assert stats["edges"] == {"added": 0, "removed": 0, "modified": 0}
+    assert stats["changes"]["modified"] == 1
+    # Every box says which file it came from, on the stereotype line.
+    assert "<<routes.py>>" in zoom, zoom
 
 
 def test_component_diff_zoom_of_no_change_has_no_classes(monolith: Path, tmp_path: Path) -> None:
