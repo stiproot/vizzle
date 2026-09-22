@@ -124,6 +124,10 @@ bash scripts/check-rulesets.sh            # ruleset drift; requires authenticate
 
 - **Run it against a real repo**, not just fixtures. `~/code/h` is the standing
   target: big enough to expose scale and layout problems that fixtures never do.
+  From another repository, run the checkout directly —
+  `uv run --project <this checkout> vizzle …` — rather than releasing to find
+  out (`docs/distribution.md` §2.2b). Rendering a change means looking at it:
+  `vizzle render` to PNG, then open the PNG.
 - **Look at HTML output.** Layout bugs (overlapping boxes, oversized arrows,
   unreadable density) are invisible to unit tests. Drive the page headless and
   screenshot it; check the console for errors while you are there.

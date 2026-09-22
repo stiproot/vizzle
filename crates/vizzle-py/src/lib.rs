@@ -10,11 +10,17 @@ fn to_py_err(err: anyhow::Error) -> PyErr {
     PyValueError::new_err(format!("{err:#}"))
 }
 
-fn selection(include: Vec<String>, exclude: Vec<String>, langs: Vec<String>) -> SelectOptions {
+fn selection(
+    include: Vec<String>,
+    exclude: Vec<String>,
+    langs: Vec<String>,
+    splits: Vec<String>,
+) -> SelectOptions {
     SelectOptions {
         include,
         exclude,
         langs,
+        splits,
     }
 }
 
@@ -32,6 +38,7 @@ fn options(
         show_modules,
         grouping: Grouping::parse(grouping).map_err(PyValueError::new_err)?,
         component_of: Default::default(),
+        changed_members_only: false,
         include_externals,
         direction,
         title,
@@ -70,6 +77,7 @@ fn class_diagram_from_dir(
         include,
         exclude,
         langs,
+        splits: vec![],
     };
     let render = options(
         show_members,
@@ -143,7 +151,7 @@ fn class_diagram_diff(
     include_externals: bool,
     direction: Option<String>,
     title: Option<String>,
-) -> PyResult<(String, String)> {
+) -> PyResult<(String, String, Option<String>)> {
     let render = options(
         show_members,
         show_modules,
@@ -152,16 +160,28 @@ fn class_diagram_diff(
         direction,
         title,
     )?;
-    let select = selection(include, exclude, langs);
+    let select = selection(include, exclude, langs, vec![]);
     let diagram =
         vc::diff_diagram(&base_files, &head_files, &select, &render).map_err(to_py_err)?;
     Ok(diff_pair(diagram))
 }
 
-/// `(mermaid, changes_json)`: the diagram and its verdict, as the CLI wants them.
-fn diff_pair(diagram: vc::DiffDiagram) -> (String, String) {
-    let changes = vc::export::change_counts_json(&diagram.changes).to_string();
-    (diagram.mermaid, changes)
+/// `(mermaid, verdict_json, zoom)`: the diagram, its verdict and the optional
+/// class-level zoom, as the CLI wants them. The verdict is the change counts
+/// plus `omitted` (components a focus pass left out) and `zoomClasses`.
+fn diff_pair(diagram: vc::DiffDiagram) -> (String, String, Option<String>) {
+    let mut verdict = vc::export::change_counts_json(&diagram.changes);
+    verdict["omitted"] = diagram.omitted.into();
+    verdict["zoomClasses"] = diagram.zoom_classes.into();
+    (diagram.mermaid, verdict.to_string(), diagram.zoom)
+}
+
+fn diff_view(scope: Option<String>, focus: bool, zoom: bool) -> vc::DiffView {
+    vc::DiffView {
+        scope: scope.unwrap_or_default(),
+        focus,
+        zoom,
+    }
 }
 
 fn component_options(
@@ -188,6 +208,7 @@ fn component_options(
     include = vec![],
     exclude = vec![],
     langs = vec![],
+    splits = vec![],
     group = true,
     weights = false,
     include_externals = false,
@@ -200,6 +221,7 @@ fn component_diagram_from_dir(
     include: Vec<String>,
     exclude: Vec<String>,
     langs: Vec<String>,
+    splits: Vec<String>,
     group: bool,
     weights: bool,
     include_externals: bool,
@@ -210,6 +232,7 @@ fn component_diagram_from_dir(
         include,
         exclude,
         langs,
+        splits,
     };
     let render = component_options(group, weights, include_externals, direction, title);
     vc::component_diagram_from_dir(std::path::Path::new(root), &select, &render).map_err(to_py_err)
@@ -217,18 +240,20 @@ fn component_diagram_from_dir(
 
 /// Export the component graph under `root` as JSON (for external renderers).
 #[pyfunction]
-#[pyo3(signature = (root, *, include = vec![], exclude = vec![], langs = vec![], classes = true))]
+#[pyo3(signature = (root, *, include = vec![], exclude = vec![], langs = vec![], splits = vec![], classes = true))]
 fn component_json_from_dir(
     root: &str,
     include: Vec<String>,
     exclude: Vec<String>,
     langs: Vec<String>,
+    splits: Vec<String>,
     classes: bool,
 ) -> PyResult<String> {
     let select = SelectOptions {
         include,
         exclude,
         langs,
+        splits,
     };
     vc::component_json_from_dir(std::path::Path::new(root), &select, classes).map_err(to_py_err)
 }
@@ -245,6 +270,9 @@ fn component_json_from_dir(
     include = vec![],
     exclude = vec![],
     langs = vec![],
+    splits = vec![],
+    focus = false,
+    zoom = false,
     group = true,
     weights = false,
     include_externals = false,
@@ -261,23 +289,26 @@ fn component_diagram_diff(
     include: Vec<String>,
     exclude: Vec<String>,
     langs: Vec<String>,
+    splits: Vec<String>,
+    focus: bool,
+    zoom: bool,
     group: bool,
     weights: bool,
     include_externals: bool,
     direction: Option<String>,
     title: Option<String>,
     scope: Option<String>,
-) -> PyResult<(String, String)> {
+) -> PyResult<(String, String, Option<String>)> {
     let render = component_options(group, weights, include_externals, direction, title);
-    let select = selection(include, exclude, langs);
-    let scope_path = scope.as_deref().unwrap_or("");
+    let select = selection(include, exclude, langs, splits);
+    let view = diff_view(scope, focus, zoom);
     let diagram = vc::component_diff_diagram(
         &base_files,
         &base_manifests,
         &head_files,
         &head_manifests,
         &select,
-        scope_path,
+        &view,
         &render,
     )
     .map_err(to_py_err)?;
@@ -295,6 +326,8 @@ fn component_diagram_diff(
     include = vec![],
     exclude = vec![],
     langs = vec![],
+    splits = vec![],
+    focus = false,
     classes = true,
     scope = None,
 ))]
@@ -307,18 +340,20 @@ fn component_json_diff(
     include: Vec<String>,
     exclude: Vec<String>,
     langs: Vec<String>,
+    splits: Vec<String>,
+    focus: bool,
     classes: bool,
     scope: Option<String>,
 ) -> PyResult<String> {
-    let select = selection(include, exclude, langs);
-    let scope_path = scope.as_deref().unwrap_or("");
+    let select = selection(include, exclude, langs, splits);
+    let view = diff_view(scope, focus, false);
     vc::component_json_diff(
         &base_files,
         &base_manifests,
         &head_files,
         &head_manifests,
         &select,
-        scope_path,
+        &view,
         classes,
     )
     .map_err(to_py_err)
@@ -338,6 +373,7 @@ fn curated_diagram_from_dir(
         include,
         exclude,
         langs,
+        splits: vec![],
     };
     vc::curated_from_dir(std::path::Path::new(root), &select, manifest).map_err(to_py_err)
 }
@@ -362,6 +398,7 @@ fn graph_json_from_dir(
         include,
         exclude,
         langs,
+        splits: vec![],
     };
     vc::json_from_dir(std::path::Path::new(root), &select).map_err(to_py_err)
 }
@@ -376,7 +413,7 @@ fn graph_json_diff(
     exclude: Vec<String>,
     langs: Vec<String>,
 ) -> PyResult<String> {
-    let select = selection(include, exclude, langs);
+    let select = selection(include, exclude, langs, vec![]);
     vc::json_diff(&base_files, &head_files, &select).map_err(to_py_err)
 }
 

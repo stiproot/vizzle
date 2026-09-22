@@ -106,6 +106,37 @@ and requires zero configuration for conventional repos.
 `-I`/`-E` include/exclude globs apply *before* detection, so `-E 'apps/*'`
 removes those components entirely.
 
+### 3.4 Splitting a package into its subsystems (`--split DIR`)
+
+Rule 1 draws a manifest as one box. For a workspace of many small packages
+that is the architecture. For a service that is **one manifest but many
+subsystems** — a Python package with `orchestrator/`, `persistence/`, `api/`
+under `src/<pkg>/` — it is the opposite: every change lands in the same box,
+and the diagram can only ever say "the service changed".
+
+`--split DIR` (repeatable) refines detection below rule 1: each direct child
+directory of DIR that owns parsed files is a component of its own (`DIR/<child>`,
+named `<child>`, grouped under DIR), and files sitting directly in DIR form a
+component at DIR itself. The enclosing manifest component keeps whatever it
+owned outside DIR. Children spell their Python imports from the enclosing
+component's import root (its `src/` for a src layout), which is what makes
+`pkg.persistence.models` resolve to `persistence` (§4).
+
+Why a flag and not a rule: where the subsystems live is the reader's
+judgement, exactly like the scope. A rule that split every single-package
+manifest would redraw every Python repository's diagram overnight, and would
+guess wrong for packages whose first directory level is not architecture.
+The split rides the legend and the trailer (`split <dir>`) like a selection,
+because both are the reader's statement of what counts as architecture.
+
+Measured on the kikimora harness (2026-09-22, PR #17682): without a split, 5
+components, one of them the whole service, marked modified. With
+`--split harness/kikimora/src/kikimora`: 39 components and 241 dependencies;
+the PR modifies `orchestrator` and `persistence` and rewires nothing.
+
+The root (`--split .`) is refused: the root's own top-level directories are
+already components under rule 3.
+
 ### 3.2 Naming and grouping
 
 - `name` comes from the manifest (`package.json .name`,
@@ -138,7 +169,7 @@ only when it **resolves to another detected component**:
 |---|---|
 | TS: bare specifier `@h/core`, `@h/core/dist/x` | Match longest prefix against detected components' manifest names (workspace deps) |
 | TS: relative `../../packages/js/core/src/x` | Resolve path; owning component = innermost manifest (§3.1) |
-| Python: absolute `from agent_core.runner import X` | Match first segment(s) against components' importable package names (from `pyproject.toml` / top-level package dirs) |
+| Python: absolute `from agent_core.runner import X` | Match the **longest dotted prefix** of the specifier against the module paths components own (every prefix of every file's module path, spelled from its import root). A prefix two components share resolves to nothing rather than to either; a prefix nobody owns is external |
 | Python: relative `from ..x import y` | Resolve against the file's own path |
 | Anything else (stdlib, npm, PyPI) | External — dropped, or one `«external»` node per package under `--externals` |
 
@@ -291,6 +322,16 @@ against:
 Shipped in 0.6.0. A consumer that reads the diagram text for any of this is
 coupled to the renderer and will break silently when it changes.
 
+**The base is the fork point, not the base branch's tip.** A pull request's
+base is a moving branch. `vizzle diff --base main` resolves `main` to
+`git merge-base main <head>` before either revision is collected, for both
+diagram types and for `serve --diff`, so commits the base gained since the
+branch forked are drawn as unchanged context, not as this change. For a linear
+history the fork point *is* the base, so `--base HEAD~20` is unaffected. The
+title keeps the reader's spelling (`changes vs main`). Measured on PR #17682
+against a `main` that had moved 58 commits: 11 components read as modified
+against the tip, 3 against the fork point — and only the 3 were the PR's.
+
 ### 6.1 Path-based scoping and boundary detection
 
 `vizzle diff --type component <path>` accepts a path but **must produce a diagram of
@@ -369,9 +410,9 @@ only excluded paths renders as *no structural change*. The diagram claims to
 describe the selected architecture; a marker for a component it does not draw
 would be a marker pointing at nothing. This is what a per-PR consumer wants
 from `-E '**/tests/fixtures/**'`: a fixture-only change should not light the
-"shape changed" signal (`pr-diagram.yml` greps for `vizzle(Added|Removed|
-Modified)`). It is arguably a lie about the *repository*; it is the truth
-about the *selection*, which is why the selection is always stated.
+"shape changed" signal (`--stats` reports `changed: false`). It is arguably a
+lie about the *repository*; it is the truth about the *selection*, which is
+why the selection is always stated.
 
 **The legend states the selection.** Every renderer carries the active
 selection so a reader knows what the diagram is not claiming: the HTML legend
@@ -393,11 +434,66 @@ components / 62 dependencies; `-E 'apps/**'` gives 16 / 17. Scoped to
 `workflow-svc` boundary node and its edge, giving 5 / 4 with the trailer
 `%% vizzle: selection: exclude apps/**`.
 
+### 6.3 Focus (`--focus`)
+
+A split service has tens of components and hundreds of edges; drawn whole,
+a diff is a hairball in which the two changed boxes are hard to find.
+`--focus` keeps what a reader of the change needs and drops the rest:
+
+- every changed component (added, removed or modified);
+- every added or removed edge, with both its endpoints;
+- every unchanged component an existing edge ties to a changed one — the
+  neighbours, because a change to `persistence` matters to whoever imports it,
+  and an edge with one end missing tells the reader nothing;
+- the edges among those.
+
+Everything else is left out and **counted**: the trailer says
+`focus: N unchanged component(s) not drawn`, and `stats.omitted` / the
+`--stats` sidecar carry N, so a consumer can say so in prose. Boundary nodes
+carry no change of their own and survive only as neighbours. When nothing
+changed, focus draws nothing and counts everything; `--stats` already says
+`changed: false`.
+
+Focus runs last — after selection, diff and scope — because it is a view
+choice over a graph that has already been built in full.
+
+Measured on PR #17682 with the split above: whole graph 39 components / 241
+edges, 27,700 chars; focused 26 / 48, 7,400 chars, 13 not drawn. Still busy,
+because `orchestrator` is a hub with twenty neighbours; a tighter mode
+(changed components and changed edges only) is the next step if reviewers
+find neighbours noise rather than signal.
+
+### 6.4 Zoom: the classes inside the changed components (`--zoom FILE`)
+
+Mermaid draws one diagram type per fence: a `flowchart` cannot hold a
+`classDiagram`, so class detail cannot nest inside a component box the way
+the HTML view drills down. The zoom is the same drill-down as a **second
+diagram**: a `classDiagram` with one `namespace` per changed component,
+holding only the classes that changed, and inside each class only the
+members that changed (✚ ✖ ✱) plus one row saying `… N unchanged members`.
+Relations among the drawn classes are kept. Boundary components and
+unchanged components contribute nothing. When the diff changed nothing, the
+zoom has no classes, and the sidecar says so (`zoom.classes: 0`) so a
+consumer can leave it out.
+
+Why changed members only: a 300-method class with two new methods is
+otherwise 300 rows of context around two signals, and the class diagram's
+whole-file context is what put the class-level diff of a service at 204k
+characters. Module boxes are kept here (unlike the class diagram's default):
+a changed migration or script is module-level functions, and it belongs in
+the picture.
+
+Measured on PR #17682: 5 changed classes across 3 changed components, 14
+changed members, 2,752 characters. `Worker` shows its two new methods and
+"… 300 unchanged members". Read with the focused component diagram above it,
+the comment answers both questions a reviewer has: what part of the shape
+moved, and what exactly moved inside it.
+
 ## 7. CLI surface
 
 ```sh
-vizzle component <repo> [-o out.mmd|out.html] [flags]     # full graph
-vizzle diff <repo> --type component [--base ... --head ...] [--stats verdict.json]
+vizzle component <repo> [-o out.mmd|out.html] [--split DIR] [flags]     # full graph
+vizzle diff <repo> --type component [--base ... --head ...] [--split DIR] [--focus] [--zoom classes.mmd] [--stats verdict.json]
 vizzle serve <repo> --type component [--diff]
 ```
 
@@ -409,7 +505,13 @@ class detail (drill-down in the HTML view) is embedded; component diff defaults
 to `--no-classes` (class bodies are heavy; a reviewer asking "what rewired"
 typically does not expand them). `--type class` remains the default for `diff`/`serve`,
 so existing invocations are untouched. `--stats FILE` (diff only, §6) writes the
-change verdict and rendered size as JSON for tooling.
+change verdict and rendered size as JSON for tooling. `--split DIR` (§3.4, on
+`component` and `diff`; repeatable; spelled relative to the walk root, or on
+`diff` also relative to the scope like `-E`) and `--focus` (§6.3, `diff` only)
+are the two knobs for a single-manifest service; `--zoom FILE` (§6.4, `diff`,
+mermaid only) writes the class-level view beside the component diagram, and
+`--stats` then carries `zoom: {classes, chars, oversized}`. `serve` does not
+take `--split` yet.
 
 ## 8. Future: provided interfaces
 

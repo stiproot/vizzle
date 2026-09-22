@@ -62,6 +62,32 @@ vizzle serve ~/code/some-repo --diff --open
 **Reader:** someone who uses vizzle habitually, especially `vizzle serve`, where
 a long-lived process makes the per-invocation cost of `uvx` pointless.
 
+### 2.2b Trying an unreleased vizzle against another repository
+
+A consumer iterating on *how vizzle draws their repository* must not have to
+release vizzle to find out. The checkout is the tool:
+
+```sh
+# in the vizzle checkout, after any Rust change (Python changes are live):
+uv sync --reinstall-package vizzle
+
+# anywhere else — the editable install runs from the branch you have checked out:
+uv run --project ~/code/repo/vizzle vizzle diff <repo/path> --type component ...
+```
+
+`uv run --project <vizzle checkout>` is the shim. It needs no install in the
+target repository and no change to what that repository pins; it is what a
+CI script's `vizzle` will be *after* the release, run today. A consumer's
+script should therefore let the command be overridden (an environment
+variable naming the vizzle command) so the whole pipeline — flags, sidecar,
+the comment it assembles — can be exercised against the local build, and the
+release becomes a pin bump rather than the first test.
+
+To *see* the output rather than read the source, `vizzle render <file.mmd>
+<out_dir>` produces a PNG through mermaid-cli. It needs a browser; on a Mac
+with Chrome installed:
+`PUPPETEER_EXECUTABLE_PATH="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"`.
+
 ### 2.3 CI, on a pull request — the widest reach
 
 **Reader:** the *second* audience, the one asking "what did this change do?" —

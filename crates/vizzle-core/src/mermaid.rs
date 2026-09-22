@@ -51,6 +51,10 @@ pub struct RenderOptions {
     /// Qualified class name to owning component name, for [`Grouping::Component`].
     /// Empty for every other grouping.
     pub component_of: HashMap<String, String>,
+    /// In diff mode, draw only the members that changed and one row saying
+    /// how many did not (component.md §6.4). A 300-member class with two
+    /// changed methods is otherwise 300 rows of context around two signals.
+    pub changed_members_only: bool,
     /// Emit inheritance edges to types that were not found in the parsed set
     /// (mermaid will auto-create empty nodes for them).
     pub include_externals: bool,
@@ -66,6 +70,7 @@ impl Default for RenderOptions {
             show_modules: false,
             grouping: Grouping::default(),
             component_of: HashMap::new(),
+            changed_members_only: false,
             include_externals: false,
             direction: None,
             title: None,
@@ -237,12 +242,25 @@ fn write_class(
         let _ = writeln!(out, "{indent}    <<{annotation}>>");
     }
     if opts.show_members {
+        let changed_only = opts.changed_members_only && diff_mode;
+        let mut hidden = 0usize;
         for member in &class.members {
+            if changed_only && member.change == ChangeKind::Unchanged {
+                hidden += 1;
+                continue;
+            }
             let _ = writeln!(
                 out,
                 "{indent}    {}",
                 member_row(member, diff_mode, Params::Typed)
             );
+        }
+        if hidden > 0 {
+            // A plain attribute row: no visibility sigil, no parens, so mermaid
+            // reads it as a field and draws it as text. The reader learns that
+            // the box is a window onto a larger class, not the whole of it.
+            let noun = if hidden == 1 { "member" } else { "members" };
+            let _ = writeln!(out, "{indent}    … {hidden} unchanged {noun}");
         }
     }
     let _ = writeln!(out, "{indent}}}");

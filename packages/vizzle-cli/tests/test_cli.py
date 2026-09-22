@@ -704,3 +704,185 @@ def test_class_diff_stats_for_html(repo: Path, tmp_path: Path) -> None:
     assert stats["changes"] == {"added": 1, "removed": 1, "modified": 0}
     assert stats["chars"] == len((out / "d.html").read_text(encoding="utf-8"))
     assert "mermaidLimit" not in stats and "oversized" not in stats
+
+
+@pytest.fixture()
+def monolith(tmp_path: Path) -> Path:
+    """One pyproject, src layout, a package with two subpackages and a root module."""
+
+    def write(rel: str, contents: str) -> None:
+        path = tmp_path / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(contents)
+
+    git(tmp_path, "init")
+    write("svc/pyproject.toml", '[project]\nname = "svc"\n')
+    write("svc/src/svc/__init__.py", "")
+    write("svc/src/svc/main.py", "from svc.api.routes import Router\nclass App: ...\n")
+    write("svc/src/svc/api/__init__.py", "")
+    write("svc/src/svc/api/routes.py", "from svc.store.db import Db\nclass Router: ...\n")
+    write("svc/src/svc/store/__init__.py", "")
+    write("svc/src/svc/store/db.py", "class Db: ...\n")
+    write("svc/src/svc/audit/__init__.py", "")
+    write("svc/src/svc/audit/log.py", "class Log: ...\n")
+    git(tmp_path, "add", ".")
+    git(tmp_path, "commit", "-m", "base")
+    return tmp_path
+
+
+def test_component_split_turns_one_manifest_into_subpackages(monolith: Path) -> None:
+    whole = CliRunner().invoke(main, ["component", str(monolith)])
+    assert whole.exit_code == 0, whole.output
+    assert _component_count(whole.output) == 1
+
+    split = CliRunner().invoke(main, ["component", str(monolith), "--split", "svc/src/svc"])
+    assert split.exit_code == 0, split.output
+    assert _component_count(split.output) == 4, split.output
+    # Absolute self-imports resolve to the subpackage that owns them.
+    assert "c_svc_src_svc_api -.-> c_svc_src_svc_store" in split.output
+    assert "%% vizzle: selection: split svc/src/svc" in split.output
+
+
+def test_component_split_accepts_a_path_relative_to_the_walk_root(monolith: Path) -> None:
+    result = CliRunner().invoke(main, ["component", str(monolith / "svc"), "--split", "src/svc"])
+    assert result.exit_code == 0, result.output
+    assert _component_count(result.output) == 4, result.output
+
+
+def test_component_split_rejects_a_missing_directory(monolith: Path) -> None:
+    result = CliRunner().invoke(main, ["component", str(monolith), "--split", "svc/src/nowhere"])
+    assert result.exit_code != 0
+    assert "no such directory" in result.output
+
+
+def test_component_diff_split_and_focus_draw_the_change_and_its_neighbours(monolith: Path, tmp_path: Path) -> None:
+    (monolith / "svc/src/svc/store/db.py").write_text("class Db:\n    def ping(self): ...\n")
+    stats_path = tmp_path / "s.json"
+    result = CliRunner().invoke(
+        main,
+        ["diff", str(monolith), "--type", "component", "--split", "svc/src/svc", "--focus", "--stats", str(stats_path)],
+    )
+    assert result.exit_code == 0, result.output
+    # store changed; api imports it (neighbour); the root module and audit do not.
+    assert "<b>store ✱</b>" in result.output
+    assert "<b>api</b>" in result.output
+    assert "<b>audit" not in result.output
+    assert "%% vizzle: focus: 2 unchanged component(s) not drawn" in result.output
+    stats = _stats(stats_path)
+    assert stats["changed"] is True
+    assert stats["changes"] == {"added": 0, "removed": 0, "modified": 1}
+    assert stats["omitted"] == 2
+
+
+def test_diff_split_and_focus_need_the_component_type(monolith: Path) -> None:
+    result = CliRunner().invoke(main, ["diff", str(monolith), "--focus"])
+    assert result.exit_code != 0
+    assert "--type component only" in result.output
+
+
+def test_component_diff_measures_from_the_fork_point_not_the_base_tip(monolith: Path, tmp_path: Path) -> None:
+    """A base branch that moved on must not have its own changes drawn as the branch's."""
+    git(monolith, "branch", "-M", "main")
+    git(monolith, "checkout", "-q", "-b", "feature")
+    (monolith / "svc/src/svc/store/db.py").write_text("class Db:\n    def ping(self): ...\n")
+    git(monolith, "commit", "-qam", "feature: store")
+    git(monolith, "checkout", "-q", "main")
+    (monolith / "svc/src/svc/audit/log.py").write_text("class Log:\n    def flush(self): ...\n")
+    git(monolith, "commit", "-qam", "main moves on: audit")
+    git(monolith, "checkout", "-q", "feature")
+
+    stats_path = tmp_path / "s.json"
+    result = CliRunner().invoke(
+        main,
+        [
+            "diff",
+            str(monolith),
+            "--base",
+            "main",
+            "--head",
+            "feature",
+            "--type",
+            "component",
+            "--split",
+            "svc/src/svc",
+            "--stats",
+            str(stats_path),
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert "<b>store ✱</b>" in result.output
+    assert "<b>audit</b>" in result.output, "main's own change must read as unchanged context"
+    assert _stats(stats_path)["changes"] == {"added": 0, "removed": 0, "modified": 1}
+    assert "changes vs main" in result.output, "the title keeps the reader's spelling"
+
+
+def test_component_diff_zoom_draws_changed_classes_with_changed_members_only(monolith: Path, tmp_path: Path) -> None:
+    (monolith / "svc/src/svc/store/db.py").write_text("class Db:\n    def ping(self): ...\n\nclass Untouched: ...\n")
+    (monolith / "svc/src/svc/api/routes.py").write_text(
+        "from svc.store.db import Db\nclass Router:\n    def a(self): ...\n    def b(self): ...\n    def c(self): ...\n"
+    )
+    git(monolith, "commit", "-qam", "seed unchanged members")
+    (monolith / "svc/src/svc/api/routes.py").write_text(
+        "from svc.store.db import Db\nclass Router:\n    def a(self): ...\n"
+        "    def b(self): ...\n    def c(self): ...\n    def d(self): ...\n"
+    )
+    out = tmp_path / "out"
+    out.mkdir()
+    result = CliRunner().invoke(
+        main,
+        [
+            "diff",
+            str(monolith),
+            "--type",
+            "component",
+            "--split",
+            "svc/src/svc",
+            "--focus",
+            "-o",
+            str(out / "d.mmd"),
+            "--zoom",
+            str(out / "z.mmd"),
+            "--stats",
+            str(out / "s.json"),
+        ],
+    )
+    assert result.exit_code == 0, result.output
+
+    zoom = (out / "z.mmd").read_text(encoding="utf-8")
+    assert zoom.startswith("classDiagram") or "\nclassDiagram" in zoom, zoom
+    assert "namespace api {" in zoom
+    assert "+d() ✚" in zoom
+    assert "… 3 unchanged members" in zoom
+    # Db and Untouched did not change in this revision; store is not a changed component.
+    assert "Untouched" not in zoom and "namespace store" not in zoom, zoom
+
+    stats = _stats(out / "s.json")
+    assert stats["zoom"]["classes"] == 1
+    assert stats["zoom"]["chars"] == len(zoom)
+    assert stats["zoom"]["oversized"] is False
+
+
+def test_component_diff_zoom_of_no_change_has_no_classes(monolith: Path, tmp_path: Path) -> None:
+    out = tmp_path / "out"
+    out.mkdir()
+    result = CliRunner().invoke(
+        main,
+        [
+            "diff",
+            str(monolith),
+            "--type",
+            "component",
+            "--split",
+            "svc/src/svc",
+            "-o",
+            str(out / "d.mmd"),
+            "--zoom",
+            str(out / "z.mmd"),
+            "--stats",
+            str(out / "s.json"),
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    stats = _stats(out / "s.json")
+    assert stats["changed"] is False
+    assert stats["zoom"]["classes"] == 0
