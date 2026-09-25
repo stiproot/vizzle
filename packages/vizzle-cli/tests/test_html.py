@@ -13,7 +13,7 @@ def _graph_data(page: str) -> dict:
 def test_source_derived_names_cannot_break_the_script_block() -> None:
     # `<!--<script>` puts the HTML tokenizer into the state where the real
     # `</script>` no longer closes the block; `</script>` is the classic.
-    hostile = '<!--<script>x</script><script>alert(1)</script>'
+    hostile = "<!--<script>x</script><script>alert(1)</script>"
     graph_json = json.dumps({"classes": [{"name": hostile}], "relations": [], "stats": {}})
     page = html.build_html(graph_json, title="t")
     assert "<!--<script>" not in page
