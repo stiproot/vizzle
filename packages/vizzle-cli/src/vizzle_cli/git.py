@@ -16,6 +16,12 @@ class GitError(RuntimeError):
     pass
 
 
+# A revision comes from a flag, a workflow input, or one day a manifest, and
+# git would read `--output=...` in that position as an option. Everything after
+# this marker is a revision or a path, whatever it starts with (git >= 2.24).
+END_OF_OPTIONS = "--end-of-options"
+
+
 def _run(args: list[str], cwd: Path) -> bytes:
     result = subprocess.run(["git", *args], cwd=cwd, capture_output=True)
     if result.returncode != 0:
@@ -37,7 +43,7 @@ class ChangedFile:
 
 def changed_files(root: Path, base: str, head: str | None, pathspec: str | None) -> list[ChangedFile]:
     """`git diff --name-status` between base and head (worktree if head is None)."""
-    args = ["diff", "--name-status", "-M", "-z", base]
+    args = ["diff", "--name-status", "-M", "-z", END_OF_OPTIONS, base]
     if head:
         args.append(head)
     if pathspec:
@@ -76,7 +82,7 @@ def merge_base(root: Path, base: str, head: str) -> str | None:
     the fork point is what "what did this change" means for a branch.
     """
     try:
-        out = _run(["merge-base", base, head], cwd=root)
+        out = _run(["merge-base", END_OF_OPTIONS, base, head], cwd=root)
     except GitError:
         return None
     sha = out.decode(errors="replace").strip()
@@ -85,7 +91,7 @@ def merge_base(root: Path, base: str, head: str) -> str | None:
 
 def tree_paths(root: Path, ref: str) -> list[str]:
     """Every path in the tree at `ref`."""
-    out = _run(["ls-tree", "-r", "--name-only", "-z", ref], cwd=root)
+    out = _run(["ls-tree", "-r", "--name-only", "-z", END_OF_OPTIONS, ref], cwd=root)
     return [p.decode(errors="replace") for p in out.split(b"\0") if p]
 
 
@@ -132,7 +138,7 @@ def files_in_worktree(root: Path, paths: list[str]) -> list[tuple[str, str]]:
 def file_at_ref(root: Path, ref: str, path: str) -> str | None:
     """Contents of `path` at `ref`, or None if it does not exist there."""
     try:
-        return _run(["show", f"{ref}:{path}"], cwd=root).decode(errors="replace")
+        return _run(["show", END_OF_OPTIONS, f"{ref}:{path}"], cwd=root).decode(errors="replace")
     except GitError:
         return None
 

@@ -1015,6 +1015,8 @@ def serve_command(
     def on_error(message: str) -> None:
         click.echo(f"warning: {message}", err=True)
 
+    if not server.host_is_loopback(host):
+        on_error(f"--host {host} serves the structure of {path.resolve()} to every network this machine is on")
     server.serve(build_page, path.resolve(), host, port, on_ready, on_error)
 
 

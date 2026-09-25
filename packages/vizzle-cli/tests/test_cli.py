@@ -42,6 +42,20 @@ def repo(tmp_path: Path) -> Path:
     return tmp_path
 
 
+def test_an_option_shaped_revision_is_a_revision_not_an_option(repo: Path, tmp_path: Path) -> None:
+    # Handed to git bare, `--output=FILE` would be obeyed and write the diff
+    # to FILE. A revision is data wherever it comes from.
+    pwned = tmp_path.parent / f"{tmp_path.name}-pwned.txt"
+    for args in (
+        ["diff", str(repo), "--base", f"--output={pwned}"],
+        ["diff", str(repo), "--type", "component", "--base", f"--output={pwned}"],
+    ):
+        result = CliRunner().invoke(main, args)
+        assert result.exit_code != 0, result.output
+        assert not pwned.exists()
+        assert "Traceback" not in result.output
+
+
 def test_class_diagram(repo: Path) -> None:
     result = CliRunner().invoke(main, ["class", str(repo)])
     assert result.exit_code == 0, result.output
@@ -479,7 +493,7 @@ def test_render_raises_the_mermaid_text_cap(tmp_path):
 
 # Scoped managed documents: a manifest that names a path instead of symbols.
 # The point of the mode is that it catches an *addition*, which a curated
-# symbol list cannot. See docs/plans/scope-and-grouping.md.
+# symbol list cannot (docs/curated-diagrams.md §5.1).
 
 
 def _scoped_repo(tmp_path: Path, group: str = "module", extra: str = "") -> Path:

@@ -14,7 +14,7 @@ use std::hash::{Hash, Hasher};
 use serde_json::{json, Value};
 
 use crate::export::change_str;
-use crate::mermaid::{escape_label, sanitize_id};
+use crate::mermaid::{escape_label, frontmatter_title, sanitize_id};
 use crate::model::{ChangeCounts, ChangeKind, Class, CodeGraph, Import, Language};
 use crate::palette;
 use crate::parse;
@@ -1030,7 +1030,7 @@ fn node_id(path: &str) -> String {
 pub fn render_mermaid(graph: &ComponentGraph, opts: &ComponentRenderOptions) -> String {
     let mut out = String::new();
     if let Some(title) = &opts.title {
-        let _ = writeln!(out, "---\ntitle: {}\n---", escape_label(title));
+        let _ = writeln!(out, "---\ntitle: {}\n---", frontmatter_title(title));
     }
     let direction = opts.direction.as_deref().unwrap_or("LR");
     let _ = writeln!(out, "flowchart {direction}");
