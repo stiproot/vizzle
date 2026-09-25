@@ -29,12 +29,14 @@ env:
 jobs:
   # The version is stated once, in the root Cargo.toml. A tag that disagrees
   # with it would publish the wrong number under the right name, so fail loudly
-  # and early rather than after the matrix has burned twenty minutes.
+  # and early rather than after the matrix has burned twenty minutes. The same
+  # gate refuses a release whose plugin manifest or lock file was left behind.
   check-version:
     name: Tag matches Cargo version
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - run: bash scripts/bump-version.sh check
       - id: cargo
         run: |
           version=$(grep -m1 '^version = ' Cargo.toml | cut -d'"' -f2)
@@ -136,6 +138,26 @@ jobs:
             exit 1
           fi
           echo "sdist LICENSE ok"
+
+      # The README lives at the repository root and reaches the package through
+      # `readme = "../../README.md"`; maturin copies it into the sdist and
+      # embeds it as the long description. Without it PyPI shows "The author
+      # of this package has not provided a project description".
+      - name: sdist carries the project description
+        run: |
+          tarball=$(ls ${{ env.PROJECT_DIR }}/dist/*.tar.gz)
+          tmp=$(mktemp -d)
+          tar xzf "$tarball" -C "$tmp"
+          pkg_info=$(ls "$tmp"/*/PKG-INFO)
+          if ! grep -q '^Description-Content-Type: text/markdown' "$pkg_info"; then
+            echo "::error::PKG-INFO has no markdown long description — PyPI would show no project description"
+            exit 1
+          fi
+          if ! grep -q '^# vizzle$' "$pkg_info"; then
+            echo "::error::PKG-INFO long description does not contain the README heading"
+            exit 1
+          fi
+          echo "sdist project description ok"
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:

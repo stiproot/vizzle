@@ -5,6 +5,9 @@ build-backend = "maturin"
 [project]
 name = "vizzle"
 description = "UML visualization for git: Mermaid class diagrams from code, with diff highlighting"
+# The project's one README, at the repository root. Without this line PyPI
+# shows "The author of this package has not provided a project description".
+readme = "../../README.md"
 # Derived from the Cargo workspace version by maturin, so the version is stated
 # once for the whole project (docs/distribution.md §4).
 dynamic = ["version"]
@@ -17,6 +20,13 @@ dependencies = [
     "click>=8.1",
     "watchfiles>=1.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/stiproot/vizzle"
+Repository = "https://github.com/stiproot/vizzle"
+Documentation = "https://github.com/stiproot/vizzle#readme"
+Changelog = "https://github.com/stiproot/vizzle/releases"
+Issues = "https://github.com/stiproot/vizzle/issues"
 
 [project.scripts]
 vizzle = "vizzle_cli.cli:main"
