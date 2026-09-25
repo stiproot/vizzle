@@ -1,10 +1,16 @@
 # Scoping the component diff
 
-Status: **Implemented** — #21 merged 2026-09-15: scoping to in-scope + boundary neighbours,
-`--classes/--no-classes` (defaulting to `--no-classes` for the component type), Decisions A and B,
-and three call sites including `serve`. **Released as v0.3.0** on 2026-09-15. Raised by a consumer
-putting `vizzle diff --type component` in front of reviewers on every pull request.
+Status: **Complete** — #21 merged 2026-09-15, released as v0.3.0: the component diff is scoped
+to the path's components plus their `«boundary»` neighbours, and classes are opt-in on it. Raised
+by a consumer putting `vizzle diff --type component` in front of reviewers on every pull request.
 Established: 2026-09-14
+Archived: 2026-09-24
+
+Lifted to:
+- `docs/diagram-types/component.md` §6.1 — path scoping, the boundary rule, boundary nodes as
+  pure context, and the refusal of a path inside a component root (Decisions A and B, F1).
+- `crates/vizzle-core/src/palette.rs` — the boundary colour, read by both renderers.
+- `docs/diagram-types/component.md` §7 CLI surface — `--classes/--no-classes` and its default.
 
 ## 1. The premise
 

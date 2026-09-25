@@ -208,7 +208,7 @@ curated manifest is absent from the diagram, so `--check` reports current and
 the gate is silent about an addition it never knew to look for. A consumer
 running a curated manifest as a lint gate discovered this the hard way and
 worked around it with a bespoke regenerate-and-diff script; the scoped form is
-that workaround, moved here. See `docs/plans/scope-and-grouping.md`.
+that workaround, moved here.
 
 ## 5.2 The mermaid ceiling
 
@@ -241,6 +241,9 @@ this and named it as the blocker.
 vizzle doc <doc.md>...                  # regenerate the named docs
 vizzle doc --dir <path>                 # every *.md under path carrying a manifest
 vizzle doc --dir <path> --check         # verify, do not write
+vizzle doc ... [--root DIR]             # repo root that manifest `file` paths resolve
+                                        # against (default: the current directory)
+vizzle doc ... [-I glob] [-E glob] [-l python|typescript]   # narrow a scoped manifest's walk
 
 vizzle render <doc.md|dir|src.mmd> <out-dir> [-f png|svg]
 ```

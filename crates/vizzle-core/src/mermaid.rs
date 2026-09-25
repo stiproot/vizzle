@@ -107,8 +107,39 @@ pub(crate) fn sanitize_id(qualified: &str) -> String {
     id
 }
 
+/// A label is data, and mermaid reads it as syntax the moment it can: a quote
+/// closes the label, a newline (legal in a manifest `name`) ends the statement
+/// and starts another — a `click` or a `%%{init}%%` directive, say — and
+/// `<`, `>`, `{`, `}` are markup or structure. So quotes become apostrophes,
+/// control characters spaces, and the four are entity-encoded, which mermaid
+/// decodes back for display in every diagram type.
 pub(crate) fn escape_label(label: &str) -> String {
-    label.replace('"', "'")
+    let mut out = String::with_capacity(label.len());
+    for c in label.chars() {
+        match c {
+            '"' => out.push('\''),
+            '<' => out.push_str("#lt;"),
+            '>' => out.push_str("#gt;"),
+            '{' => out.push_str("#123;"),
+            '}' => out.push_str("#125;"),
+            c if c.is_control() => out.push(' '),
+            c => out.push(c),
+        }
+    }
+    out
+}
+
+/// A front-matter title is one YAML scalar. Unquoted, a newline would start a
+/// second key and a `: ` would make the line a mapping (mermaid then rejects
+/// the whole diagram); double-quoted, only `"` and `\` need escaping and every
+/// other character is literal. Entities are not decoded here, so this is the
+/// only treatment a title gets.
+pub(crate) fn frontmatter_title(title: &str) -> String {
+    let flat: Vec<&str> = title.split(|c: char| c.is_control()).collect();
+    format!(
+        "\"{}\"",
+        flat.join(" ").replace('\\', "\\\\").replace('"', "\\\"")
+    )
 }
 
 pub fn render(graph: &CodeGraph, opts: &RenderOptions) -> String {
@@ -123,7 +154,7 @@ pub fn render(graph: &CodeGraph, opts: &RenderOptions) -> String {
 
     let mut out = String::new();
     if let Some(title) = &opts.title {
-        let _ = writeln!(out, "---\ntitle: {}\n---", escape_label(title));
+        let _ = writeln!(out, "---\ntitle: {}\n---", frontmatter_title(title));
     }
     out.push_str("classDiagram\n");
     if let Some(direction) = &opts.direction {
@@ -366,8 +397,17 @@ fn one_line(row: &str) -> String {
 ///   OPEN_IN_STRUCT and stops, however balanced it is. A destructured parameter
 ///   (`buildInvocationResult({ events, stderr }: Opts)`) puts one there.
 /// - Parens must balance, which a truncated parameter list can break.
+/// - `<` and `>` are generic syntax (`~T~` once `clean_type` has been through a
+///   type) and end the diagram anywhere else — a TypeScript member can be
+///   named by a string literal holding either. They are entity-encoded, which
+///   mermaid decodes back for display.
 fn mermaid_safe(row: &str) -> String {
-    let row: String = row.chars().filter(|c| !matches!(c, '{' | '}')).collect();
+    let row: String = row
+        .chars()
+        .filter(|c| !matches!(c, '{' | '}'))
+        .collect::<String>()
+        .replace('<', "#lt;")
+        .replace('>', "#gt;");
     if row.matches('(').count() == row.matches(')').count() {
         return row;
     }
@@ -378,6 +418,37 @@ fn mermaid_safe(row: &str) -> String {
 mod tests {
     use super::*;
     use crate::parse::parse_file;
+
+    #[test]
+    fn a_label_cannot_leave_its_statement() {
+        let hostile =
+            "evil\n    click c_pkg \"https://x\" \n%%{init: {\"theme\":\"forest\"}}%%\n<b>x</b>";
+        let label = escape_label(hostile);
+        assert!(!label.contains('\n'));
+        assert!(!label.contains('"'));
+        assert!(!label.contains('{') && !label.contains('<'));
+        assert_eq!(escape_label("a<T>"), "a#lt;T#gt;");
+    }
+
+    #[test]
+    fn a_title_stays_on_its_line() {
+        assert_eq!(
+            frontmatter_title("x\nconfig:\n  theme: forest"),
+            "\"x config:   theme: forest\""
+        );
+        assert_eq!(
+            frontmatter_title(r#"say "hi" \ bye"#),
+            r#""say \"hi\" \\ bye""#
+        );
+    }
+
+    #[test]
+    fn a_member_named_with_angle_brackets_does_not_end_the_diagram() {
+        assert_eq!(
+            mermaid_safe("+\"</script>\"() void"),
+            "+\"#lt;/script#gt;\"() void"
+        );
+    }
 
     #[test]
     fn a_member_is_always_one_line_and_keeps_its_arrows() {

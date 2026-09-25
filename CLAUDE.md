@@ -120,6 +120,7 @@ uv run pytest packages/vizzle-cli/tests   # CLI + server
 uv run pre-commit run --all-files        # ruff, cargo fmt, clippy -D warnings
 uv sync --reinstall-package vizzle       # after Rust changes, before CLI tests
 bash scripts/check-rulesets.sh            # ruleset drift; requires authenticated gh
+scripts/bump-version.sh check             # every copy of the version agrees
 ```
 
 - **Run it against a real repo**, not just fixtures. `~/code/h` is the standing
@@ -139,18 +140,26 @@ bash scripts/check-rulesets.sh            # ruleset drift; requires authenticate
 - A test that cannot fail is worth less than no test: when you fix a bug, first
   confirm the new test reproduces it.
 
-`ci.yml` runs the first three on every push, plus `codeql.yml` and
-`cargo audit`. CI is a backstop, not the check — it cannot look at a page.
+`ci.yml` runs the first three on every push, plus `codeql.yml`,
+`cargo audit` and `pip-audit`. CI is a backstop, not the check — it cannot look at a page.
 
 ## Releasing
 
 The version is stated **once**, in the root `Cargo.toml`; maturin derives the
-Python one from it. So a release is:
+Python one from it, and `scripts/bump-version.sh` copies it to the two places
+that must follow (`Cargo.lock`, and the agent plugin's manifest, which carries
+the version of the CLI its skill documents). So a release is:
 
-1. Bump the version in `Cargo.toml`, commit.
+1. `scripts/bump-version.sh bump patch|minor|major`, commit.
 2. Tag `vX.Y.Z`, push the tag.
-3. Bump the `vizzle==X.Y.Z` pin in `.github/workflows/pr-diagram.yml` to the new version. This pin must stay current to prevent runtime drift of the published package.
+3. Once the release has published: `scripts/bump-version.sh pin` moves the
+   `vizzle==X.Y.Z` pin in `.github/workflows/pr-diagram.yml` to the new
+   version. It cannot move earlier — the version does not exist on PyPI until
+   then — and it must not be left behind, or PRs are diagrammed by a stale wheel.
 4. Commit and merge that update.
+
+`scripts/bump-version.sh check` runs in CI and in the release gate, so a copy
+edited by hand fails before it ships.
 
 `release.yml` builds four wheels and an sdist, smoke-tests each on a clean
 runner, and publishes to PyPI by Trusted Publishing.

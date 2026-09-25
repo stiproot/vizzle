@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import html as html_escape
 import json
+import re
 from importlib import resources
 
 from . import _core
@@ -20,19 +21,31 @@ def _fill(template_name: str, graph_json: str, title: str, config: dict) -> str:
     def read(name: str) -> str:
         return (assets / name).read_text(encoding="utf-8")
 
-    # A literal "</script>" inside embedded JSON would end the script block early.
-    safe_json = graph_json.replace("</", "<\\/")
     # The change palette is owned by vizzle-core so HTML and Mermaid agree.
     core_css = read("viz-core.css").replace("__PALETTE_CSS__", _core.diff_palette_css())
-    return (
-        read(template_name)
-        .replace("__TITLE__", html_escape.escape(title))
-        .replace("__VIZ_CORE_CSS__", core_css)
-        .replace("__D3_JS__", read("d3.v7.min.js"))
-        .replace("__VIZ_CORE_JS__", read("viz-core.js"))
-        .replace("__GRAPH_JSON__", safe_json)
-        .replace("__CONFIG_JSON__", json.dumps(config))
-    )
+    values = {
+        "__TITLE__": html_escape.escape(title),
+        "__VIZ_CORE_CSS__": core_css,
+        "__D3_JS__": read("d3.v7.min.js"),
+        "__VIZ_CORE_JS__": read("viz-core.js"),
+        "__GRAPH_JSON__": script_safe_json(graph_json),
+        "__CONFIG_JSON__": json.dumps(config),
+    }
+    # One pass, so a substituted value is never rescanned: a class named
+    # __CONFIG_JSON__ is data in the graph, not a placeholder in the page.
+    return re.sub(r"__[A-Z0-9_]+__", lambda m: values.get(m.group(0), m.group(0)), read(template_name))
+
+
+def script_safe_json(graph_json: str) -> str:
+    """JSON that can sit inside a <script> element whatever the source named things.
+
+    The HTML tokenizer does not parse JSON: inside a script element it looks
+    for `</script>` to end the block, and for `<!--` / `<script` to enter the
+    escaped states in which the real closing tag no longer counts. Every one
+    of those starts with `<`, and `<` only ever occurs inside a JSON string,
+    where its `\\u` escape is the same character to JSON.parse.
+    """
+    return graph_json.replace("&", "\\u0026").replace("<", "\\u003c").replace(">", "\\u003e")
 
 
 def build_html(

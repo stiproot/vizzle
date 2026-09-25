@@ -33,7 +33,7 @@ uvx vizzle component ~/code/some-repo
 
 Or keep it around: `uv tool install vizzle` (or `pipx install vizzle`). Needs
 Python ≥ 3.10 and `git` on PATH; on Linux, glibc ≥ 2.28. Why it is distributed
-this way is in [`docs/distribution.md`](docs/distribution.md).
+this way is in [`docs/distribution.md`](https://github.com/stiproot/vizzle/blob/main/docs/distribution.md).
 
 ### For coding agents
 
@@ -180,14 +180,18 @@ uvx vizzle serve ~/code/repo/h --diff --open    # watch your working-tree
 uvx vizzle serve ~/code/repo/h --type component --diff   # live rewiring view
 ```
 
-Defaults to http://127.0.0.1:8499/; see `--port`, `--host`, `--base`.
+Defaults to http://127.0.0.1:8499/; see `--port`, `--host`, `--base`. The
+server answers only requests addressed to this machine; `--host 0.0.0.0`
+publishes the repository's structure to the network, and says so.
 
-Useful flags (both commands): `--no-members`, `--modules` (add a «module»
-box per module holding its public module-level functions), `--group` (mermaid namespace
-blocks per module), `--externals` (edges to types outside the parsed set),
-`--direction LR` (mermaid), `-I/-E` include/exclude globs and `-l` language
-(every command; on `diff` they apply to both revisions, so a filtered file
-never reads as added or removed), `--title`, `-f/--format mermaid|html`.
+Useful flags (`class` and `diff`): `--no-members`, `--modules` (add a «module»
+box per module holding its public module-level functions), `--group-by
+module|component` (mermaid namespace blocks per module or per component),
+`--externals` (edges to types outside the parsed set), `--direction LR`
+(mermaid), `-I/-E` include/exclude globs and `-l` language (every command; on
+`diff` they apply to both revisions, so a filtered file never reads as added
+or removed), `--title`, `-f/--format mermaid|html`. `serve` takes the same
+selection flags plus `--no-members`, `--modules`, `--externals` and `--title`.
 
 Render the `.mmd` output with mermaid-cli:
 
@@ -207,6 +211,21 @@ puppeteer at a browser you already have rather than letting it download a
 redundant one, and raises Mermaid's default 50,000-character `maxTextSize` —
 past which a whole-repo diagram renders a small **error graphic** instead of
 failing loudly. The HTML output has no such limit.
+
+### Committed diagrams that stay true
+
+A Markdown file can carry a `gen:c4-code` manifest naming the classes its
+diagram covers, or a source path to cover in full. `vizzle doc` regenerates
+the fence from the code, and `--check` fails when the committed diagram has
+drifted, which is the shape a lint step wants:
+
+```sh
+uvx vizzle doc docs/architecture.md      # regenerate one document
+uvx vizzle doc --dir docs --check        # verify every managed doc, write nothing
+```
+
+The manifest format and what `--check` guarantees are in
+[`docs/curated-diagrams.md`](https://github.com/stiproot/vizzle/blob/main/docs/curated-diagrams.md).
 
 ## How the diff works
 

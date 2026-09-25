@@ -3,6 +3,7 @@
 import os
 import threading
 import time
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -122,3 +123,34 @@ def test_server_serves_page_and_pushes_reload_on_file_change(tmp_path: Path) -> 
         stop.set()
         httpd.shutdown()
         httpd.server_close()
+
+
+def test_loopback_server_refuses_a_foreign_host_header() -> None:
+    # A DNS-rebinding page reaches 127.0.0.1 with its own hostname in `Host`.
+    hub = server.ReloadHub()
+    httpd = server.make_server(lambda: "<html><body>ok</body></html>", hub, "127.0.0.1", 0)
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    port = httpd.server_address[1]
+    try:
+        for host in ("127.0.0.1", "localhost", "[::1]"):
+            request = urllib.request.Request(f"http://127.0.0.1:{port}/", headers={"Host": f"{host}:{port}"})
+            with urllib.request.urlopen(request, timeout=5) as response:
+                assert response.status == 200
+        request = urllib.request.Request(f"http://127.0.0.1:{port}/", headers={"Host": f"attacker.example:{port}"})
+        with pytest.raises(urllib.error.HTTPError) as err:
+            urllib.request.urlopen(request, timeout=5)
+        assert err.value.code == 400
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+
+
+def test_host_classification() -> None:
+    assert (
+        server.host_is_loopback("127.0.0.1") and server.host_is_loopback("::1") and server.host_is_loopback("localhost")
+    )
+    assert not server.host_is_loopback("0.0.0.0") and not server.host_is_loopback("attacker.example")
+    assert server.request_host("[::1]:8499") == "::1"
+    assert server.request_host("localhost:8499") == "localhost"
+    assert server.request_host("localhost") == "localhost"
+    assert server.request_host(None) == ""

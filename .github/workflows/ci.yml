@@ -61,3 +61,6 @@ jobs:
           enable-cache: true
       - run: uv run ruff format --check .
       - run: uv run ruff check .
+      # The version is stated once and copied by scripts/bump-version.sh; this
+      # catches a copy edited by hand (the plugin manifest, the lock file).
+      - run: bash scripts/bump-version.sh check

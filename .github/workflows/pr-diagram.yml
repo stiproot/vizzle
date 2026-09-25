@@ -56,7 +56,7 @@ jobs:
           # vizzle parses Python and TypeScript, and drops components holding
           # neither. On a repo made of anything else there is nothing to draw,
           # and an empty diagram would read as a claim about the architecture.
-          count=$(git ls-files | grep -cE '\.(py|ts|tsx)$' || true)
+          count=$(git ls-files | grep -cE '\.(py|ts|tsx|mts|cts)$' || true)
           echo "sources=$count" >> "$GITHUB_OUTPUT"
           echo "$count parseable source files"
 

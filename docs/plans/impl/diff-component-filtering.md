@@ -1,12 +1,19 @@
 # Filtering components in a diff
 
-Status: **Implemented** — 2026-09-15: `-I/-E/-l` on `diff` (and honoured by `serve --diff`),
-applied to both revisions before build; selection runs before scope so an excluded component is
-never a `«boundary»`; exclusion is total, change markers included; the selection is stated in
-every renderer. Decisions and measurements in `docs/diagram-types/component.md` §6.2. Raised by a
-consumer whose per-pull-request component diff renders test fixtures as architectural components,
-with no flag available to exclude them.
+Status: **Complete** — 2026-09-15, released in v0.4.0 (the path-base fix in §6 in v0.5.0):
+`-I/-E/-l` on `diff` (and honoured by `serve --diff`), applied to both revisions before build.
+Raised by a consumer whose per-pull-request component diff renders test fixtures as architectural
+components, with no flag available to exclude them.
 Established: 2026-09-15
+Archived: 2026-09-24
+
+Lifted to:
+- `docs/diagram-types/component.md` §6.2 — selection before scope, exclusion is total, the
+  selection stated in every renderer, with the measurements.
+- `crates/vizzle-core/src/walk.rs` — `Selector`, the one matcher, and the reason it matches a
+  path by both spellings (§6 here).
+- `packages/vizzle-cli/src/vizzle_cli/cli.py` — the core's `ValueError` becomes a one-line
+  `Error:` at the click group.
 
 ## 1. The premise
 

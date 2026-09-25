@@ -301,9 +301,24 @@ diamonds genuinely earn their place.
 ## 6. Rendering
 
 **Mermaid** (`classDiagram`): boxes with a stereotype line and member rows,
-`--group` wrapping modules in `namespace` blocks. Mermaid 11 quirk, learned the
-hard way: `classDef` statements only apply when they appear *after* the
-`cssClass` attachments, so the renderer emits them last.
+`--group-by module|component` gathering classes into `namespace` blocks (one
+per file, or one per detected component; `--group` survives as a deprecated
+alias for `--group-by module`). Mermaid 11 quirk, learned the hard way:
+`classDef` statements only apply when they appear *after* the `cssClass`
+attachments, so the renderer emits them last.
+
+**Decision: neither grouping is the default.** Component grouping reuses the
+component detector's module→component map rather than re-deriving ownership.
+Which grouping reads well depends on the shape of the scope, which only the
+caller knows — measured on a 33-package Python tree (2,479 classes):
+
+| scope | `--group-by module` | `--group-by component` |
+|---|--:|--:|
+| whole tree (33 packages) | 533 namespaces | **34 namespaces** |
+| one package (29 files) | **29 namespaces** | 1 namespace |
+
+So the flag earns its keep in both directions, and no grouping (`none`) stays
+the default.
 
 **Interactive HTML**: a force layout with weak per-module gravity, ticked
 synchronously so the page opens settled, with zoom, pan, drag, a filter box,
@@ -387,13 +402,20 @@ the centre.
 
 ```sh
 vizzle class <repo> [-o out.mmd|out.html] [-I glob] [-E glob] [-l python|typescript]
-                   [--no-members] [--group] [--externals] [--direction LR] [--title]
+                   [--no-members] [--group-by none|module|component] [--externals]
+                   [--direction LR] [--title]
                    [--modules]                        # §2.5, off by default
                    [--highlight NAME,…] [--around NAME --depth N]   # §7b, the reader's lens
-vizzle diff <repo> [--base REV] [--head REV]          # --type class is the default
+vizzle diff <repo> [--base REV] [--head REV] [flags]  # --type class is the default
                    [--stats verdict.json]            # changed / counts / size as JSON, for tooling
-vizzle serve <repo> [--diff]
+vizzle serve <repo> [--diff] [--base REV] [--head REV] [--host] [--port] [--open] [flags]
 ```
+
+`[flags]` is the selection and rendering set `class` takes (`-I/-E/-l`,
+`--no-members`, `--modules`, `--externals`, `--title`; `diff` also `--group-by`,
+`--direction`, `-f`), so a filter written for `class` means the same on `diff`
+and `serve`. `--group-by component` is refused on `diff`, where the parsed set
+is the touched files and component ownership would be a guess.
 
 `--stats` exists so a consumer never reads the verdict off the diagram: the
 JSON export's `stats.changes` (tallied over classes) and `stats.diff` carry it,

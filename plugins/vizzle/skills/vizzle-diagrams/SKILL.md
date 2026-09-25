@@ -39,7 +39,7 @@ even though its manifests were found — that is by design, not a failure.
 Check before running:
 
 ```sh
-git ls-files | grep -cE '\.(py|ts|tsx)$'
+git ls-files | grep -cE '\.(py|ts|tsx|mts|cts)$'
 ```
 
 If that count is zero or tiny, read files instead. Do not report an empty
@@ -230,7 +230,12 @@ and can be attached or shared as-is.
 ```sh
 uvx vizzle component <path> -o architecture.html
 uvx vizzle serve <path> --diff --open     # live, re-renders as they edit
+uvx vizzle render architecture.mmd out/   # PNG (or -f svg) for chat or a slide
 ```
+
+`render` drives mermaid-cli (`mmdc` from PATH, else through bunx or npx) and
+needs a browser on the machine; it raises Mermaid's 50,000-character cap so a
+whole-repo diagram draws instead of failing silently.
 
 For a diagram to paste into a PR comment, issue, or Markdown file, use the
 Mermaid output instead — GitHub renders ` ```mermaid ` blocks natively, so it

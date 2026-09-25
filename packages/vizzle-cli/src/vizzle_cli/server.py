@@ -6,6 +6,7 @@ reload event to connected browsers whenever a watched source file changes.
 
 from __future__ import annotations
 
+import ipaddress
 import os
 import threading
 from collections.abc import Callable
@@ -73,9 +74,18 @@ def make_server(
     host: str,
     port: int,
 ) -> ThreadingHTTPServer:
+    # Bound to loopback, the server is reachable only from this machine — but a
+    # web page can still reach it, by pointing a hostname it controls at
+    # 127.0.0.1 (DNS rebinding) and fetching the diagram, which spells out the
+    # structure of the repository. Such a request carries the attacker's
+    # hostname in `Host`; a browser or curl on this machine never does.
+    guard_host = host_is_loopback(host)
+
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self) -> None:  # noqa: N802 (http.server API)
-            if self.path == "/events":
+            if guard_host and not host_is_loopback(request_host(self.headers.get("Host"))):
+                self.send_error(400, "Host header must name this machine")
+            elif self.path == "/events":
                 self._serve_events()
             elif self.path == "/":
                 self._serve_page()
@@ -113,6 +123,24 @@ def make_server(
             pass
 
     return ThreadingHTTPServer((host, port), Handler)
+
+
+def host_is_loopback(host: str) -> bool:
+    """True for the addresses only this machine can reach: 127.0.0.0/8, ::1, localhost."""
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return host == "localhost"
+
+
+def request_host(header: str | None) -> str:
+    """The host named by a Host header, without the port; an IPv6 literal loses its brackets."""
+    if not header:
+        return ""
+    if header.startswith("["):
+        end = header.find("]")
+        return header[1:end] if end > 0 else header
+    return header.rsplit(":", 1)[0] if ":" in header else header
 
 
 def is_watched_source(path: str) -> bool:
