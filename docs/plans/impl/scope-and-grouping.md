@@ -1,8 +1,15 @@
 # Scoped diagrams, and grouping by component
 
-Status: **Implemented** — Decisions A, B and C on `feature/scope-and-grouping`. Not yet
-released; the newest tag is `v0.3.0`.
+Status: **Complete** — Decisions A, B and C implemented and released in v0.4.0 (2026-09-20).
 Established: 2026-09-20
+Archived: 2026-09-24
+
+Lifted to:
+- `docs/diagram-types/class.md` §6 and §8 — `--group-by`, the deprecated `--group` alias, and
+  why no grouping is the default, with the namespace-count measurements (Decision A).
+- `docs/curated-diagrams.md` §5.1 — the `scope` manifest key, its exclusivity with `classes`,
+  and why it does not reopen §8 (Decision B).
+- `docs/curated-diagrams.md` §5.2 — the mermaid ceiling `vizzle doc` enforces (Decision C).
 
 Raised by a consumer wiring `vizzle` into a lint chain as a drift gate. Two gaps surfaced,
 and they are separable: one is a missing renderer, the other is a missing manifest kind.

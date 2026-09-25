@@ -1,10 +1,10 @@
 # Distribution
 
 **Status:** implemented — §3 (the name), §4 (one distribution), §5 and §6 (the
-release pipeline), §2.3 (the PR comment) and §2.6 (the agent plugin).
-`vizzle 0.1.0` is on PyPI, which is all §2.1 and §2.2 ever needed. Not built:
-§2.4 (waiting on a `--check` mode) and §2.5 (waiting on a mirror repo), both
-in §10. §8 is a standing rejection with trigger conditions.
+release pipeline), §2.3 (the PR comment), §2.4 (drift-checked diagrams, as
+`vizzle doc --check`) and §2.6 (the agent plugin). `vizzle` is on PyPI, which
+is all §2.1 and §2.2 ever needed. Not built: §2.5 (waiting on a mirror repo,
+§10). §8 is a standing rejection with trigger conditions.
 **Measured on:** 2026-08-16, against `~/code/h` (358 parsed source files) on Linux.
 
 The spec for how vizzle reaches the repos that use it. Diagram-type specs answer
@@ -124,15 +124,22 @@ turns a nice idea into something people would switch off:
   `.py`/`.ts` present there is nothing to draw, and an empty diagram would read
   as a claim about the architecture rather than a limit of the tool.
 
-Comments cap at 65536 characters, so a diagram past 60000 is replaced by a link
-to the run's artifact.
+Comments cap at 65536 characters, but the tighter limit is Mermaid's own:
+past 50,000 characters it draws an error graphic instead of a diagram. So the
+workflow swaps in a link to the run's artifact when `--stats` reports
+`oversized`, which vizzle judges against that ceiling.
 
 ### 2.4 Committed diagrams, checked for drift
 
 A repo commits `docs/architecture.mmd`, and CI regenerates it and fails if it
 differs. Turns a diagram into an artifact that cannot silently rot.
 
-Needs a `--check` mode that does not exist yet (§10).
+**Implemented 2026-08-17** as `vizzle doc --check`
+(`docs/curated-diagrams.md` §6): a Markdown file carries a manifest, `vizzle
+doc` regenerates its fence from the code, and `--check` exits non-zero on
+drift without writing. The "what is unchanged" question §10 once posed
+answers itself there: managed documents hold Mermaid, which is deterministic,
+never the coordinate-bearing HTML.
 
 ### 2.5 pre-commit
 
@@ -186,7 +193,10 @@ reflexively, so agents must be taught to scope it with `-I`.
 as its own single-plugin marketplace — not in the scaffolder that generates it.
 A skill describing a flag the CLI does not have is a lying spec, the same
 failure CLAUDE.md names for diagram specs, and the only defence is versioning
-the skill with the code it documents.
+the skill with the code it documents. Concretely, the plugin manifest's
+`version` is the CLI version — `scripts/bump-version.sh` moves them together,
+and CI fails when they disagree — so the number on an installed plugin says
+which `vizzle` its skill was checked against.
 
 **Sequenced after §6 deliberately.** A skill's first instruction is how to
 invoke the tool, so the plugin is worth no more than its install line. Built
@@ -195,7 +205,7 @@ after, it is `uvx vizzle component .`.
 
 **Implemented 2026-08-16**: `.claude-plugin/marketplace.json` + `plugins/vizzle/`,
 carrying the single skill `vizzle-diagrams`. Every command the skill documents
-was run against the published `vizzle@0.1.0` before shipping — the lying-spec
+was run against the then-current release, `vizzle@0.1.0`, before shipping — the lying-spec
 guard, applied literally.
 
 The skill's most load-bearing paragraph is not the token table but the
@@ -269,7 +279,8 @@ published on its own, and it is where `vizzly` fell over.
 not worth pursuing — the rename is done and cost 214 lines.
 
 **Consequences already absorbed:** crates `vizzle-core` / `vizzle-py`, PyPI
-`vizzle` / `vizzle-core`, Python modules `vizzle_core` / `vizzle_cli`, the
+`vizzle` / `vizzle-core`, Python modules `vizzle_core` / `vizzle_cli` (the
+second distribution and its module were then removed by §4), the
 frontend global `window.vizzle`. The Mermaid classDefs are the one place the brand was
 **taken back out** (2026-09-22): they are `diffAdded` / `diffRemoved` / `diffModified` /
 `diffBoundary`, because that text lands in diagram source consumers post to pull requests,
@@ -285,7 +296,7 @@ pure Python, depending on the former).
 
 **The failure mode that decides it.** Two distributions means two releases in
 lockstep and two version numbers a user can land between. The binding surface —
-10 functions in `crates/vizzle-py/src/lib.rs` — changes whenever the CLI does.
+the `#[pyfunction]`s in `crates/vizzle-py/src/lib.rs` — changes whenever the CLI does.
 A user with `vizzle` 0.3 resolving against a cached `vizzle-core` 0.2 gets an
 `AttributeError` deep in a command, blamed on their repo rather than on us. That
 is one fact (the binding contract) expressed in two independently-versioned
@@ -306,7 +317,7 @@ it: the bindings were only ever imported by the CLI, and the underscore now says
 so. The shipped wheel holds exactly one top-level name:
 
 ```
-vizzle_cli/{__init__,cli,git,html,server}.py
+vizzle_cli/{__init__,cli,git,html,managed,render,server}.py
 vizzle_cli/_core.abi3.so
 vizzle_cli/assets/…
 ```
@@ -443,8 +454,12 @@ path. And the `publish` job names `environment: pypi`, which must exist as a
 GitHub environment; it is also the natural place to require manual approval
 before a release leaves the building.
 
-Releasing is therefore: bump `version` in the root `Cargo.toml`, commit, tag
-`vX.Y.Z`, push the tag.
+Releasing is therefore: `scripts/bump-version.sh bump patch|minor|major`,
+commit, tag `vX.Y.Z`, push the tag — then, once published,
+`scripts/bump-version.sh pin` moves the `vizzle==X.Y.Z` pin in
+`.github/workflows/pr-diagram.yml` to the new version, so the comment on this
+repository's own pull requests runs what was released rather than a stale
+wheel (the full checklist is in `CLAUDE.md`).
 
 The Rust crates are published to crates.io only if and when someone wants
 `vizzle-core` as a Rust library. Nothing about §2 depends on it, and an
@@ -508,9 +523,10 @@ more expensive. Keep pages self-contained.
 
 ## 10. Out of scope for now
 
-- **`vizzle check`** — regenerate a committed diagram and exit non-zero on
-  drift. Blocks §2.4. Needs a decision about what "unchanged" means when layout
-  is force-directed (the `.mmd` is deterministic; the `.html` embeds coordinates).
+- ~~**`vizzle check`**~~ — **shipped 2026-08-17** as `vizzle doc --check`
+  (§2.4). The "what is unchanged" question resolved by only ever managing
+  Mermaid, which is deterministic; the coordinate-bearing `.html` is never a
+  managed document.
 - **A pre-commit mirror repo.** A `language: python` hook pointed at *this* repo
   would build from sdist and demand a Rust toolchain on every contributor's
   machine — unacceptable. The fix is the ruff/black pattern: a separate mirror

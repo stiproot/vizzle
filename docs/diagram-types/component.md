@@ -186,7 +186,7 @@ Mermaid has no native UML component-diagram syntax, so vizzle renders a
 renderer makes with Mermaid 11 quirks. Conventions:
 
 - Node label: `«component»<br/><b>name</b>` (guillemets keep the UML idiom).
-- Groups render as `subgraph` blocks (analogous to `--group` namespaces in
+- Groups render as `subgraph` blocks (analogous to `--group-by module` namespaces in
   the class diagram; here grouping is **on by default**, `--no-group` flattens).
 - Dependency edges are dashed arrows `-.->`, the flowchart cousin of UML's
   dashed dependency `..>`. Weight ≥ 2 renders as an edge label (`-. 7 .->`)
@@ -303,10 +303,11 @@ vocabulary exists to remove.
 
 ## 6. Diff semantics
 
-`vizzle diff --type component` reuses the whole git pipeline (changed files
-via `git diff --name-status -M -z`, base contents via `git show`) but —
-unlike the class diff, which only parses touched files — **builds the full
-component graph for both revisions**, since an edge's existence depends on
+`vizzle diff --type component` does not use the class diff's changed-file
+list (`git diff --name-status -M -z` plus `git show`). It walks the full tree
+of each revision (`git ls-tree`, contents via one `git cat-file --batch`)
+and — unlike the class diff, which only parses touched files — **builds the
+full component graph for both revisions**, since an edge's existence depends on
 files the diff didn't touch. Cost is acceptable: parsing is the hot path and
 already handles whole-repo scale.
 
