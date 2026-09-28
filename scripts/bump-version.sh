@@ -82,9 +82,12 @@ cmd_bump() {
   new=$(next_version "$current" "$part")
 
   expect_one_match '^version = "' "$CARGO_TOML"
-  expect_one_match '^\s*"version":' "$PLUGIN_JSON"
-  sed -i -E "0,/^version = \"$SEMVER\"/s//version = \"$new\"/" "$CARGO_TOML"
-  sed -i -E "s/^(\s*\"version\": *)\"$SEMVER\"/\1\"$new\"/" "$PLUGIN_JSON"
+  expect_one_match '^[[:space:]]*"version":' "$PLUGIN_JSON"
+  # Through the environment, not `awk -v`: -v expands backslash escapes, and `\.` in the
+  # pattern would become "any character".
+  NEW="$new" RE="^version = \"$SEMVER\"" rewrite "$CARGO_TOML" awk \
+    '!done && $0 ~ ENVIRON["RE"] { sub(ENVIRON["RE"], "version = \"" ENVIRON["NEW"] "\""); done = 1 } 1'
+  rewrite "$PLUGIN_JSON" sed -E "s/^([[:space:]]*\"version\": *)\"$SEMVER\"/\1\"$new\"/"
   # Refresh only the workspace crates' entries; dependencies stay where they are.
   cargo update --workspace --quiet
 
@@ -97,6 +100,14 @@ cmd_bump() {
   echo "  $0 pin"
 }
 
+# `sed -i` and the `0,/re/` address are GNU-only: BSD sed on macOS reads `-i -E` as a
+# backup suffix and has no first-match address, so a bump there left a stray
+# `Cargo.toml-E` and moved nothing. Edit through a temp file with portable tools.
+rewrite() {
+  local file=$1; shift
+  "$@" "$file" > "$file.tmp" && mv "$file.tmp" "$file"
+}
+
 cmd_pin() {
   local version current
   version=$(cargo_version)
@@ -105,7 +116,7 @@ cmd_pin() {
     echo "pr-diagram.yml already pins vizzle==$version"
     return
   fi
-  sed -i -E "s/vizzle==$SEMVER/vizzle==$version/g" "$PR_DIAGRAM"
+  rewrite "$PR_DIAGRAM" sed -E "s/vizzle==$SEMVER/vizzle==$version/g"
   echo "pinned pr-diagram.yml: vizzle==$current -> vizzle==$version"
   echo
   echo "next: commit it. The pin must point at a version that exists on PyPI,"
