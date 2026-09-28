@@ -233,13 +233,51 @@ uvx vizzle serve <path> --diff --open     # live, re-renders as they edit
 uvx vizzle render architecture.mmd out/   # PNG (or -f svg) for chat or a slide
 ```
 
-`render` drives mermaid-cli (`mmdc` from PATH, else through bunx or npx) and
-needs a browser on the machine; it raises Mermaid's 50,000-character cap so a
-whole-repo diagram draws instead of failing silently.
+`render` drives mermaid-cli (`mmdc` from PATH, else a pinned version through
+bunx or npx) and needs a browser on the machine; it uses one already in
+puppeteer's cache. It raises Mermaid's 50,000-character cap so a whole-repo
+diagram draws instead of failing silently.
 
 For a diagram to paste into a PR comment, issue, or Markdown file, use the
 Mermaid output instead — GitHub renders ` ```mermaid ` blocks natively, so it
-needs no image hosting.
+needs no image hosting. **GitHub draws it in the reader's theme**, so before
+you post one that sets its own colours, look at it both ways:
+
+```sh
+uvx vizzle render diagram.mmd out/ --theme both   # out/diagram.png + out/diagram.dark.png
+```
+
+## Drawing a diagram yourself: use vizzle's colours
+
+vizzle does not generate sequence diagrams, but a before/after
+`sequenceDiagram` is often the right picture next to its class diagram. Take
+the colours from `vizzle palette` rather than inventing them, so red and green
+mean the same thing in both:
+
+```sh
+uvx vizzle palette            # the rect tints + the diff classDefs; -f json for scripts
+```
+
+```text
+sequenceDiagram
+    participant A as poller
+    participant B as lease store
+    rect rgba(207, 34, 46, 0.15)
+        Note over A,B: BEFORE (main @ abc1234) — where it breaks
+        A->>B: renew the lease
+        B--xA: rejected
+    end
+    rect rgba(26, 127, 55, 0.15)
+        Note over A,B: AFTER (PR @ def5678) — what the fix does
+        A->>B: ✓ reclaim the timed-out ownership first
+    end
+```
+
+The tints are translucent on purpose. A sequence diagram's message text sits
+directly on the `rect` fill and `rect` cannot set a text colour, so an opaque
+pale fill such as `rect rgb(255, 235, 233)` turns white dark-mode text
+unreadable. Never use an opaque `rgb(...)` there. The class-diagram
+`classDef`s set their own text colour, which is why they can be opaque.
 
 ## Requirements
 

@@ -511,8 +511,19 @@ def doc_command(
 @click.argument("out_dir", type=click.Path(file_okay=False, path_type=Path))
 @click.option("-f", "--format", "fmt", type=click.Choice(["png", "svg"]), default="png", show_default=True)
 @click.option("--scale", default=2, show_default=True, help="Pixel density multiplier (png only).")
-@click.option("--background", default="white", show_default=True, help="Page background colour.")
-def render_command(src: Path, out_dir: Path, fmt: str, scale: int, background: str) -> None:
+@click.option(
+    "--background",
+    default=None,
+    help="Page background colour. Default: white, or GitHub's dark canvas for a dark render.",
+)
+@click.option(
+    "--theme",
+    type=click.Choice(["light", "dark", "both"]),
+    default="light",
+    show_default=True,
+    help="Render as a light- or dark-mode reader sees it. `both` adds <name>.dark.<fmt> beside each image.",
+)
+def render_command(src: Path, out_dir: Path, fmt: str, scale: int, background: str | None, theme: str) -> None:
     """Render mermaid sources under SRC to images in OUT_DIR.
 
     SRC is a `.md` (every fence in it), a `.mmd`, or a directory of them
@@ -521,12 +532,17 @@ def render_command(src: Path, out_dir: Path, fmt: str, scale: int, background: s
 
     Uses mermaid-cli, resolved from PATH or run through bunx/npx; nothing is
     installed. The whole-repo `maxTextSize` limit is raised for you.
+
+    GitHub draws a fence in the reader's theme, so look at `--theme both`
+    before posting a diagram that sets its own colours.
     """
+    themes = ["light", "dark"] if theme == "both" else [theme]
     try:
         written = [
             path
             for source in render_mod.sources(src)
-            for path in render_mod.render(source, out_dir, fmt=fmt, scale=scale, background=background)
+            for each in themes
+            for path in render_mod.render(source, out_dir, fmt=fmt, scale=scale, background=background, theme=each)
         ]
     except render_mod.RenderError as err:
         raise click.ClickException(str(err)) from err
@@ -534,6 +550,28 @@ def render_command(src: Path, out_dir: Path, fmt: str, scale: int, background: s
         click.echo(f"rendered {path}", err=True)
     if not written:
         click.echo("nothing rendered", err=True)
+
+
+@main.command("palette")
+@click.option("-f", "--format", "fmt", type=click.Choice(["text", "json"]), default="text", show_default=True)
+def palette_command(fmt: str) -> None:
+    """Print the colours to use in a diagram you draw yourself.
+
+    Sequence-diagram block tints (`rect <tint>` … `end`) for a before/after
+    diagram, and the diff `classDef` block vizzle's own class diagrams use, so a
+    hand-drawn diagram reads the same as a generated one. The tints are
+    translucent so the text on them stays readable in light and dark themes.
+    """
+    tints = [{"name": n, "meaning": m, "rect": f"rect {rgba}"} for n, m, rgba in _core.sequence_tints()]
+    classdefs = _core.diff_classdefs()
+    if fmt == "json":
+        click.echo(json.dumps({"sequence": tints, "classDefs": classdefs.strip().splitlines()}, indent=2))
+        return
+    click.echo("sequenceDiagram tints — wrap a segment in one, close it with `end`:")
+    for tint in tints:
+        click.echo(f"  {tint['name']:<7} {tint['rect']:<34} {tint['meaning']}")
+    click.echo("\nclassDiagram diff classes — attach with `class <Name>:::diffAdded`, and put these lines last:")
+    click.echo(classdefs.rstrip())
 
 
 @main.command("component")

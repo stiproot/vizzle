@@ -119,6 +119,57 @@ pub fn mermaid_class(change: ChangeKind) -> Option<String> {
     })
 }
 
+/// Tints for the blocks of a hand-drawn `sequenceDiagram` (`rect <tint>` … `end`): the
+/// old path, the new path, and the state now. vizzle does not generate sequence diagrams,
+/// but its readers draw them next to its class diagrams, so the colours have to agree:
+/// each tint is the diff stroke that means the same thing.
+///
+/// Translucent on purpose. GitHub renders mermaid in the *reader's* theme, and in dark
+/// mode a sequence diagram's message text is near-white and sits directly on the rect
+/// fill. The opaque pale fills that work for class nodes (which set their own text
+/// colour) made that text unreadable, and `rect` cannot set a text colour. Measured
+/// with mermaid-cli 12.0.0 in both themes: at this alpha the tint blends into a white or
+/// a `#0d1117` background and the theme's own text colour stays legible on both.
+pub struct SequenceTint {
+    pub name: &'static str,
+    pub meaning: &'static str,
+    /// The palette stroke the tint is derived from, as `#rrggbb`.
+    pub stroke: &'static str,
+}
+
+pub const SEQUENCE_TINT_ALPHA: f32 = 0.15;
+
+pub const SEQUENCE_TINTS: [SequenceTint; 3] = [
+    SequenceTint {
+        name: "before",
+        meaning: "the old or failing path",
+        stroke: CHANGE_COLORS[1].stroke,
+    },
+    SequenceTint {
+        name: "after",
+        meaning: "the new or fixed path",
+        stroke: CHANGE_COLORS[0].stroke,
+    },
+    SequenceTint {
+        name: "now",
+        meaning: "the current state, neither old nor new",
+        stroke: HIGHLIGHT.stroke,
+    },
+];
+
+impl SequenceTint {
+    /// The mermaid colour for `rect`, e.g. `rgba(207, 34, 46, 0.15)`.
+    pub fn rgba(&self) -> String {
+        let channel = |i: usize| u8::from_str_radix(&self.stroke[i..i + 2], 16).unwrap_or(0);
+        format!(
+            "rgba({}, {}, {}, {SEQUENCE_TINT_ALPHA})",
+            channel(1),
+            channel(3),
+            channel(5)
+        )
+    }
+}
+
 /// The `classDef` line for the boundary class.
 pub fn mermaid_boundary_classdef() -> String {
     format!(
@@ -192,6 +243,24 @@ mod tests {
             Some("diffModified")
         );
         assert_eq!(mermaid_class(ChangeKind::Unchanged), None);
+    }
+
+    #[test]
+    fn sequence_tints_are_the_diff_strokes_made_translucent() {
+        let removed = colors_for(ChangeKind::Removed).unwrap();
+        let added = colors_for(ChangeKind::Added).unwrap();
+        assert_eq!(
+            SEQUENCE_TINTS[0].stroke, removed.stroke,
+            "before reads as removed"
+        );
+        assert_eq!(
+            SEQUENCE_TINTS[1].stroke, added.stroke,
+            "after reads as added"
+        );
+        assert_eq!(SEQUENCE_TINTS[2].stroke, HIGHLIGHT.stroke);
+        assert_eq!(SEQUENCE_TINTS[0].rgba(), "rgba(207, 34, 46, 0.15)");
+        assert_eq!(SEQUENCE_TINTS[1].rgba(), "rgba(26, 127, 55, 0.15)");
+        assert_eq!(SEQUENCE_TINTS[2].rgba(), "rgba(9, 105, 218, 0.15)");
     }
 
     #[test]
