@@ -245,7 +245,7 @@ vizzle doc ... [--root DIR]             # repo root that manifest `file` paths r
                                         # against (default: the current directory)
 vizzle doc ... [-I glob] [-E glob] [-l python|typescript]   # narrow a scoped manifest's walk
 
-vizzle render <doc.md|dir|src.mmd> <out-dir> [-f png|svg]
+vizzle render <doc.md|dir|src.mmd> <out-dir> [-f png|svg] [--theme light|dark|both]
 ```
 
 `render` turns fences into images for the places that cannot render mermaid —

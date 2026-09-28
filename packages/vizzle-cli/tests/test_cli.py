@@ -491,6 +491,101 @@ def test_render_raises_the_mermaid_text_cap(tmp_path):
     assert render_mod.CONFIG["maxTextSize"] > 50_000
 
 
+def test_palette_tints_are_the_diff_strokes_the_class_diagrams_use():
+    out = CliRunner().invoke(main, ["palette", "-f", "json"])
+    assert out.exit_code == 0, out.output
+    palette = json.loads(out.output)
+    tints = {t["name"]: t["rect"] for t in palette["sequence"]}
+    assert set(tints) == {"before", "after", "now"}
+    classdefs = "\n".join(palette["classDefs"])
+    # before reads as removed and after as added, in the same colour the class diagram uses.
+    for name, klass in (("before", "diffRemoved"), ("after", "diffAdded")):
+        stroke = re.search(rf"classDef {klass} .*?stroke:#(\w{{6}})", classdefs).group(1)
+        rgb = ", ".join(str(int(stroke[i : i + 2], 16)) for i in (0, 2, 4))
+        assert tints[name] == f"rect rgba({rgb}, 0.15)", tints[name]
+    # Translucent, never opaque: an opaque pale fill made dark-mode text unreadable.
+    assert all(rect.startswith("rect rgba(") for rect in tints.values())
+
+
+def _fake_mmdc(monkeypatch, fences: int = 1) -> list[list[str]]:
+    """Stand in for mermaid-cli: record each command and write what mmdc would."""
+    from vizzle_cli import render as render_mod
+
+    calls: list[list[str]] = []
+
+    def run(command, **_):
+        calls.append(command)
+        target = Path(command[command.index("-o") + 1])
+        if fences == 1:
+            target.write_bytes(b"png")
+        else:
+            for n in range(1, fences + 1):
+                target.with_name(f"{target.stem}-{n}{target.suffix}").write_bytes(b"png")
+        return subprocess.CompletedProcess(command, 0, b"", b"")
+
+    monkeypatch.setattr(render_mod.subprocess, "run", run)
+    monkeypatch.setattr(render_mod.shutil, "which", lambda name: "/usr/bin/npx" if name == "npx" else None)
+    return calls
+
+
+def test_render_both_themes_writes_a_dark_twin_with_the_dark_theme(tmp_path, monkeypatch):
+    calls = _fake_mmdc(monkeypatch)
+    (tmp_path / "flow.mmd").write_text("sequenceDiagram\n  A->>B: hi\n")
+    out = CliRunner().invoke(main, ["render", str(tmp_path / "flow.mmd"), str(tmp_path / "out"), "--theme", "both"])
+    assert out.exit_code == 0, out.output
+    assert sorted(p.name for p in (tmp_path / "out").iterdir()) == ["flow.dark.png", "flow.png"]
+    light, dark = calls
+    assert light[light.index("--theme") + 1] == "default"
+    assert light[light.index("--backgroundColor") + 1] == "white"
+    assert dark[dark.index("--theme") + 1] == "dark"
+    assert dark[dark.index("--backgroundColor") + 1] == "#0d1117", "GitHub's dark canvas"
+
+
+def test_render_numbers_dark_fences_beside_their_light_twins(tmp_path, monkeypatch):
+    _fake_mmdc(monkeypatch, fences=2)
+    (tmp_path / "doc.md").write_text("two fences\n")
+    out = CliRunner().invoke(main, ["render", str(tmp_path / "doc.md"), str(tmp_path / "out"), "--theme", "both"])
+    assert out.exit_code == 0, out.output
+    names = sorted(p.name for p in (tmp_path / "out").iterdir())
+    assert names == ["doc-1.dark.png", "doc-1.png", "doc-2.dark.png", "doc-2.png"]
+
+
+def test_render_fetches_the_pinned_mermaid_cli(tmp_path, monkeypatch):
+    from vizzle_cli import render as render_mod
+
+    calls = _fake_mmdc(monkeypatch)
+    (tmp_path / "a.mmd").write_text("classDiagram\n")
+    render_mod.render(tmp_path / "a.mmd", tmp_path / "out")
+    # An unpinned fetch follows every major; 12.0.0 dropped a flag a consumer relied on.
+    package = calls[0][calls[0].index("-p") + 1]
+    assert package == render_mod.MERMAID_CLI
+    assert re.fullmatch(r"@mermaid-js/mermaid-cli@\d+\.\d+\.\d+", package)
+
+
+def test_render_points_puppeteer_at_the_newest_cached_browser(tmp_path, monkeypatch):
+    from vizzle_cli import render as render_mod
+
+    def install(kind: str, release: str, name: str) -> Path:
+        exe = tmp_path / kind / release / f"{kind}-linux64" / name
+        exe.parent.mkdir(parents=True)
+        exe.write_text("")
+        exe.chmod(0o755)
+        return exe
+
+    install("chrome", "linux-153.0.8010.36", "chrome")
+    install("chrome-headless-shell", "linux-152.0.7977.75", "chrome-headless-shell")
+    newest = install("chrome-headless-shell", "linux-153.0.8010.36", "chrome-headless-shell")
+    (tmp_path / "chrome-headless-shell" / "linux-154.0.1.1").mkdir()  # an interrupted install: no binary
+    monkeypatch.delenv("PUPPETEER_EXECUTABLE_PATH", raising=False)
+    monkeypatch.setenv("PUPPETEER_CACHE_DIR", str(tmp_path))
+
+    env = render_mod._browser_env()
+    # Skipping the download alone left puppeteer hunting its own pinned build, which a
+    # cache of any other build does not have: "Could not find chrome-headless-shell".
+    assert env["PUPPETEER_EXECUTABLE_PATH"] == str(newest)
+    assert env["PUPPETEER_SKIP_DOWNLOAD"] == "true"
+
+
 # Scoped managed documents: a manifest that names a path instead of symbols.
 # The point of the mode is that it catches an *addition*, which a curated
 # symbol list cannot (docs/curated-diagrams.md §5.1).

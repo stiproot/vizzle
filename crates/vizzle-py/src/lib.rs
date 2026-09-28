@@ -433,6 +433,21 @@ fn diff_palette_css() -> String {
     vc::palette::css_variables()
 }
 
+/// The sequence-diagram block tints as `(name, meaning, rgba)`.
+#[pyfunction]
+fn sequence_tints() -> Vec<(String, String, String)> {
+    vc::palette::SEQUENCE_TINTS
+        .iter()
+        .map(|t| (t.name.to_owned(), t.meaning.to_owned(), t.rgba()))
+        .collect()
+}
+
+/// The diff `classDef` block, for a hand-drawn class diagram that should match vizzle's.
+#[pyfunction]
+fn diff_classdefs() -> String {
+    vc::palette::mermaid_classdefs()
+}
+
 /// Export the class graph under `root` as JSON (for external renderers).
 #[pyfunction]
 #[pyo3(signature = (root, *, include = vec![], exclude = vec![], langs = vec![], highlight = vec![], around = vec![], depth = 1))]
@@ -486,6 +501,8 @@ fn vizzle_core_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(component_json_diff, m)?)?;
     m.add_function(wrap_pyfunction!(curated_diagram_from_dir, m)?)?;
     m.add_function(wrap_pyfunction!(diff_palette_css, m)?)?;
+    m.add_function(wrap_pyfunction!(sequence_tints, m)?)?;
+    m.add_function(wrap_pyfunction!(diff_classdefs, m)?)?;
     m.add_function(wrap_pyfunction!(graph_json_from_dir, m)?)?;
     m.add_function(wrap_pyfunction!(graph_json_diff, m)?)?;
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
