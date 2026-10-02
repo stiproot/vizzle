@@ -21,9 +21,14 @@ a:hover {
   text-decoration: underline;
 }
 
-.card {
-  background-color: var(--color-panel);
-  border-radius: var(--radius-xl);
+/* In the components layer so a `bg-[var(--color-*-tint)]` utility can override
+   the default panel surface. Unlayered, this beat every utility regardless of
+   order, which is why the tinted cards rendered neutral. */
+@layer components {
+  .card {
+    background-color: var(--color-panel);
+    border-radius: var(--radius-xl);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
