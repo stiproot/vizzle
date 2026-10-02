@@ -24,6 +24,10 @@ build/
 # Node (only used for ad-hoc mermaid rendering)
 node_modules/
 
+# site/ (Astro + Tailwind)
+site/.astro/
+site/public/diagrams/
+
 # Editors / OS
 .DS_Store
 .idea/
