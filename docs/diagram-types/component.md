@@ -600,7 +600,8 @@ class graph vizzle already extracts.
   themselves (they render as component-level dependency edges instead).
 - Rust/Go **parsing** (detection already recognizes their manifests, so a
   `Cargo.toml` crate with only `.rs` files simply yields no node until a
-  parser exists).
+  parser exists). The proposed Rust extraction model is specified in
+  [`docs/languages/rust.md`](../languages/rust.md).
 
 ## 9.1 Implementation notes
 

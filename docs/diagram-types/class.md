@@ -173,6 +173,9 @@ best-effort syntactic model, and §4 says what that costs.
 Both extractors also record the file's imports, which the component diagram
 consumes; a class graph and an import graph come out of one parse.
 
+Rust extraction decisions are specified separately in
+[`docs/languages/rust.md`](../languages/rust.md).
+
 ## 4. Resolution, and its deliberate limits
 
 A type named in source is resolved to a class in the graph by looking in the
