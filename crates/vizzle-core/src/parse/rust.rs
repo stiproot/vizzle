@@ -3,7 +3,7 @@
 use anyhow::{Context, Result};
 use tree_sitter::{Node, Parser};
 
-use super::{clean_type, text, text_hash};
+use super::{text, text_hash};
 use crate::model::*;
 
 pub fn parse(rel_path: &str, source: &str, manifests: &[(String, String)]) -> Result<CodeGraph> {
@@ -429,8 +429,9 @@ fn extract_impl(
 
     if let (Some(ty), Some(tr)) = (self_type.clone(), trait_ty.clone()) {
         let qualified_type = format!("{qualified_prefix}::{ty}");
-        let qualified_trait = format!("{qualified_prefix}::{tr}");
-        realization_edges.push((qualified_type, qualified_trait));
+        // Store the bare trait name so resolve_base can look it up by short name,
+        // just as Python/TS do — a fully qualified trait name would never match.
+        realization_edges.push((qualified_type, tr));
     }
 
     // Only merge inherent impls (not trait impls) into the type's members
@@ -456,7 +457,14 @@ fn extract_method(node: Node, src: &str, members: &mut Vec<Member>) {
     let return_type = extract_return_type(node, src);
     let is_abstract = node.child_by_field_name("body").is_none();
 
-    let detail = format!("({})", param_types.join(", "));
+    // "name: type" pairs (self excluded — static/instance is shown by classifier).
+    let detail = param_names
+        .iter()
+        .filter(|n| n.as_str() != "self")
+        .zip(param_types.iter())
+        .map(|(n, t)| format!("{n}: {t}"))
+        .collect::<Vec<_>>()
+        .join(", ");
     let mut type_refs = param_types.clone();
     if let Some(ref ret) = return_type {
         type_refs.extend(extract_type_refs(ret));
@@ -576,16 +584,9 @@ fn extract_parameters(node: Node, src: &str) -> (Vec<String>, Vec<String>) {
 }
 
 fn extract_return_type(node: Node, src: &str) -> Option<String> {
+    // `return_type` field is the type node directly (after `->`) — take its full text.
     let return_type = node.child_by_field_name("return_type")?;
-    // Try the `type` field first (tree-sitter-rust ≥ 0.23); fall back to first child.
-    let ty_text = if let Some(t) = return_type.child_by_field_name("type") {
-        text(t, src)
-    } else {
-        let mut cursor = return_type.walk();
-        let first = return_type.named_children(&mut cursor).next()?;
-        text(first, src)
-    };
-    Some(rust_clean_type(&ty_text))
+    Some(rust_clean_type(&text(return_type, src)))
 }
 
 fn extract_trait_method(node: Node, src: &str, members: &mut Vec<Member>) {
@@ -599,7 +600,14 @@ fn extract_trait_method(node: Node, src: &str, members: &mut Vec<Member>) {
     let has_self = has_self_param(node);
     let is_abstract = node.child_by_field_name("body").is_none();
 
-    let detail = format!("({})", param_types.join(", "));
+    // "name: type" pairs (self excluded).
+    let detail = param_names
+        .iter()
+        .filter(|n| n.as_str() != "self")
+        .zip(param_types.iter())
+        .map(|(n, t)| format!("{n}: {t}"))
+        .collect::<Vec<_>>()
+        .join(", ");
     let mut type_refs = param_types.clone();
     if let Some(ref ret) = return_type {
         type_refs.extend(extract_type_refs(ret));
@@ -685,9 +693,25 @@ fn strip_lifetimes(ty: &str) -> String {
     result
 }
 
-/// Rust-specific type cleaner: strip lifetimes then apply the shared clean_type.
+/// Rust-specific type cleaner: like clean_type but preserves `(` and `)` so
+/// that tuple types inside generics render as `Vec~(String, String)~`.
 fn rust_clean_type(raw: &str) -> String {
-    clean_type(&strip_lifetimes(raw))
+    let no_lifetimes = strip_lifetimes(raw);
+    let mut cleaned: String = no_lifetimes
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .replace("[]", "\u{1}")
+        .replace("=>", "\u{2}")
+        .replace(['[', ']', '<', '>'], "~")
+        .replace('\u{2}', "=>")
+        .replace('\u{1}', "[]")
+        .replace(['"', '\'', '{', '}', '`', ';'], "");
+    if cleaned.chars().count() > 40 {
+        cleaned = cleaned.chars().take(39).collect();
+        cleaned.push('…');
+    }
+    cleaned
 }
 
 fn extract_type_refs(ty_str: &str) -> Vec<String> {
@@ -970,6 +994,79 @@ pub struct Class { pub members: Vec<Member> }";
         assert!(
             class.members.iter().any(|m| m.name == "serialize_bool"),
             "serialize_bool method should be present"
+        );
+    }
+
+    #[test]
+    fn generic_impl_creates_realization_edge() {
+        // Verifies that `impl<T> Trait for S<T>` produces a resolved S ..|> Trait
+        // edge — generic type parameters on the impl head must not prevent resolution.
+        let src = "
+pub trait Collect {}
+pub struct Bag<T>;
+impl<T> Collect for Bag<T> {}
+";
+        let graph = parse_rust("mycrate", "mycrate", "lib", src);
+        let bag = graph.classes.iter().find(|c| c.name == "Bag").expect("Bag");
+        assert!(
+            bag.bases.iter().any(|r| r.to.contains("Collect")),
+            "Bag raw bases should include Collect: {:?}",
+            bag.bases
+        );
+        use crate::resolve::{resolve_all_relations, Target};
+        let relations = resolve_all_relations(&graph);
+        assert!(
+            relations.iter().any(|r| {
+                r.from.contains("Bag")
+                    && matches!(&r.to, Target::Internal(to) if to.contains("Collect"))
+            }),
+            "Bag ..|> Collect should resolve as an internal edge: {:?}",
+            relations
+        );
+    }
+
+    #[test]
+    fn tuple_type_in_generic_preserved() {
+        let src = "pub type Files = Vec<(String, String)>;";
+        let graph = parse_rust("mycrate", "mycrate", "lib", src);
+        let class = graph
+            .classes
+            .iter()
+            .find(|c| c.name == "Files")
+            .expect("Files");
+        let detail = class
+            .members
+            .iter()
+            .find(|m| m.name == "type")
+            .map(|m| m.detail.as_str())
+            .unwrap_or("");
+        assert!(
+            detail.contains("(String, String)"),
+            "tuple inside generic should be preserved: {:?}",
+            detail
+        );
+    }
+
+    #[test]
+    fn method_detail_is_name_type_pairs() {
+        let src = "
+pub struct Svc;
+impl Svc {
+    pub fn call(&self, req: String) -> bool { false }
+    pub fn make(x: i32, y: i32) -> Svc { Svc }
+}
+";
+        let graph = parse_rust("mycrate", "mycrate", "lib", src);
+        let svc = graph.classes.iter().find(|c| c.name == "Svc").expect("Svc");
+        let call = svc.members.iter().find(|m| m.name == "call").expect("call");
+        assert_eq!(
+            call.detail, "req: String",
+            "instance method: no self, name:type"
+        );
+        let make = svc.members.iter().find(|m| m.name == "make").expect("make");
+        assert_eq!(
+            make.detail, "x: i32, y: i32",
+            "static method: name:type pairs"
         );
     }
 }
