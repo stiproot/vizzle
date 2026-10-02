@@ -255,7 +255,9 @@ produced on demand and usually gitignored.
 Docs without a `gen:c4-code` marker are ignored, so a directory mixing
 generated and hand-authored diagrams is fine — h's `docs/diagrams/` is exactly
 that: 3 managed class diagrams among 14 hand-authored sequence, state and C4
-documents.
+documents. Only an HTML comment that opens with the marker is a manifest, so a
+document that merely mentions `gen:c4-code` in prose — this one included — stays
+hand-authored and is ignored too.
 
 ## 8. Out of scope
 
