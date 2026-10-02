@@ -1,6 +1,6 @@
 # Rust language specification
 
-Status: In progress — §10.1 fixes merged, §10.2 (serde) not yet verified
+Status: v1 implemented
 
 This document fixes the Rust-to-vizzle model before an implementation exists.
 It extends the language-neutral class and import graphs described by the
@@ -364,6 +364,35 @@ and `SerializeStruct`. It must not invent an `Impossible ..|> Serializer` edge:
 that impl does not exist. Items generated only by macros are absent and do not
 create invented realization edges. These are observable text assertions over
 the Mermaid output, not visual judgment.
+
+**Verified at df528de (2026-10-02):**
+
+```
+$ grep 'serde_core::ser::Serializer' /tmp/serde-rust-class.mmd
+class serde_core__ser__Serializer["serde_core::ser::Serializer"] {
+        <<interface>>
+        +Ok
+        +Error : : Error
+        +serialize_bool(v: bool)* Result~Self::Ok, Self::Error~
+        ... (full method set present)
+
+$ grep 'serde_core::ser::impossible::Impossible' /tmp/serde-rust-class.mmd
+class serde_core__ser__impossible__Impossible["serde_core::ser::impossible::Impossible"] {
+
+$ grep '..|>' /tmp/serde-rust-class.mmd | grep Impossible
+    serde_core__ser__impossible__Impossible ..|> serde_core__ser__SerializeSeq
+    serde_core__ser__impossible__Impossible ..|> serde_core__ser__SerializeTuple
+    serde_core__ser__impossible__Impossible ..|> serde_core__ser__SerializeTupleStruct
+    serde_core__ser__impossible__Impossible ..|> serde_core__ser__SerializeTupleVariant
+    serde_core__ser__impossible__Impossible ..|> serde_core__ser__SerializeMap
+    serde_core__ser__impossible__Impossible ..|> serde_core__ser__SerializeStruct
+    serde_core__ser__impossible__Impossible ..|> serde_core__ser__SerializeStructVariant
+
+$ grep 'Impossible.*Serializer\|Serializer.*Impossible' /tmp/serde-rust-class.mmd
+(no output — correct, that impl does not exist)
+```
+
+All §10.2 assertions pass: `Serializer <<interface>>` with `Ok`, `Error`, `serialize_bool`; `Impossible` box present; realization edges to `SerializeSeq`, `SerializeMap`, `SerializeStruct` (and four more); no invented `Impossible ..|> Serializer`.
 
 **Decision.** Implementation is accepted only when both command sets produce
 the stated boxes, members, and edges at the pinned revisions. Update counts or
