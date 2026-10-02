@@ -1,0 +1,32 @@
+{
+  "name": "vizzle-site",
+  "version": "1.0.0",
+  "description": "vizzle — code diagrams that sync with git",
+  "type": "module",
+  "scripts": {
+    "prebuild": "bun scripts/prebuild.ts",
+    "dev": "astro dev",
+    "build": "bun run prebuild && astro build",
+    "preview": "astro preview",
+    "type-check": "astro check",
+    "lint": "oxlint . && bunx oxfmt --check . && bun scripts/check-tokens.ts",
+    "format": "bunx oxfmt .",
+    "clean": "rm -rf dist *.tsbuildinfo .astro"
+  },
+  "dependencies": {
+    "@astrojs/sitemap": "^3.7.3",
+    "@fontsource-variable/schibsted-grotesk": "^5.1.0",
+    "@fontsource/jetbrains-mono": "^5.1.0",
+    "@tailwindcss/vite": "^4.3.3",
+    "astro": "^7.1.5",
+    "tailwindcss": "^4.3.3"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.10",
+    "oxlint": "^1.86.0",
+    "typescript": "~5.9.2"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  }
+}

@@ -11,11 +11,12 @@ crates/vizzle-core/     Rust. Parse → graph → diff → render. Everything ho
 crates/vizzle-py/       PyO3 bindings. A thin, dumb translation layer.
 packages/vizzle-cli/    Click CLI. Git orchestration, file I/O, page assembly.
   └── assets/          viz-core.{css,js} (shared) + one template per diagram type.
+site/                  Astro + Tailwind v4, Firebase Hosting. See site/CLAUDE.md.
 docs/diagram-types/    One spec per diagram type. Written before the code.
 docs/distribution.md   How vizzle reaches other repos, and why.
 docs/curated-diagrams.md  Manifest-scoped diagrams that stay true to the code.
 plugins/vizzle/        Claude Code plugin: one skill teaching agents to use it.
-.github/workflows/     ci, codeql, pr-diagram, and the tag-driven release.
+.github/workflows/     ci, codeql, pr-diagram, site, and the tag-driven release.
 ```
 
 Three source layers, **one shipped distribution**: `packages/vizzle-cli/` is the

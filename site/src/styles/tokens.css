@@ -1,0 +1,95 @@
+/**
+ * Hand-authored design tokens for the vizzle site.
+ * These are the single source of truth for colors, spacing, typography, etc.
+ * No literal values elsewhere in src/ — guard via scripts/check-tokens.ts.
+ */
+
+@import "@fontsource-variable/schibsted-grotesk";
+@import "@fontsource/jetbrains-mono";
+
+:root {
+  /* Colors from vizzle palette
+     ink: viz-core.css line 6 (#1f2328)
+     muted: palette.rs BOUNDARY.color (#57606a)
+     border: viz-core.css line 8 (#d0d7de)
+     page: #ffffff
+     panel: viz-core.css line 4 (#f6f8fa)
+  */
+  --color-ink: #1f2328;
+  --color-muted: #57606a;
+  --color-border: #d0d7de;
+  --color-page: #ffffff;
+  --color-panel: #f6f8fa;
+
+  /* Structure — palette.rs HIGHLIGHT */
+  --color-structure: #0969da;
+  --color-structure-tint: #ddf4ff;
+
+  /* Diff states — palette.rs CHANGE_COLORS */
+  --color-added: #1a7f37;
+  --color-added-tint: #dafbe1;
+  --color-removed: #cf222e;
+  --color-removed-tint: #ffebe9;
+  --color-modified: #bf8700;
+  --color-modified-tint: #fff1c2;
+  --color-modified-text: #7d4e00; /* for text on modified-tint */
+
+  /* Spacing (from Tailwind scale) */
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-12: 3rem;
+  --space-16: 4rem;
+  --space-24: 6rem;
+
+  /* Typography */
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.25rem;
+  --text-2xl: 1.5rem;
+  --text-3xl: 1.875rem;
+  --text-4xl: 2.25rem;
+  --text-5xl: 3rem;
+  --text-hero: 3.75rem;
+
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+  --font-weight-extrabold: 800;
+
+  --font-sans:
+    "Schibsted Grotesk Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", "Fira Code", "Courier New", monospace;
+
+  /* Border radius */
+  --radius-sm: 0.25rem;
+  --radius-md: 0.375rem;
+  --radius-lg: 0.5rem;
+  --radius-xl: 0.75rem;
+}
+
+@theme static {
+  --color-ink: #1f2328;
+  --color-muted: #57606a;
+  --color-border: #d0d7de;
+  --color-page: #ffffff;
+  --color-panel: #f6f8fa;
+  --color-structure: #0969da;
+  --color-structure-tint: #ddf4ff;
+  --color-added: #1a7f37;
+  --color-added-tint: #dafbe1;
+  --color-removed: #cf222e;
+  --color-removed-tint: #ffebe9;
+  --color-modified: #bf8700;
+  --color-modified-tint: #fff1c2;
+  --color-modified-text: #7d4e00;
+  --font-sans:
+    "Schibsted Grotesk Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", "Fira Code", "Courier New", monospace;
+}

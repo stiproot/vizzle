@@ -1,0 +1,304 @@
+---
+import BaseLayout from '~/layouts/BaseLayout.astro';
+---
+
+<BaseLayout>
+  <div class="min-h-screen flex flex-col">
+    <!-- Navigation -->
+    <nav class="border-b border-[var(--color-border)]">
+      <div class="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+        <div class="flex items-center gap-2 font-bold text-lg">
+          <div class="flex gap-1 w-5 h-5">
+            <div class="w-2 h-2 bg-[var(--color-structure)] rounded-sm"></div>
+            <div class="w-2 h-2 bg-[var(--color-added)] rounded-sm"></div>
+            <div class="w-2 h-2 bg-[var(--color-modified)] rounded-sm"></div>
+            <div class="w-2 h-2 bg-[var(--color-removed)] rounded-sm"></div>
+          </div>
+          <span>vizzle</span>
+        </div>
+        <div class="flex items-center gap-6 text-sm">
+          <a href="#examples" class="hover:text-[var(--color-structure)]">Examples</a>
+          <a href="https://github.com/stiproot/vizzle#readme" target="_blank" rel="noopener noreferrer" class="hover:text-[var(--color-structure)]">Docs</a>
+          <a href="#agents" class="hover:text-[var(--color-structure)]">For agents</a>
+          <a href="https://github.com/stiproot/vizzle" target="_blank" rel="noopener noreferrer" class="flex items-center gap-1 hover:text-[var(--color-structure)]">
+            GitHub
+            <span>↗</span>
+          </a>
+        </div>
+      </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="bg-[var(--color-page)] border-b border-[var(--color-border)]">
+      <div class="max-w-7xl mx-auto px-6 py-16 lg:py-24">
+        <div class="grid lg:grid-cols-2 gap-12 lg:gap-16 items-center">
+          <div>
+            <p class="text-sm font-semibold text-[var(--color-structure)] mb-4">UML for git · Python + TypeScript</p>
+            <h1 class="text-4xl lg:text-5xl font-bold mb-4 leading-tight">
+              Code is being written faster than anyone can read it.
+              <span class="text-[var(--color-structure)]">See its shape instead.</span>
+            </h1>
+            <p class="text-lg text-[var(--color-muted)] mb-8 leading-relaxed">
+              vizzle parses a codebase — or a git diff — and draws it: component diagrams that open into classes, diffs that show what a change did to the shape of the code, and docs whose diagrams fail the build when they drift.
+            </p>
+            <div class="bg-[var(--color-ink)] text-white p-4 rounded-lg font-mono text-sm mb-4 relative">
+              <code>$ uvx vizzle component .</code>
+              <button class="absolute right-4 top-4 px-2 py-1 text-xs bg-[var(--color-structure)] rounded hover:bg-opacity-80" id="copy-btn" onclick="navigator.clipboard.writeText('uvx vizzle component .'); this.textContent = 'Copied!'; setTimeout(() => { this.textContent = 'Copy'; }, 2000);">Copy</button>
+            </div>
+          </div>
+          <div class="flex items-center justify-center">
+            <div class="text-[var(--color-muted)] text-center">
+              <p>Interactive example below</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Interactive Example -->
+    <section id="examples" class="bg-[var(--color-panel)] border-b border-[var(--color-border)]">
+      <div class="max-w-7xl mx-auto px-6 py-12">
+        <div class="card">
+          <!-- Tabs -->
+          <div class="flex border-b border-[var(--color-border)] overflow-x-auto" role="tablist">
+            <button
+              role="tab"
+              aria-selected="true"
+              data-tab="components"
+              class="px-6 py-3 font-medium text-sm border-b-2 border-[var(--color-structure)] text-[var(--color-ink)] whitespace-nowrap"
+            >
+              Components
+            </button>
+            <button
+              role="tab"
+              aria-selected="false"
+              data-tab="classes"
+              class="px-6 py-3 font-medium text-sm border-b-2 border-transparent text-[var(--color-muted)] hover:text-[var(--color-ink)] whitespace-nowrap"
+            >
+              Classes
+            </button>
+            <button
+              role="tab"
+              aria-selected="false"
+              data-tab="diff"
+              class="px-6 py-3 font-medium text-sm border-b-2 border-transparent text-[var(--color-muted)] hover:text-[var(--color-ink)] whitespace-nowrap"
+            >
+              What changed
+            </button>
+          </div>
+
+          <!-- Tab content -->
+          <div class="relative">
+            <iframe
+              id="diagram-components"
+              class="tab-content w-full h-96 md:h-[640px] border-0"
+              src="/diagrams/h-components.html"
+              title="Component diagram"
+              loading="lazy"
+            ></iframe>
+            <iframe
+              id="diagram-classes"
+              class="tab-content hidden w-full h-96 md:h-[640px] border-0"
+              src="/diagrams/h-classes.html"
+              title="Class diagram"
+              loading="lazy"
+            ></iframe>
+            <iframe
+              id="diagram-diff"
+              class="tab-content hidden w-full h-96 md:h-[640px] border-0"
+              src="/diagrams/h-diff.html"
+              title="Diff diagram"
+              loading="lazy"
+            ></iframe>
+
+            <!-- Mobile fullscreen link -->
+            <a href="/diagrams/h-components.html" class="md:hidden absolute top-4 right-4 px-3 py-2 bg-[var(--color-structure)] text-white text-xs rounded hover:bg-opacity-90" id="fullscreen-link">Open full screen ↗</a>
+          </div>
+
+          <!-- Command strip -->
+          <div class="px-6 py-4 border-t border-[var(--color-border)] bg-[var(--color-panel)]">
+            <p class="text-xs font-mono text-[var(--color-muted)] mb-2" id="command-text">$ vizzle component .</p>
+            <p class="text-xs text-[var(--color-muted)]">Drag to pan · Scroll to zoom</p>
+            <p class="text-xs text-[var(--color-muted)] mt-2">Subject: h, an agent orchestration harness · 358 files</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Three Cards -->
+    <section class="bg-[var(--color-page)] border-b border-[var(--color-border)]">
+      <div class="max-w-7xl mx-auto px-6 py-16">
+        <div class="grid md:grid-cols-3 gap-8">
+          <div class="card p-8">
+            <div class="w-12 h-12 rounded-lg bg-[var(--color-structure-tint)] text-[var(--color-structure)] flex items-center justify-center font-bold mb-4">U</div>
+            <h3 class="text-xl font-bold mb-3">What is this made of?</h3>
+            <p class="text-[var(--color-muted)]">Component diagrams open into classes. Understand the shape without reading every line.</p>
+          </div>
+          <div class="card p-8">
+            <div class="w-12 h-12 rounded-lg bg-[var(--color-added-tint)] text-[var(--color-added)] flex items-center justify-center font-bold mb-4">R</div>
+            <h3 class="text-xl font-bold mb-3">What did this change do?</h3>
+            <p class="text-[var(--color-muted)]">Diff diagrams show the shape of a change. Review architecture, not just code.</p>
+          </div>
+          <div class="card p-8">
+            <div class="w-12 h-12 rounded-lg bg-[var(--color-modified-tint)] text-[var(--color-modified-text)] flex items-center justify-center font-bold mb-4">G</div>
+            <h3 class="text-xl font-bold mb-3">Is the doc still true?</h3>
+            <p class="text-[var(--color-muted)]">Diagrams that fail the build when they drift keep docs and code in sync.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Diagrams That Don't Lie -->
+    <section class="bg-[var(--color-panel)] border-b border-[var(--color-border)]">
+      <div class="max-w-7xl mx-auto px-6 py-16">
+        <div class="grid lg:grid-cols-2 gap-12 items-start">
+          <div>
+            <h2 class="text-3xl font-bold mb-4">Architecture docs that fail the build when they drift.</h2>
+            <p class="text-[var(--color-muted)] mb-4">vizzle diagrams live in your repo and stay true to the code. When the codebase changes, diagrams either regenerate automatically or the build fails.</p>
+            <a href="https://github.com/stiproot/vizzle/blob/main/docs/curated-diagrams.md" target="_blank" rel="noopener noreferrer" class="text-[var(--color-structure)] hover:underline text-sm font-medium">Read how curated diagrams work →</a>
+          </div>
+          <div class="bg-[var(--color-ink)] text-white p-6 rounded-lg font-mono text-xs leading-6 overflow-x-auto">
+            <code class="whitespace-pre">$ vizzle doc --dir docs/diagrams --check
+
+[live output from the deploy's own check — next release]</code>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- What Changed -->
+    <section class="bg-[var(--color-page)] border-b border-[var(--color-border)]">
+      <div class="max-w-7xl mx-auto px-6 py-16">
+        <div class="grid lg:grid-cols-2 gap-12 items-center">
+          <div>
+            <p class="text-sm font-semibold text-[var(--color-structure)] mb-2">WHAT CHANGED</p>
+            <h2 class="text-3xl font-bold mb-4">Review the shape, not just the lines.</h2>
+            <p class="text-[var(--color-muted)] mb-4">
+              The PR-diagram Action checks every pull request: it generates a diff diagram and comments it on the PR, so reviewers see the shape of the change.
+            </p>
+            <a href="https://github.com/stiproot/vizzle/blob/main/.github/workflows/pr-diagram.yml" target="_blank" rel="noopener noreferrer" class="text-[var(--color-structure)] hover:underline text-sm font-medium">See the workflow →</a>
+
+            <!-- Legend -->
+            <div class="mt-8 flex gap-6 text-sm">
+              <div class="flex items-center gap-2">
+                <span class="font-bold text-[var(--color-added)]">✚</span>
+                <span>Added</span>
+              </div>
+              <div class="flex items-center gap-2">
+                <span class="font-bold text-[var(--color-removed)]">✖</span>
+                <span>Removed</span>
+              </div>
+              <div class="flex items-center gap-2">
+                <span class="font-bold text-[var(--color-modified)]">✱</span>
+                <span>Modified</span>
+              </div>
+            </div>
+          </div>
+          <div class="card p-4 bg-[var(--color-panel)]">
+            <p class="text-[var(--color-muted)] text-sm">Diff diagram would display here</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- For Agents -->
+    <section id="agents" class="bg-[var(--color-panel)] border-b border-[var(--color-border)]">
+      <div class="max-w-7xl mx-auto px-6 py-16">
+        <h2 class="text-3xl font-bold mb-4">A 358-file codebase in about 1.5k tokens.</h2>
+        <p class="text-[var(--color-muted)] mb-8 max-w-2xl">
+          Agents working in large codebases can use vizzle to quickly understand structure, see changes, and verify docs.
+        </p>
+        <div class="space-y-4 font-mono text-sm">
+          <div class="bg-[var(--color-ink)] text-white p-4 rounded-lg">
+            <code>claude plugin install https://github.com/stiproot/vizzle/releases/download/v0.11.0/vizzle-plugin-v0.11.0.tar.gz</code>
+          </div>
+          <div class="bg-[var(--color-ink)] text-white p-4 rounded-lg">
+            <code>claude plugin list</code>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="bg-[var(--color-page)] border-t border-[var(--color-border)] mt-auto">
+      <div class="max-w-7xl mx-auto px-6 py-8 text-sm text-[var(--color-muted)]">
+        <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+          <div>
+            <p>vizzle · <a href="https://github.com/stiproot/vizzle/blob/main/LICENSE" target="_blank" rel="noopener noreferrer" class="hover:text-[var(--color-ink)] hover:underline">open source</a> · <a href="https://github.com/stiproot/vizzle/blob/main/LICENSE" target="_blank" rel="noopener noreferrer" class="hover:text-[var(--color-ink)] hover:underline">MIT</a></p>
+          </div>
+          <div class="flex gap-6">
+            <a href="https://github.com/stiproot/vizzle" target="_blank" rel="noopener noreferrer" class="hover:text-[var(--color-ink)] hover:underline">GitHub</a>
+            <a href="https://pypi.org/project/vizzle/" target="_blank" rel="noopener noreferrer" class="hover:text-[var(--color-ink)] hover:underline">PyPI</a>
+            <a href="https://github.com/stiproot/vizzle#readme" target="_blank" rel="noopener noreferrer" class="hover:text-[var(--color-ink)] hover:underline">Docs</a>
+          </div>
+        </div>
+      </div>
+    </footer>
+  </div>
+
+  <script>
+    // Tab switching
+    const tabs = document.querySelectorAll('[role="tab"]');
+    const tabContents = document.querySelectorAll('.tab-content');
+    const commands: Record<string, string> = {
+      components: '$ vizzle component .',
+      classes: '$ vizzle class .',
+      diff: '$ vizzle diff'
+    };
+
+    tabs.forEach(tab => {
+      tab.addEventListener('click', () => {
+        const tabName = tab.getAttribute('data-tab');
+        if (!tabName) return;
+
+        // Update tab state
+        tabs.forEach(t => t.setAttribute('aria-selected', 'false'));
+        tab.setAttribute('aria-selected', 'true');
+
+        // Update tab styles
+        tabs.forEach(t => {
+          if (t.getAttribute('aria-selected') === 'true') {
+            t.classList.add('border-[var(--color-structure)]', 'text-[var(--color-ink)]');
+            t.classList.remove('border-transparent', 'text-[var(--color-muted)]');
+          } else {
+            t.classList.remove('border-[var(--color-structure)]', 'text-[var(--color-ink)]');
+            t.classList.add('border-transparent', 'text-[var(--color-muted)]');
+          }
+        });
+
+        // Update content
+        tabContents.forEach(content => content.classList.add('hidden'));
+        const activeContent = document.getElementById(`diagram-${tabName}`);
+        if (activeContent) {
+          activeContent.classList.remove('hidden');
+        }
+
+        // Update command
+        const commandEl = document.getElementById('command-text');
+        if (commandEl) {
+          commandEl.textContent = commands[tabName] || '';
+        }
+
+        // Update fullscreen link
+        const fullscreenLink = document.getElementById('fullscreen-link') as HTMLAnchorElement | null;
+        if (fullscreenLink) {
+          fullscreenLink.href = `/diagrams/h-${tabName}.html`;
+        }
+      });
+
+      // Keyboard navigation
+      tab.addEventListener('keydown', (e) => {
+        let nextTab: Element | null = null;
+        if ((e as KeyboardEvent).key === 'ArrowRight') {
+          nextTab = tab.nextElementSibling;
+        } else if ((e as KeyboardEvent).key === 'ArrowLeft') {
+          nextTab = tab.previousElementSibling;
+        }
+        if (nextTab && nextTab instanceof HTMLElement && nextTab.hasAttribute('role') && nextTab.getAttribute('role') === 'tab') {
+          (nextTab as HTMLElement).click();
+          (nextTab as HTMLElement).focus();
+        }
+      });
+    });
+  </script>
+</BaseLayout>
