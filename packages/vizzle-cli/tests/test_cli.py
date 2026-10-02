@@ -646,6 +646,91 @@ def test_doc_scope_groups_by_component(tmp_path):
     assert "namespace" in doc.read_text()
 
 
+# A curated entry that names a Rust type. Rust keys a declaration by
+# `crate::module::Type` (docs/languages/rust.md §5), which the file path alone
+# cannot produce, so resolution reuses the parser's rule rather than the dotted
+# module path Python and TypeScript use (docs/curated-diagrams.md §3).
+
+
+def _rust_curated_doc(tmp_path: Path) -> Path:
+    (tmp_path / "Cargo.toml").write_text('[package]\nname = "demo"\n')
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "a.rs").write_text("pub struct Config { pub a_only: bool }\n")
+    (src / "b.rs").write_text("pub struct Config { pub b_only: bool }\n")
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    doc = docs / "rust.md"
+    doc.write_text(
+        "# Rust curated\n\n"
+        '<!-- gen:c4-code {"classes": ['
+        '{"id": "Config", "kind": "class", "file": "src/a.rs", "symbol": "Config"}]} -->\n\n'
+        "```mermaid\nclassDiagram\n  stale\n```\n"
+    )
+    return doc
+
+
+def test_doc_resolves_a_curated_rust_type_by_file(tmp_path):
+    """Two modules each define `Config`; the entry names one, so its box wins."""
+    doc = _rust_curated_doc(tmp_path)
+    result = CliRunner().invoke(main, ["doc", str(doc), "--root", str(tmp_path)])
+    assert result.exit_code == 0, result.output
+    text = doc.read_text()
+    assert "a_only" in text, text
+    assert "b_only" not in text, "the other module's Config must not be drawn"
+
+
+def test_doc_reports_a_rust_symbol_that_is_not_in_the_file(tmp_path):
+    doc = _rust_curated_doc(tmp_path)
+    doc.write_text(doc.read_text().replace('"symbol": "Config"', '"symbol": "Missing"'))
+    result = CliRunner().invoke(main, ["doc", str(doc), "--root", str(tmp_path)])
+    assert result.exit_code != 0
+    assert "demo::a::Missing" in result.output, result.output
+    assert "not in the parsed graph" in result.output
+
+
+def test_doc_scope_may_be_a_single_file(tmp_path):
+    """A file scope diagrams that file's classes, not nothing."""
+    src = tmp_path / "src" / "pkg"
+    src.mkdir(parents=True)
+    (src / "alpha.py").write_text("class Alpha:\n    def run(self) -> int: ...\n")
+    (src / "beta.py").write_text("class Beta:\n    pass\n")
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    doc = docs / "file.md"
+    doc.write_text(
+        "# File scope\n\n"
+        '<!-- gen:c4-code {"scope":{"path":"src/pkg/alpha.py","lang":"python"}} -->\n\n'
+        "```mermaid\nstale\n```\n"
+    )
+    result = CliRunner().invoke(main, ["doc", str(doc), "--root", str(tmp_path)])
+    assert result.exit_code == 0, result.output
+    text = doc.read_text()
+    assert "Alpha" in text and "+run() int" in text, text
+    assert "Beta" not in text, "a file scope must not reach its neighbour"
+
+
+def test_doc_empty_scope_is_an_error_before_it_can_be_current(tmp_path):
+    """A green check on an empty diagram is the failure the mode exists to prevent."""
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    # Markdown only: the scope matches no supported source file.
+    (docs / "notes.md").write_text("# notes\n")
+    doc = docs / "empty.md"
+    doc.write_text(
+        '# Empty\n\n<!-- gen:c4-code {"scope":{"path":"docs"}} -->\n\n```mermaid\nclassDiagram\n  stale\n```\n'
+    )
+    before = doc.read_text()
+
+    result = CliRunner().invoke(main, ["doc", str(doc), "--root", str(tmp_path)])
+    assert result.exit_code != 0, result.output
+    assert str(doc) in result.output and "docs" in result.output
+    assert doc.read_text() == before, "an empty diagram must not be written"
+
+    check = CliRunner().invoke(main, ["doc", str(doc), "--root", str(tmp_path), "--check"])
+    assert check.exit_code != 0, check.output
+
+
 def test_doc_rejects_a_manifest_carrying_both_scope_and_classes(tmp_path):
     docs = tmp_path / "docs"
     docs.mkdir()

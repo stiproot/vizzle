@@ -282,7 +282,7 @@ pub fn curated_from_dir(root: &Path, select: &SelectOptions, manifest: &str) -> 
     let manifests = walk::collect_manifests(root)?;
     let graph = parse::parse_files_with_manifests(&files, &manifests)?;
     let manifest = curated::parse_manifest(manifest)?;
-    curated::render(&manifest, &graph)
+    curated::render(&manifest, &graph, &manifests)
 }
 
 /// Export the class graph for every supported source file under `root` as JSON.
