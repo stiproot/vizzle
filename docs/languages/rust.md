@@ -53,6 +53,7 @@ Rust declarations use the existing `Class` element and its annotation string
 | union | `<<union>>` | named fields |
 | trait | `<<interface>>` | associated items from §3 |
 | type alias | `<<type>>` | one row named `type` whose detail is the aliased type |
+| free `fn`, `const`, or `static` | containing `<<module>>` box from class.md §2.5 | one member row, subject to §3 visibility |
 
 Unlike TypeScript's density rule, every Rust alias earns a box: Rust aliases
 are named API items and their target is syntactically available. Anonymous
@@ -66,8 +67,11 @@ plain class `vizzle_core::model::Member` with named field rows including
 `Files` at `crates/vizzle-core/src/lib.rs:69` produces
 `vizzle_core::Files <<type>>` with `type: Vec<(String, String)>`.
 
-**Decision.** Use the mapping table exactly; the existing annotation string is
-sufficient, including `union`, so Rust adds no new graph element kind. Revisit
+**Decision.** Use the mapping table exactly. Every parsed Rust module gets the
+existing opt-in `<<module>>` box; its free functions, constants, and statics are
+members, with private items parsed but hidden in an unchanged comprehension
+view as class.md §2.5 requires. The existing annotation string is sufficient,
+including `union` and `module`, so Rust adds no new graph element kind. Revisit
 only if a renderer needs semantics that cannot be expressed by `Class` plus a
 stereotype.
 

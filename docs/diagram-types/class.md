@@ -142,8 +142,9 @@ of a functional codebase that shows none of them is describing a minority of
 the code.
 
 They are modelled as **one `<<module>>` box per module**, its public
-module-level functions, exported typed consts (TypeScript) and
-UPPER_SNAKE module constants (Python) as members — not one box per function, which would add
+module-level functions, exported typed consts (TypeScript), UPPER_SNAKE module
+constants (Python), and free functions, constants, and statics (Rust) as members
+— not one box per function, which would add
 295 boxes rather than 177, and would say nothing about which file a function
 lives in.
 
