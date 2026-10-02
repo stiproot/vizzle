@@ -185,7 +185,7 @@ select_options = _compose(
         "-l",
         "--lang",
         multiple=True,
-        type=click.Choice(["python", "typescript"]),
+        type=click.Choice(["python", "typescript", "rust"]),
         help="Restrict languages (repeatable).",
     ),
 )
