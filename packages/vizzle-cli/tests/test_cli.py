@@ -718,9 +718,7 @@ def test_doc_empty_scope_is_an_error_before_it_can_be_current(tmp_path):
     (docs / "notes.md").write_text("# notes\n")
     doc = docs / "empty.md"
     doc.write_text(
-        "# Empty\n\n"
-        '<!-- gen:c4-code {"scope":{"path":"docs"}} -->\n\n'
-        "```mermaid\nclassDiagram\n  stale\n```\n"
+        '# Empty\n\n<!-- gen:c4-code {"scope":{"path":"docs"}} -->\n\n```mermaid\nclassDiagram\n  stale\n```\n'
     )
     before = doc.read_text()
 

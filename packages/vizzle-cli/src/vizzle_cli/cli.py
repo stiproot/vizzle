@@ -470,11 +470,7 @@ def doc_command(
         # empty fence current. Reject it before the equality test, for both
         # modes. Spec: docs/curated-diagrams.md §5.3.
         if managed.class_count(diagram) == 0:
-            why = (
-                f"scope `{scope.path}` matched no classes"
-                if scope is not None
-                else "the manifest curates no classes"
-            )
+            why = f"scope `{scope.path}` matched no classes" if scope is not None else "the manifest curates no classes"
             empty.append((path, why))
             continue
 
