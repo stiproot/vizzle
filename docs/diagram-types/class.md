@@ -32,8 +32,8 @@ dataclasses, and the structural type aliases of §2.3.
 | Attribute | Meaning |
 |---|---|
 | `name` | Bare name (`AgentRunner`); nested classes read `Outer.Inner` |
-| `qualified` | Unique key, `<module>.<name>` |
-| `module` | Dotted path derived from the file path |
+| `qualified` | Unique key: `<module>.<name>` for Python/TypeScript; `<crate>::<module-path>::<Type>` for Rust |
+| `module` | Non-empty dotted path derived from the file path; Rust crate roots use the crate identifier |
 | `annotation` | UML stereotype: `interface`, `abstract`, `enumeration`, `dataclass`, `type`, `union`, `schema`, `module` |
 | `members` | Fields and methods (§2.2) |
 | `change` | `ChangeKind`, shared with every other diagram type |
@@ -142,8 +142,9 @@ of a functional codebase that shows none of them is describing a minority of
 the code.
 
 They are modelled as **one `<<module>>` box per module**, its public
-module-level functions, exported typed consts (TypeScript) and
-UPPER_SNAKE module constants (Python) as members — not one box per function, which would add
+module-level functions, exported typed consts (TypeScript), UPPER_SNAKE module
+constants (Python), and free functions, constants, and statics (Rust) as members
+— not one box per function, which would add
 295 boxes rather than 177, and would say nothing about which file a function
 lives in.
 
@@ -172,6 +173,9 @@ best-effort syntactic model, and §4 says what that costs.
 
 Both extractors also record the file's imports, which the component diagram
 consumes; a class graph and an import graph come out of one parse.
+
+Rust extraction decisions are specified separately in
+[`docs/languages/rust.md`](../languages/rust.md).
 
 ## 4. Resolution, and its deliberate limits
 
@@ -401,7 +405,7 @@ the centre.
 ## 8. CLI surface
 
 ```sh
-vizzle class <repo> [-o out.mmd|out.html] [-I glob] [-E glob] [-l python|typescript]
+vizzle class <repo> [-o out.mmd|out.html] [-I glob] [-E glob] [-l python|typescript|rust]
                    [--no-members] [--group-by none|module|component] [--externals]
                    [--direction LR] [--title]
                    [--modules]                        # §2.5, off by default
