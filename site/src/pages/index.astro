@@ -6,7 +6,7 @@ import BaseLayout from '~/layouts/BaseLayout.astro';
   <div class="min-h-[var(--size-screen)] flex flex-col">
     <!-- Navigation -->
     <nav class="border-b border-[var(--color-border)]">
-      <div class="max-w-[var(--measure-page)] mx-auto px-[var(--space-6)] py-[var(--space-4)] flex items-center justify-between">
+      <div class="max-w-[var(--measure-page)] mx-auto px-[var(--space-4)] sm:px-[var(--space-6)] py-[var(--space-4)] flex flex-wrap items-center justify-between gap-[var(--space-3)]">
         <div class="flex items-center gap-[var(--space-2)] font-[var(--font-weight-bold)] text-[length:var(--text-lg)]">
           <div class="flex gap-[var(--space-1)] w-[var(--space-5)] h-[var(--space-5)]">
             <div class="w-[var(--space-2)] h-[var(--space-2)] bg-[var(--color-structure)] rounded-[var(--radius-sm)]"></div>
@@ -16,7 +16,7 @@ import BaseLayout from '~/layouts/BaseLayout.astro';
           </div>
           <span>vizzle</span>
         </div>
-        <div class="flex items-center gap-[var(--space-6)] text-[length:var(--text-sm)]">
+        <div class="flex flex-wrap items-center justify-end gap-x-[var(--space-4)] gap-y-[var(--space-2)] text-[length:var(--text-sm)]">
           <a href="#examples" class="hover:text-[var(--color-structure)]">Examples</a>
           <a href="https://github.com/stiproot/vizzle#readme" target="_blank" rel="noopener noreferrer" class="hover:text-[var(--color-structure)]">Docs</a>
           <a href="#agents" class="hover:text-[var(--color-structure)]">For agents</a>
@@ -31,24 +31,22 @@ import BaseLayout from '~/layouts/BaseLayout.astro';
     <!-- Hero Section -->
     <section class="bg-[var(--color-page)] border-b border-[var(--color-border)]">
       <div class="max-w-[var(--measure-page)] mx-auto px-[var(--space-6)] py-[var(--space-16)] lg:py-[var(--space-24)]">
-        <div class="grid lg:grid-cols-2 gap-[var(--space-12)] lg:gap-[var(--space-16)] items-center">
+        <div class="grid lg:grid-cols-2 gap-[var(--space-12)] lg:gap-[var(--space-16)] items-start">
           <div>
             <p class="text-[length:var(--text-sm)] font-[var(--font-weight-semibold)] text-[var(--color-structure)] mb-[var(--space-4)]">UML for git · Python + TypeScript</p>
-            <h1 class="text-[length:var(--text-4xl)] lg:text-[length:var(--text-5xl)] font-[var(--font-weight-bold)] mb-[var(--space-4)] leading-tight">
+            <h1 class="text-[length:var(--text-4xl)] lg:text-[length:var(--text-5xl)] font-[var(--font-weight-bold)] leading-tight">
               Code is being written faster than anyone can read it.
+              <br />
               <span class="text-[var(--color-structure)]">See its shape instead.</span>
             </h1>
+          </div>
+          <div class="min-w-0">
             <p class="text-[length:var(--text-lg)] text-[var(--color-muted)] mb-[var(--space-8)] leading-relaxed">
               vizzle parses a codebase — or a git diff — and draws it: component diagrams that open into classes, diffs that show what a change did to the shape of the code, and docs whose diagrams fail the build when they drift.
             </p>
-            <div class="bg-[var(--color-ink)] text-[var(--color-page)] p-[var(--space-4)] rounded-[var(--radius-lg)] font-mono text-[length:var(--text-sm)] mb-[var(--space-4)] relative">
-              <code>$ uvx vizzle component .</code>
+            <div class="bg-[var(--color-ink)] text-[var(--color-page)] p-[var(--space-4)] rounded-[var(--radius-lg)] font-mono text-[length:var(--text-sm)] mb-[var(--space-4)] relative overflow-x-auto">
+              <code class="whitespace-nowrap pr-[var(--space-16)]">$ uvx vizzle component .</code>
               <button class="absolute right-[var(--space-4)] top-[var(--space-4)] px-[var(--space-2)] py-[var(--space-1)] text-[length:var(--text-xs)] bg-[var(--color-structure)] rounded hover:bg-opacity-80" id="copy-btn" onclick="navigator.clipboard.writeText('uvx vizzle component .'); this.textContent = 'Copied!'; setTimeout(() => { this.textContent = 'Copy'; }, 2000);">Copy</button>
-            </div>
-          </div>
-          <div class="flex items-center justify-center">
-            <div class="text-[var(--color-muted)] text-center">
-              <p>Interactive example below</p>
             </div>
           </div>
         </div>
@@ -131,10 +129,10 @@ import BaseLayout from '~/layouts/BaseLayout.astro';
           </div>
 
           <!-- Command strip -->
-          <div class="px-[var(--space-6)] py-[var(--space-4)] border-t border-[var(--color-border)] bg-[var(--color-panel)]">
-            <p class="text-[length:var(--text-xs)] font-mono text-[var(--color-muted)] mb-[var(--space-2)]" id="command-text">$ vizzle component .</p>
+          <div class="px-[var(--space-6)] py-[var(--space-4)] border-t border-[var(--color-border)] bg-[var(--color-panel)] min-w-0">
+            <p class="text-[length:var(--text-xs)] font-mono text-[var(--color-muted)] mb-[var(--space-2)] overflow-x-auto whitespace-nowrap" id="command-text">$ vizzle component ~/code/h -o h-components.html</p>
             <p class="text-[length:var(--text-xs)] text-[var(--color-muted)]">Drag to pan · Scroll to zoom</p>
-            <p class="text-[length:var(--text-xs)] text-[var(--color-muted)] mt-[var(--space-2)]">Subject: h, an agent orchestration harness · 358 files</p>
+            <p class="text-[length:var(--text-xs)] text-[var(--color-muted)] mt-[var(--space-2)]">Subject: h, an agent orchestration harness</p>
           </div>
         </div>
       </div>
@@ -144,18 +142,18 @@ import BaseLayout from '~/layouts/BaseLayout.astro';
     <section class="bg-[var(--color-page)] border-b border-[var(--color-border)]">
       <div class="max-w-[var(--measure-page)] mx-auto px-[var(--space-6)] py-[var(--space-16)]">
         <div class="grid md:grid-cols-3 gap-[var(--space-8)]">
-          <div class="card p-[var(--space-8)]">
-            <div class="w-[var(--space-12)] h-[var(--space-12)] rounded-[var(--radius-lg)] bg-[var(--color-structure-tint)] text-[var(--color-structure)] flex items-center justify-center font-[var(--font-weight-bold)] mb-[var(--space-4)]">U</div>
+          <div class="card p-[var(--space-8)] bg-[var(--color-structure-tint)]">
+            <p class="font-mono text-[length:var(--text-xs)] font-[var(--font-weight-bold)] text-[var(--color-structure)] mb-[var(--space-4)]">UNDERSTAND</p>
             <h3 class="text-[length:var(--text-xl)] font-[var(--font-weight-bold)] mb-[var(--space-3)]">What is this made of?</h3>
             <p class="text-[var(--color-muted)]">Component diagrams open into classes. Understand the shape without reading every line.</p>
           </div>
-          <div class="card p-[var(--space-8)]">
-            <div class="w-[var(--space-12)] h-[var(--space-12)] rounded-[var(--radius-lg)] bg-[var(--color-added-tint)] text-[var(--color-added)] flex items-center justify-center font-[var(--font-weight-bold)] mb-[var(--space-4)]">R</div>
+          <div class="card p-[var(--space-8)] bg-[var(--color-added-tint)]">
+            <p class="font-mono text-[length:var(--text-xs)] font-[var(--font-weight-bold)] text-[var(--color-added)] mb-[var(--space-4)]">REVIEW</p>
             <h3 class="text-[length:var(--text-xl)] font-[var(--font-weight-bold)] mb-[var(--space-3)]">What did this change do?</h3>
             <p class="text-[var(--color-muted)]">Diff diagrams show the shape of a change. Review architecture, not just code.</p>
           </div>
-          <div class="card p-[var(--space-8)]">
-            <div class="w-[var(--space-12)] h-[var(--space-12)] rounded-[var(--radius-lg)] bg-[var(--color-modified-tint)] text-[var(--color-modified-text)] flex items-center justify-center font-[var(--font-weight-bold)] mb-[var(--space-4)]">G</div>
+          <div class="card p-[var(--space-8)] bg-[var(--color-modified-tint)]">
+            <p class="font-mono text-[length:var(--text-xs)] font-[var(--font-weight-bold)] text-[var(--color-modified-text)] mb-[var(--space-4)]">GUARD</p>
             <h3 class="text-[length:var(--text-xl)] font-[var(--font-weight-bold)] mb-[var(--space-3)]">Is the doc still true?</h3>
             <p class="text-[var(--color-muted)]">Diagrams that fail the build when they drift keep docs and code in sync.</p>
           </div>
@@ -169,11 +167,11 @@ import BaseLayout from '~/layouts/BaseLayout.astro';
         <div class="grid lg:grid-cols-2 gap-[var(--space-12)] items-start">
           <div>
             <h2 class="text-[length:var(--text-3xl)] font-[var(--font-weight-bold)] mb-[var(--space-4)]">Architecture docs that fail the build when they drift.</h2>
-            <p class="text-[var(--color-muted)] mb-[var(--space-4)]">vizzle diagrams live in your repo and stay true to the code. When the codebase changes, diagrams either regenerate automatically or the build fails.</p>
+            <p class="text-[var(--color-muted)] mb-[var(--space-4)]">vizzle diagrams live in your repo and stay true to the code. Run <code>vizzle doc</code> to regenerate them, or use <code>--check</code> to fail CI when they drift.</p>
             <a href="https://github.com/stiproot/vizzle/blob/main/docs/curated-diagrams.md" target="_blank" rel="noopener noreferrer" class="text-[var(--color-structure)] hover:underline text-[length:var(--text-sm)] font-[var(--font-weight-medium)]">Read how curated diagrams work →</a>
           </div>
-          <div class="bg-[var(--color-ink)] text-[var(--color-page)] p-[var(--space-6)] rounded-[var(--radius-lg)] font-mono text-[length:var(--text-xs)] leading-[var(--leading-code)] overflow-x-auto">
-            <code class="whitespace-pre">$ vizzle doc --dir docs/diagrams --check
+          <div class="min-w-0 bg-[var(--color-ink)] text-[var(--color-page)] p-[var(--space-6)] rounded-[var(--radius-lg)] font-mono text-[length:var(--text-xs)] leading-[var(--leading-code)] overflow-x-auto">
+            <code class="whitespace-pre-wrap break-words">$ vizzle doc --dir docs/diagrams --check
 
 [live output from the deploy's own check — next release]</code>
           </div>
@@ -209,8 +207,13 @@ import BaseLayout from '~/layouts/BaseLayout.astro';
               </div>
             </div>
           </div>
-          <div class="card p-[var(--space-4)] bg-[var(--color-panel)]">
-            <p class="text-[var(--color-muted)] text-[length:var(--text-sm)]">Diff diagram would display here</p>
+          <div class="card bg-[var(--color-panel)] overflow-hidden">
+            <iframe
+              class="w-[var(--size-full)] h-[var(--space-diagram)] border-0"
+              src="/diagrams/h-diff.html"
+              title="Component diff diagram"
+              loading="lazy"
+            ></iframe>
           </div>
         </div>
       </div>
@@ -219,16 +222,16 @@ import BaseLayout from '~/layouts/BaseLayout.astro';
     <!-- For Agents -->
     <section id="agents" class="bg-[var(--color-panel)] border-b border-[var(--color-border)]">
       <div class="max-w-[var(--measure-page)] mx-auto px-[var(--space-6)] py-[var(--space-16)]">
-        <h2 class="text-[length:var(--text-3xl)] font-[var(--font-weight-bold)] mb-[var(--space-4)]">A 358-file codebase in about 1.5k tokens.</h2>
+        <h2 class="text-[length:var(--text-3xl)] font-[var(--font-weight-bold)] mb-[var(--space-4)]">A component diagram of a 358-file codebase costs about 1.5k tokens.</h2>
         <p class="text-[var(--color-muted)] mb-[var(--space-8)] max-w-[var(--measure-copy)]">
           Agents working in large codebases can use vizzle to quickly understand structure, see changes, and verify docs.
         </p>
         <div class="space-y-[var(--space-4)] font-mono text-[length:var(--text-sm)]">
-          <div class="bg-[var(--color-ink)] text-[var(--color-page)] p-[var(--space-4)] rounded-[var(--radius-lg)]">
-            <code>claude plugin install https://github.com/stiproot/vizzle/releases/download/v0.11.0/vizzle-plugin-v0.11.0.tar.gz</code>
+          <div class="bg-[var(--color-ink)] text-[var(--color-page)] p-[var(--space-4)] rounded-[var(--radius-lg)] overflow-x-auto">
+            <code class="whitespace-nowrap">claude plugin marketplace add stiproot/vizzle</code>
           </div>
-          <div class="bg-[var(--color-ink)] text-[var(--color-page)] p-[var(--space-4)] rounded-[var(--radius-lg)]">
-            <code>claude plugin list</code>
+          <div class="bg-[var(--color-ink)] text-[var(--color-page)] p-[var(--space-4)] rounded-[var(--radius-lg)] overflow-x-auto">
+            <code class="whitespace-nowrap">claude plugin install vizzle@vizzle-marketplace</code>
           </div>
         </div>
       </div>
@@ -256,9 +259,9 @@ import BaseLayout from '~/layouts/BaseLayout.astro';
     const tabs = document.querySelectorAll('[role="tab"]');
     const tabContents = document.querySelectorAll('.tab-content');
     const commands: Record<string, string> = {
-      components: '$ vizzle component .',
-      classes: '$ vizzle class .',
-      diff: '$ vizzle diff'
+      components: '$ vizzle component ~/code/h -o h-components.html',
+      classes: '$ vizzle class ~/code/h -o h-classes.html',
+      diff: '$ vizzle diff ~/code/h --type component -o h-diff.html'
     };
 
     tabs.forEach(tab => {

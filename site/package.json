@@ -9,8 +9,8 @@
     "build": "astro build",
     "preview": "astro preview",
     "type-check": "astro check",
-    "lint": "oxlint . && bunx oxfmt --check . && bun scripts/check-tokens.ts",
-    "format": "bunx oxfmt .",
+    "lint": "oxlint . && oxfmt --check . && bun scripts/check-tokens.ts",
+    "format": "oxfmt .",
     "clean": "rm -rf dist *.tsbuildinfo .astro"
   },
   "dependencies": {
@@ -23,6 +23,7 @@
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.10",
+    "oxfmt": "0.71.0",
     "oxlint": "^1.86.0",
     "typescript": "~5.9.2"
   },

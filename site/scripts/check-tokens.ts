@@ -80,7 +80,7 @@ const UTILITY_RULES: Array<{ name: string; pattern: RegExp; hint: string }> = [
   {
     name: "tailwind-default-spacing",
     pattern:
-      /\b(?:[a-z]+:)*(?:p[trblxy]?|m[trblxy]?|gap|space-[xy]|w|h|max-w)-(?:\d+|px|full|screen)(?=[\s"'])/,
+      /(?<!-)\b(?:[a-z]+:)*(?:p[trblxy]?|m[trblxy]?|gap|space-[xy]|w|h|max-w)-(?:\d+|px|full|screen)(?=[\s"'])/,
     hint: "use a var(--space-*) or var(--measure-*) token-backed arbitrary utility",
   },
   {
