@@ -6,7 +6,7 @@
   "scripts": {
     "prebuild": "bun scripts/prebuild.ts",
     "dev": "astro dev",
-    "build": "bun run prebuild && astro build",
+    "build": "astro build",
     "preview": "astro preview",
     "type-check": "astro check",
     "lint": "oxlint . && bunx oxfmt --check . && bun scripts/check-tokens.ts",
