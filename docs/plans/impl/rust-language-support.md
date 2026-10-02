@@ -1,3 +1,6 @@
+Status: Implemented — §10.1 complete, §10.2 pending verification
+Established: 2026-10-01
+
 # Rust Language Support — Implementation Plan
 
 ## Context
@@ -29,7 +32,7 @@ Update `docs/languages/rust.md` §9 with the version chosen and this evidence.
 | `packages/vizzle-cli/src/vizzle_cli/cli.py` | add `"rust"` to `click.Choice` on `-l` |
 | `plugins/vizzle/skills/vizzle-diagrams/SKILL.md` | document `-l rust` |
 | `README.md` | update language list to include Rust |
-| `docs/languages/rust.md` | `Status: v1 implemented`; update §9 with version + evidence |
+| `docs/languages/rust.md` | update §9 with version + evidence |
 
 ## Step 1 — Language plumbing (model.rs, lib.rs, cli.py)
 
@@ -53,7 +56,7 @@ Also a CLI integration test: `vizzle class . -l rust` produces the named boxes, 
 **Qualified-name helper:** Formats type paths to crate-scoped form.
 
 **Two-pass parse:**
-- Pass 1 — collect type declarations: `struct_item`, `enum_item`, `union_item`, `trait_item`, `type_alias_item`
+- Pass 1 — collect type declarations: `struct_item`, `enum_item`, `union_item`, `trait_item`, `type_item`
 - Pass 2 — impl merging and realization edges
 
 **Member extraction:** self receiver → instance; no receiver → static. Visibility: `pub` → `+`, `pub(crate|super|in ...)` → `#`, private → `-`.
@@ -68,7 +71,7 @@ Also a CLI integration test: `vizzle class . -l rust` produces the named boxes, 
 
 ## Step 5 — Docs
 
-- `docs/languages/rust.md`: `Status: v1 implemented`; update §9
+- `docs/languages/rust.md`: update §9
 - `SKILL.md`: add `-l rust` documentation
 - `README.md`: update language list
 
