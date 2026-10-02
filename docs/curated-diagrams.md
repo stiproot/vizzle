@@ -55,15 +55,26 @@ constraint worth respecting rather than fighting.
 ## 3. How an entry addresses a vizzle element
 
 The manifest names a symbol by `file` + `symbol`; vizzle's graph keys on
-`qualified` (`<module>.<Name>`). The mapping is mechanical and already exists:
-`parse::module_path` turns `packages/js/agent-cli/src/invoker.ts` into
+`qualified`. The mapping is mechanical and already exists, and it is
+language-specific. For Python and TypeScript, `parse::module_path` turns
+`packages/js/agent-cli/src/invoker.ts` into
 `packages.js.agent-cli.src.invoker`, so the entry resolves to
-`packages.js.agent-cli.src.invoker.AgentInvokerService`.
+`packages.js.agent-cli.src.invoker.AgentInvokerService`. For Rust the key is
+formed the way the Rust parser forms it (rust.md §5): the nearest `Cargo.toml`'s
+package name plus the module path, joined with `::`. So
+`crates/vizzle-core/src/model.rs` + `CodeGraph` resolves to
+`vizzle_core::model::CodeGraph`. Both rules live in one place in the core, so a
+manifest and the parser cannot disagree about a key.
+
+**Resolution is always by `file` + `symbol`, never by bare symbol name.**
+Looking a name up across the whole graph would let two crates or modules that
+each define `Config` silently pick one — and a wrong edge is worse than a
+missing one.
 
 **An entry that resolves to nothing is an error, not an omission.** Silently
 dropping it would let a rename quietly empty a diagram — precisely the drift
 this mode exists to prevent. `--check` fails; a regenerate reports the entry
-and the file it looked in.
+and the file it looked in, naming the qualified key it looked for.
 
 ## 4. What vizzle supplies, per kind
 
@@ -191,6 +202,8 @@ describe two diagrams.
 
 `scope` keys: `path` (required), `lang`, `group` (`none`/`module`/`component`),
 `members`, `include`, `exclude`. `direction` sits at the top level for both.
+`scope.path` may be a **directory or a single file**; a file scope diagrams that
+file's classes, resolved by the same matcher a directory scope uses.
 
 **Which to use.** They answer different questions, and both are authored — the
 distinction §8 draws is between an author stating scope and vizzle *inferring*
@@ -221,6 +234,20 @@ A scoped manifest makes this easy to hit: a whole-tree class diagram measured
 987,503 characters, 20x the ceiling. Narrowing the scope is the fix; vizzle
 says how far over you are but not where to cut, which is a modelling decision.
 
+## 5.3 An empty diagram is an error
+
+A managed document whose regenerated diagram has **zero classes** is an error,
+for both `vizzle doc` and `vizzle doc --check`, naming the document and the
+scope or entries that matched nothing, with a non-zero exit. A scope `path`
+naming a file or directory that holds no supported source — or one the
+`include`/`exclude`/`lang` filters remove entirely — is the usual cause.
+
+This is not pedantry. `--check` compares the document to a regenerated fence
+and passes when they agree; an empty fence compared to an empty fence is
+"current", so a green check on an empty diagram reports that a document drawing
+nothing is up to date. That is the failure this mode exists to prevent: a lint
+that is green when the diagram says nothing proves nothing.
+
 ## 6. `--check` is the point
 
 ```sh
@@ -243,7 +270,7 @@ vizzle doc --dir <path>                 # every *.md under path carrying a manif
 vizzle doc --dir <path> --check         # verify, do not write
 vizzle doc ... [--root DIR]             # repo root that manifest `file` paths resolve
                                         # against (default: the current directory)
-vizzle doc ... [-I glob] [-E glob] [-l python|typescript]   # narrow a scoped manifest's walk
+vizzle doc ... [-I glob] [-E glob] [-l python|typescript|rust]   # narrow a scoped manifest's walk
 
 vizzle render <doc.md|dir|src.mmd> <out-dir> [-f png|svg] [--theme light|dark|both]
 ```
