@@ -76,6 +76,26 @@ const COLOR_RULES: Array<{ name: string; pattern: RegExp; hint: string }> = [
   },
 ];
 
+const UTILITY_RULES: Array<{ name: string; pattern: RegExp; hint: string }> = [
+  {
+    name: "tailwind-default-spacing",
+    pattern:
+      /\b(?:[a-z]+:)*(?:p[trblxy]?|m[trblxy]?|gap|space-[xy]|w|h|max-w)-(?:\d+|px|full|screen)(?=[\s"'])/,
+    hint: "use a var(--space-*) or var(--measure-*) token-backed arbitrary utility",
+  },
+  {
+    name: "tailwind-default-typography",
+    pattern:
+      /\b(?:[a-z]+:)*(?:text-(?:xs|sm|base|lg|xl|[2-9]xl)|font-(?:normal|medium|semibold|bold|extrabold))(?=[\s"'])/,
+    hint: "use a var(--text-*) or var(--font-weight-*) token-backed arbitrary utility",
+  },
+  {
+    name: "tailwind-default-radius",
+    pattern: /\b(?:[a-z]+:)*rounded-(?:sm|md|lg|xl)(?=[\s"'])/,
+    hint: "use a var(--radius-*) token-backed arbitrary utility",
+  },
+];
+
 const ALLOWED_LINE = [
   /^\s*\*/,
   /^\s*\/\//,
@@ -113,6 +133,13 @@ for (const file of walk(TARGET)) {
     };
 
     for (const rule of COLOR_RULES) {
+      if (rule.pattern.test(text)) {
+        report(`${rule.name} — ${rule.hint}`);
+        return;
+      }
+    }
+
+    for (const rule of UTILITY_RULES) {
       if (rule.pattern.test(text)) {
         report(`${rule.name} — ${rule.hint}`);
         return;

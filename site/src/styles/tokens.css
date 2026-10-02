@@ -35,6 +35,7 @@
   --color-modified-text: #7d4e00; /* for text on modified-tint */
 
   /* Spacing (from Tailwind scale) */
+  --space-1: 0.25rem;
   --space-2: 0.5rem;
   --space-3: 0.75rem;
   --space-4: 1rem;
@@ -44,6 +45,14 @@
   --space-12: 3rem;
   --space-16: 4rem;
   --space-24: 6rem;
+  --space-diagram: 24rem;
+  --space-diagram-wide: 40rem;
+  --size-full: 100%;
+  --size-screen: 100vh;
+
+  /* Content measures */
+  --measure-copy: 42rem;
+  --measure-page: 80rem;
 
   /* Typography */
   --text-xs: 0.75rem;
@@ -56,6 +65,7 @@
   --text-4xl: 2.25rem;
   --text-5xl: 3rem;
   --text-hero: 3.75rem;
+  --leading-code: 1.5rem;
 
   --font-weight-normal: 400;
   --font-weight-medium: 500;
