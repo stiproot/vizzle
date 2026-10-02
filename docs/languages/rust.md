@@ -72,8 +72,10 @@ Fields attach to their declaring struct or union; tuple fields use their
 zero-based ordinal. Every inherent `impl T` whose normalized self type resolves
 to the qualified key for `T` contributes its items to that box, regardless of
 the impl's file or module. Strip references and fully qualified path syntax
-only when resolution stays unique. An unresolved, ambiguous, blanket, generic
-parameter, or other non-nominal self type contributes nothing.
+only when resolution stays unique. As specified for relations in §4, a nominal
+self type applied to type arguments resolves through its head: `W<T>` resolves
+as `W`. An unresolved, ambiguous, blanket, bare generic parameter, or other
+non-nominal self type contributes nothing.
 
 A function with `self`, `&self`, `&mut self`, `self: Box<Self>`, or another
 typed self receiver is an instance method. A function without a self receiver
@@ -124,6 +126,13 @@ follows:
 | `trait Child: Parent` | `Child --|> Parent` generalization |
 | a struct/union field type | association from holder to resolved type |
 | a function/method parameter or return type | dependency from owning box to resolved type |
+
+For impl merging and realization edges, normalize a nominal type applied to
+type arguments to its head before unique-name resolution. Thus
+`impl<T> Tr for W<T>` emits exactly `W ..|> Tr`, and `impl<T> W<T>` merges its
+items into `W`; the type arguments do not themselves create edges. A bare
+generic parameter such as the self type in `impl<T> Tr for T` remains
+generic-only and produces no merge or edge.
 
 Type traversal sees through references, raw pointers, slices, arrays, tuples,
 and `Box`, `Rc`, `Arc`, `Vec`, `Option`, `Result`, `HashMap`, and `BTreeMap`.
