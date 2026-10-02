@@ -441,8 +441,8 @@ fn extract_imports(node: Node, src: &str, graph: &mut CodeGraph) {
     if let Some(rest) = full_text.strip_prefix("use ") {
         // Find the first segment: everything up to ::, {, as, or ;
         let path = rest
-            .trim_start_matches("::")  // strip leading ::
-            .split(|c| c == ':' || c == '{' || c == ';' || c == ' ')
+            .trim_start_matches("::") // strip leading ::
+            .split([':', '{', ';', ' '])
             .next()
             .unwrap_or("")
             .trim();
@@ -468,10 +468,7 @@ fn extract_visibility(node: Node, _src: &str) -> Visibility {
     let mut cursor = node.walk();
     for child in node.named_children(&mut cursor) {
         if child.kind() == "visibility_modifier" {
-            let vis_text = child
-                .child(0)
-                .map(|c| c.kind())
-                .unwrap_or("");
+            let vis_text = child.child(0).map(|c| c.kind()).unwrap_or("");
             if vis_text == "pub" {
                 // Check if it's "pub" alone or "pub(...)"
                 if child.child_by_field_name("path").is_some() {
@@ -631,9 +628,7 @@ fn extract_type_refs(ty_str: &str) -> Vec<String> {
                 current.push(ch);
             }
             _ => {
-                if !current.is_empty()
-                    && current.chars().next().unwrap_or('_').is_alphabetic()
-                {
+                if !current.is_empty() && current.chars().next().unwrap_or('_').is_alphabetic() {
                     refs.push(current.clone());
                 }
                 current.clear();

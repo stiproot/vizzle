@@ -40,7 +40,7 @@ Add `Rust` variant. `from_path`: `"rs" => Some(Language::Rust)`. `target/` is al
 Before implementing the parser, write these unit tests (must FAIL on base tree) and record failure output in `demonstrations/`:
 
 1. `test_language_enum_box` — parse a fixture with the `Language` enum; assert `vizzle_core::model::Language` + `<<enumeration>>`
-2. `test_language_merge` — assert `from_path` and `name` members appear in Language box (impl merging)  
+2. `test_language_merge` — assert `from_path` and `name` members appear in Language box (impl merging)
 3. `test_struct_count_names` — parse the live repo; assert each of the 26 named structs and 9 named enums appears exactly once by name
 4. `test_no_trait_box` — assert zero `<<interface>>` boxes in this repo's output
 5. `test_realization_edge` — fixture with `impl Tr for T`; assert `..|>` edge
@@ -69,7 +69,7 @@ Also a CLI integration test: `vizzle class . -l rust` produces the named boxes, 
 ## Step 5 — Docs
 
 - `docs/languages/rust.md`: `Status: v1 implemented`; update §9
-- `SKILL.md`: add `-l rust` documentation  
+- `SKILL.md`: add `-l rust` documentation
 - `README.md`: update language list
 
 ## Verification gate
