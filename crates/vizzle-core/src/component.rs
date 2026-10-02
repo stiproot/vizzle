@@ -605,6 +605,7 @@ fn build_edges(
         let resolved = match import.lang {
             Language::TypeScript => resolve_ts(import, &ts_names, detector),
             Language::Python => resolve_py(import, py_names, detector),
+            Language::Rust => resolve_rust(import, &ts_names, detector),
         };
         let target = match resolved {
             Resolved::Component(to) if to == from => continue,
@@ -695,6 +696,23 @@ fn resolve_py(
         }
     }
     Resolved::External(segments[0].to_owned())
+}
+
+fn resolve_rust(import: &Import, crate_names: &[(&str, usize)], _detector: &Detector) -> Resolved {
+    let spec = import.target.as_str();
+    // Rust uses :: as path separator, but we get the first segment
+    let first_segment = spec.split("::").next().unwrap_or(spec);
+
+    // Match against workspace crate names (with hyphens normalized to underscores)
+    for (name, idx) in crate_names {
+        let normalized_name = name.replace('-', "_");
+        if first_segment == normalized_name {
+            return Resolved::Component(*idx);
+        }
+    }
+
+    // If not found as internal, treat as external
+    Resolved::External(first_segment.to_owned())
 }
 
 // --------------------------------------------------------------------- diff

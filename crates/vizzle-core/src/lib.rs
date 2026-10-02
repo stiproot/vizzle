@@ -105,6 +105,7 @@ impl SelectOptions {
             .map(|l| match l.to_ascii_lowercase().as_str() {
                 "python" | "py" => Ok(model::Language::Python),
                 "typescript" | "ts" | "tsx" => Ok(model::Language::TypeScript),
+                "rust" | "rs" => Ok(model::Language::Rust),
                 other => anyhow::bail!("unsupported language: {other}"),
             })
             .collect()

@@ -4,6 +4,7 @@
 pub enum Language {
     Python,
     TypeScript,
+    Rust,
 }
 
 impl Language {
@@ -12,6 +13,7 @@ impl Language {
         match path.rsplit('.').next()? {
             "py" => Some(Language::Python),
             "ts" | "tsx" | "mts" | "cts" => Some(Language::TypeScript),
+            "rs" => Some(Language::Rust),
             _ => None,
         }
     }
@@ -20,6 +22,7 @@ impl Language {
         match self {
             Language::Python => "python",
             Language::TypeScript => "typescript",
+            Language::Rust => "rust",
         }
     }
 }

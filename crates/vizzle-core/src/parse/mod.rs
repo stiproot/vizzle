@@ -1,6 +1,7 @@
 //! Source parsing via tree-sitter, one extractor per language.
 
 mod python;
+mod rust;
 mod typescript;
 
 use anyhow::Result;
@@ -59,6 +60,7 @@ pub fn parse_file(rel_path: &str, source: &str) -> Result<CodeGraph> {
     let module = module_path(rel_path);
     let mut graph = match lang {
         Language::Python => python::parse(&module, source),
+        Language::Rust => rust::parse(&module, source),
         Language::TypeScript => typescript::parse(&module, source),
     }?;
     // The parsers see a module, not a path; the file is stamped on here, once,
