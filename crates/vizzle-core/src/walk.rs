@@ -135,7 +135,9 @@ impl Selector {
 
 /// Collect `(relative_path, contents)` for supported source files under `root`,
 /// respecting .gitignore. `include`/`exclude` are glob patterns matched against
-/// the relative path; `langs` (empty = all) restricts languages.
+/// the relative path; `langs` (empty = all) restricts languages. `root` may be
+/// a single file as well as a directory — a scope that names one file diagrams
+/// that file, and a walk does not descend into a file.
 pub fn collect_files(
     root: &Path,
     include: &[String],
@@ -143,6 +145,24 @@ pub fn collect_files(
     langs: &[Language],
 ) -> Result<Vec<(String, String)>> {
     let selector = Selector::new(include, exclude, langs)?;
+
+    // A file root yields the file itself, keyed by its own name as a walk from
+    // its parent would key it, so language detection and every selection rule
+    // behave exactly as they do for a walked file.
+    if root.is_file() {
+        let rel = root
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or_default()
+            .to_owned();
+        if !selector.accepts(&rel) {
+            return Ok(Vec::new());
+        }
+        return Ok(match std::fs::read_to_string(root) {
+            Ok(contents) => vec![(rel, contents)],
+            Err(_) => Vec::new(),
+        });
+    }
 
     let mut files = Vec::new();
     for entry in WalkBuilder::new(root).hidden(true).build() {

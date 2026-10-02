@@ -33,6 +33,23 @@ _MANIFEST = re.compile(r"<!--\s*" + MARKER + r"\s*(?P<json>\{.*?\})\s*-->", re.D
 _MANIFEST_OPEN = re.compile(r"<!--\s*" + MARKER)
 # The generated fence is the first mermaid block after the manifest.
 _FENCE = re.compile(r"(?P<open>```mermaid\n)(?P<body>.*?)(?P<close>```)", re.DOTALL)
+# A scoped diagram states its size in the `%% vizzle:` summary line.
+_SUMMARY = re.compile(r"%% vizzle: (\d+) classes")
+# A curated diagram carries no summary, so count its own `class` declarations.
+_CLASS_DECL = re.compile(r"^\s*class\s", re.MULTILINE)
+
+
+def class_count(diagram: str) -> int:
+    """The number of class boxes in a rendered diagram.
+
+    A diagram with zero boxes is not a diagram: it cannot drift, so `--check`
+    would call it current and prove nothing (docs/curated-diagrams.md §5.3).
+    Over-counting is harmless because the caller only acts on zero.
+    """
+    summary = _SUMMARY.search(diagram)
+    if summary:
+        return int(summary.group(1))
+    return len(_CLASS_DECL.findall(diagram))
 
 
 class ManagedDocError(Exception):

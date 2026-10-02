@@ -15,8 +15,8 @@ use anyhow::{bail, Context, Result};
 use serde::Deserialize;
 
 use crate::mermaid::{member_row, Params};
-use crate::model::{Class, CodeGraph, Member};
-use crate::parse::module_path;
+use crate::model::{Class, CodeGraph, Language, Member};
+use crate::parse::{module_path, rust_qualified_prefix};
 
 /// One curated box. Field names match the manifest as authored.
 #[derive(Debug, Deserialize)]
@@ -61,24 +61,45 @@ fn is_curated_only(kind: &str) -> bool {
     matches!(kind, "const" | "external")
 }
 
+/// Rust keys its declarations by `crate::module` (parse/rust.rs), not by the
+/// dotted file path Python and TypeScript use.
+fn rust_file(file: &str) -> bool {
+    Language::from_path(file) == Some(Language::Rust)
+}
+
+/// The graph key of the module a file's declarations live under. One rule,
+/// shared with `parse`, so a curated entry and the parser agree on the key.
+fn module_box_for(file: &str, manifests: &[(String, String)]) -> String {
+    if rust_file(file) {
+        rust_qualified_prefix(file, manifests).replace("::", ".")
+    } else {
+        module_path(file)
+    }
+}
+
 /// The graph key an entry points at. A `module` entry addresses the module box
 /// itself; everything else addresses a declaration inside it.
-fn qualified_for(entry: &Entry) -> Result<String> {
+fn qualified_for(entry: &Entry, manifests: &[(String, String)]) -> Result<String> {
     let file = entry.file.as_deref().with_context(|| {
         format!(
             "entry `{}` of kind `{}` needs a `file`",
             entry.id, entry.kind
         )
     })?;
-    let module = module_path(file);
     if entry.kind == "module" {
-        return Ok(module);
+        return Ok(module_box_for(file, manifests));
     }
     let symbol = entry
         .symbol
         .as_deref()
         .with_context(|| format!("entry `{}` needs a `symbol`", entry.id))?;
-    Ok(format!("{module}.{symbol}"))
+    // A Rust type is keyed `crate::module::Type`; Python and TypeScript key it
+    // `<dotted.module>.<Type>`.
+    Ok(if rust_file(file) {
+        format!("{}::{symbol}", rust_qualified_prefix(file, manifests))
+    } else {
+        format!("{}.{symbol}", module_path(file))
+    })
 }
 
 /// Default stereotype when the manifest does not override it. A module carries
@@ -137,8 +158,13 @@ fn members_for<'a>(entry: &Entry, class: &'a Class) -> Result<Vec<&'a Member>> {
 ///
 /// Every entry that names source must resolve: a silently dropped entry would
 /// let a rename empty a diagram, which is the drift this mode exists to catch
-/// (curated-diagrams.md §3).
-pub fn render(manifest: &Manifest, graph: &CodeGraph) -> Result<String> {
+/// (curated-diagrams.md §3). `manifests` is the same Cargo context the graph was
+/// parsed with, so a Rust entry resolves to the parser's `crate::module::Type`.
+pub fn render(
+    manifest: &Manifest,
+    graph: &CodeGraph,
+    manifests: &[(String, String)],
+) -> Result<String> {
     let by_qualified: HashMap<&str, &Class> = graph
         .classes
         .iter()
@@ -161,14 +187,20 @@ pub fn render(manifest: &Manifest, graph: &CodeGraph) -> Result<String> {
                 let _ = writeln!(out, "    {note}");
             }
         } else {
-            let qualified = qualified_for(entry)?;
+            let qualified = qualified_for(entry, manifests)?;
             let class = by_qualified.get(qualified.as_str()).with_context(|| {
+                let how = if rust_file(entry.file.as_deref().unwrap_or("")) {
+                    " (a Rust entry resolves by `crate::module::Type`)"
+                } else {
+                    ""
+                };
                 format!(
                     "entry `{}` resolves to `{}`, which is not in the parsed graph \
-                     — was it renamed, or is `{}` outside the scanned tree?",
+                     — was it renamed, or is `{}` outside the scanned tree?{}",
                     entry.id,
                     qualified,
-                    entry.file.as_deref().unwrap_or("?")
+                    entry.file.as_deref().unwrap_or("?"),
+                    how
                 )
             })?;
             for member in members_for(entry, class)? {
@@ -185,7 +217,7 @@ pub fn render(manifest: &Manifest, graph: &CodeGraph) -> Result<String> {
     // `const claudeStrategy: AgentStrategy` realizes AgentStrategy, and the edge
     // is only drawn if that type is also in the diagram (curated-diagrams.md §4).
     for entry in &manifest.classes {
-        let Some(realizes) = realized_type(entry, &by_qualified) else {
+        let Some(realizes) = realized_type(entry, &by_qualified, manifests) else {
             continue;
         };
         if let Some(target) = entry_id_for(&realizes, &manifest.classes) {
@@ -213,11 +245,15 @@ pub fn render(manifest: &Manifest, graph: &CodeGraph) -> Result<String> {
 
 /// The declared type of a `const` entry, read from the module box member of the
 /// same name. Absent when the const has no annotation — nothing to realize.
-fn realized_type(entry: &Entry, by_qualified: &HashMap<&str, &Class>) -> Option<String> {
+fn realized_type(
+    entry: &Entry,
+    by_qualified: &HashMap<&str, &Class>,
+    manifests: &[(String, String)],
+) -> Option<String> {
     if entry.kind != "const" {
         return None;
     }
-    let module = module_path(entry.file.as_deref()?);
+    let module = module_box_for(entry.file.as_deref()?, manifests);
     let symbol = entry.symbol.as_deref()?;
     let member = by_qualified
         .get(module.as_str())?
@@ -245,4 +281,59 @@ fn entry_id_for(type_name: &str, entries: &[Entry]) -> Option<String> {
 /// the document that carried it.
 pub fn parse_manifest(json: &str) -> Result<Manifest> {
     serde_json::from_str(json).context("the gen:c4-code manifest is not valid JSON")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Two modules each declaring `Config`, plus the manifest context that
+    /// keys them `demo::a::Config` and `demo::b::Config`.
+    fn rust_repo() -> (CodeGraph, Vec<(String, String)>) {
+        let files = vec![
+            (
+                "src/a.rs".to_owned(),
+                "pub struct Config { pub a_only: bool }\n".to_owned(),
+            ),
+            (
+                "src/b.rs".to_owned(),
+                "pub struct Config { pub b_only: bool }\n".to_owned(),
+            ),
+        ];
+        let manifests = vec![(
+            "Cargo.toml".to_owned(),
+            "[package]\nname = \"demo\"\n".to_owned(),
+        )];
+        let graph = crate::parse::parse_files_with_manifests(&files, &manifests).unwrap();
+        (graph, manifests)
+    }
+
+    fn manifest(json: &str) -> Manifest {
+        parse_manifest(json).unwrap()
+    }
+
+    #[test]
+    fn a_rust_entry_resolves_by_file_and_crate_module() {
+        let (graph, manifests) = rust_repo();
+        let manifest = manifest(
+            r#"{"classes":[{"id":"Config","kind":"class","file":"src/a.rs","symbol":"Config"}]}"#,
+        );
+        let rendered = render(&manifest, &graph, &manifests).unwrap();
+        assert!(rendered.contains("a_only"), "{rendered}");
+        assert!(
+            !rendered.contains("b_only"),
+            "the other module's Config: {rendered}"
+        );
+    }
+
+    #[test]
+    fn a_missing_rust_symbol_names_the_rust_key() {
+        let (graph, manifests) = rust_repo();
+        let manifest = manifest(
+            r#"{"classes":[{"id":"Missing","kind":"class","file":"src/a.rs","symbol":"Missing"}]}"#,
+        );
+        let err = render(&manifest, &graph, &manifests).unwrap_err();
+        assert!(err.to_string().contains("demo::a::Missing"), "{err}");
+        assert!(err.to_string().contains("not in the parsed graph"), "{err}");
+    }
 }

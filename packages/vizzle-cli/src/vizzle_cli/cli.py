@@ -436,6 +436,7 @@ def doc_command(
     paths = list(docs) + (managed.discover(directory) if directory else [])
     stale: list[Path] = []
     oversized: list[Path] = []
+    empty: list[tuple[Path, str]] = []
     managed_count = 0
     written = 0
     for path in paths:
@@ -465,6 +466,18 @@ def doc_command(
         except (ValueError, managed.ManagedDocError) as err:
             raise click.ClickException(f"{path}: {err}") from err
 
+        # A diagram with no boxes is not a diagram: `--check` would call an
+        # empty fence current. Reject it before the equality test, for both
+        # modes. Spec: docs/curated-diagrams.md §5.3.
+        if managed.class_count(diagram) == 0:
+            why = (
+                f"scope `{scope.path}` matched no classes"
+                if scope is not None
+                else "the manifest curates no classes"
+            )
+            empty.append((path, why))
+            continue
+
         # A diagram past the ceiling is broken whether or not it drifted, so
         # this is checked before the equality test, not after it.
         if len(diagram) > managed.MERMAID_LIMIT:
@@ -492,14 +505,19 @@ def doc_command(
             f"limit, which renders an error graphic instead of the diagram",
             err=True,
         )
+    for path, why in empty:
+        click.echo(f"empty: {path}: {why}", err=True)
     for path in stale:
         click.echo(f"out of date: {path}", err=True)
-    if stale or oversized:
-        raise click.ClickException(
-            f"{len(stale)} document(s) need regenerating, {len(oversized)} too large; run `vizzle doc`"
-            if oversized
-            else f"{len(stale)} document(s) need regenerating; run `vizzle doc`"
-        )
+    if stale or oversized or empty:
+        parts = []
+        if stale:
+            parts.append(f"{len(stale)} document(s) need regenerating")
+        if oversized:
+            parts.append(f"{len(oversized)} too large")
+        if empty:
+            parts.append(f"{len(empty)} empty (nothing matched)")
+        raise click.ClickException("; ".join(parts) + "; run `vizzle doc`")
     if check:
         click.echo(f"{managed_count} managed document(s) checked, all current", err=True)
     elif not written:
