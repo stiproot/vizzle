@@ -101,7 +101,7 @@ import BaseLayout from '~/layouts/BaseLayout.astro';
               role="tabpanel"
               aria-labelledby="tab-components"
               class="tab-content w-[var(--size-full)] h-[var(--space-diagram)] md:h-[var(--space-diagram-wide)] border-0"
-              src="/diagrams/h-components.html"
+              src="/diagrams/h-components"
               title="Component diagram"
               loading="lazy"
             ></iframe>
@@ -110,7 +110,7 @@ import BaseLayout from '~/layouts/BaseLayout.astro';
               role="tabpanel"
               aria-labelledby="tab-classes"
               class="tab-content hidden w-[var(--size-full)] h-[var(--space-diagram)] md:h-[var(--space-diagram-wide)] border-0"
-              src="/diagrams/h-classes.html"
+              src="/diagrams/h-classes"
               title="Class diagram"
               loading="lazy"
             ></iframe>
@@ -119,17 +119,17 @@ import BaseLayout from '~/layouts/BaseLayout.astro';
               role="tabpanel"
               aria-labelledby="tab-diff"
               class="tab-content hidden w-[var(--size-full)] h-[var(--space-diagram)] md:h-[var(--space-diagram-wide)] border-0"
-              src="/diagrams/h-diff.html"
+              src="/diagrams/h-diff"
               title="Diff diagram"
               loading="lazy"
             ></iframe>
-
-            <!-- Mobile fullscreen link -->
-            <a href="/diagrams/h-components.html" class="md:hidden absolute top-[var(--space-4)] right-[var(--space-4)] px-[var(--space-3)] py-[var(--space-2)] bg-[var(--color-structure)] text-[var(--color-page)] text-[length:var(--text-xs)] rounded hover:bg-opacity-90" id="fullscreen-link">Open full screen ↗</a>
           </div>
 
           <!-- Command strip -->
           <div class="px-[var(--space-6)] py-[var(--space-4)] border-t border-[var(--color-border)] bg-[var(--color-panel)] min-w-0">
+            <!-- Mobile fullscreen link lives in the strip, not over the frame, so
+                 it cannot overlap the diagram's own header at narrow widths. -->
+            <a href="/diagrams/h-components" class="md:hidden inline-block mb-[var(--space-3)] px-[var(--space-3)] py-[var(--space-2)] bg-[var(--color-structure)] text-[var(--color-page)] text-[length:var(--text-xs)] rounded hover:bg-opacity-90" id="fullscreen-link">Open full screen ↗</a>
             <p class="text-[length:var(--text-xs)] font-mono text-[var(--color-muted)] mb-[var(--space-2)] overflow-x-auto whitespace-nowrap" id="command-text">$ vizzle component ~/code/h -o h-components.html</p>
             <p class="text-[length:var(--text-xs)] text-[var(--color-muted)]">Drag to pan · Scroll to zoom</p>
             <p class="text-[length:var(--text-xs)] text-[var(--color-muted)] mt-[var(--space-2)]">Subject: h, an agent orchestration harness</p>
@@ -210,7 +210,7 @@ import BaseLayout from '~/layouts/BaseLayout.astro';
           <div class="card bg-[var(--color-panel)] overflow-hidden">
             <iframe
               class="w-[var(--size-full)] h-[var(--space-diagram)] border-0"
-              src="/diagrams/h-diff.html"
+              src="/diagrams/h-diff"
               title="Component diff diagram"
               loading="lazy"
             ></iframe>
@@ -304,7 +304,7 @@ import BaseLayout from '~/layouts/BaseLayout.astro';
         // Update fullscreen link
         const fullscreenLink = document.getElementById('fullscreen-link') as HTMLAnchorElement | null;
         if (fullscreenLink) {
-          fullscreenLink.href = `/diagrams/h-${tabName}.html`;
+          fullscreenLink.href = `/diagrams/h-${tabName}`;
         }
       });
 

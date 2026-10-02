@@ -25,6 +25,12 @@ MERMAID_WARN = 45_000
 # The manifest is JSON inside an HTML comment. Non-greedy up to the first `-->`,
 # which is why the format forbids `--` anywhere inside the JSON.
 _MANIFEST = re.compile(r"<!--\s*" + MARKER + r"\s*(?P<json>\{.*?\})\s*-->", re.DOTALL)
+# An actual manifest comment *opens* with the marker. Prose that merely mentions
+# the marker — inline code, a paragraph, a fenced sample — never does, and must
+# not turn a hand-authored document into a broken managed one. Once the comment
+# opens, though, unparseable JSON is a loud error: a typo in a real manifest must
+# not read as "unmanaged" and pass the gate green.
+_MANIFEST_OPEN = re.compile(r"<!--\s*" + MARKER)
 # The generated fence is the first mermaid block after the manifest.
 _FENCE = re.compile(r"(?P<open>```mermaid\n)(?P<body>.*?)(?P<close>```)", re.DOTALL)
 
@@ -119,7 +125,7 @@ def read(path: Path) -> ManagedDoc | None:
     text = path.read_text(encoding="utf-8")
     match = _MANIFEST.search(text)
     if not match:
-        if MARKER in text:
+        if _MANIFEST_OPEN.search(text):
             raise ManagedDocError(f"{path}: has a {MARKER} marker but no readable JSON manifest")
         return None
     return ManagedDoc(path=path, text=text, manifest=match.group("json"))
