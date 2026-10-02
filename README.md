@@ -10,8 +10,8 @@ diff means, and the modelling decisions behind it (e.g. why aggregation and
 composition diamonds are a convention rather than an inference:
 `docs/diagram-types/class.md` §5.4).
 
-- **Rust core** (`crates/vizzle-core`): tree-sitter parsing (Python +
-  TypeScript), a language-neutral class graph + import graph, a component
+- **Rust core** (`crates/vizzle-core`): tree-sitter parsing (Python,
+  TypeScript + Rust), a language-neutral class graph + import graph, a component
   detector (manifest-driven), graph diff engines, and Mermaid renderers.
   Parses ~200 classes in well under a second.
 - **PyO3 bindings** (`crates/vizzle-py`): built with maturin into the private

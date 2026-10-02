@@ -28,18 +28,18 @@ graph and needs no parsing step. This is the opposite of the usual instinct.
 
 ## First: can vizzle see this repo?
 
-**vizzle parses Python and TypeScript only.** This is the one thing that will
+**vizzle parses Python, TypeScript, and Rust.** This is the one thing that will
 waste your time if you skip it.
 
 Components are found from manifests (`package.json`, `pyproject.toml`,
-`Cargo.toml`, `go.mod`), but **a component containing no `.py`/`.ts` files is
-dropped**. So a Rust or Go repository produces an empty or near-empty diagram
+`Cargo.toml`, `go.mod`), but **a component containing no `.py`/`.ts`/`.rs` files is
+dropped**. So a Go repository produces an empty or near-empty diagram
 even though its manifests were found — that is by design, not a failure.
 
 Check before running:
 
 ```sh
-git ls-files | grep -cE '\.(py|ts|tsx|mts|cts)$'
+git ls-files | grep -cE '\.(py|ts|tsx|mts|cts|rs)$'
 ```
 
 If that count is zero or tiny, read files instead. Do not report an empty
@@ -85,7 +85,7 @@ An unscoped `class` diagram on a large repo is ~30k tokens. **Always scope it
 with `-I`** unless the repo is small or you have budgeted for it. Cheaper still:
 
 - `--no-members` — classes and relations without fields and methods.
-- `-l python` / `-l typescript` — one language only.
+- `-l python` / `-l typescript` / `-l rust` — one language only.
 - `--group-by component` — one `namespace` per package, so the diagram reads as
   "what is each component made of". `--group-by module` is finer (one namespace
   per file) and reads better when the scope is already a single package.
