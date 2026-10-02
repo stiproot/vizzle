@@ -62,24 +62,33 @@ import BaseLayout from '~/layouts/BaseLayout.astro';
           <!-- Tabs -->
           <div class="flex border-b border-[var(--color-border)] overflow-x-auto" role="tablist">
             <button
+              id="tab-components"
               role="tab"
               aria-selected="true"
+              aria-controls="diagram-components"
+              tabindex="0"
               data-tab="components"
               class="px-[var(--space-6)] py-[var(--space-3)] font-[var(--font-weight-medium)] text-[length:var(--text-sm)] border-b-2 border-[var(--color-structure)] text-[var(--color-ink)] whitespace-nowrap"
             >
               Components
             </button>
             <button
+              id="tab-classes"
               role="tab"
               aria-selected="false"
+              aria-controls="diagram-classes"
+              tabindex="-1"
               data-tab="classes"
               class="px-[var(--space-6)] py-[var(--space-3)] font-[var(--font-weight-medium)] text-[length:var(--text-sm)] border-b-2 border-transparent text-[var(--color-muted)] hover:text-[var(--color-ink)] whitespace-nowrap"
             >
               Classes
             </button>
             <button
+              id="tab-diff"
               role="tab"
               aria-selected="false"
+              aria-controls="diagram-diff"
+              tabindex="-1"
               data-tab="diff"
               class="px-[var(--space-6)] py-[var(--space-3)] font-[var(--font-weight-medium)] text-[length:var(--text-sm)] border-b-2 border-transparent text-[var(--color-muted)] hover:text-[var(--color-ink)] whitespace-nowrap"
             >
@@ -91,6 +100,8 @@ import BaseLayout from '~/layouts/BaseLayout.astro';
           <div class="relative">
             <iframe
               id="diagram-components"
+              role="tabpanel"
+              aria-labelledby="tab-components"
               class="tab-content w-[var(--size-full)] h-[var(--space-diagram)] md:h-[var(--space-diagram-wide)] border-0"
               src="/diagrams/h-components.html"
               title="Component diagram"
@@ -98,6 +109,8 @@ import BaseLayout from '~/layouts/BaseLayout.astro';
             ></iframe>
             <iframe
               id="diagram-classes"
+              role="tabpanel"
+              aria-labelledby="tab-classes"
               class="tab-content hidden w-[var(--size-full)] h-[var(--space-diagram)] md:h-[var(--space-diagram-wide)] border-0"
               src="/diagrams/h-classes.html"
               title="Class diagram"
@@ -105,6 +118,8 @@ import BaseLayout from '~/layouts/BaseLayout.astro';
             ></iframe>
             <iframe
               id="diagram-diff"
+              role="tabpanel"
+              aria-labelledby="tab-diff"
               class="tab-content hidden w-[var(--size-full)] h-[var(--space-diagram)] md:h-[var(--space-diagram-wide)] border-0"
               src="/diagrams/h-diff.html"
               title="Diff diagram"
@@ -252,8 +267,12 @@ import BaseLayout from '~/layouts/BaseLayout.astro';
         if (!tabName) return;
 
         // Update tab state
-        tabs.forEach(t => t.setAttribute('aria-selected', 'false'));
+        tabs.forEach(t => {
+          t.setAttribute('aria-selected', 'false');
+          t.setAttribute('tabindex', '-1');
+        });
         tab.setAttribute('aria-selected', 'true');
+        tab.setAttribute('tabindex', '0');
 
         // Update tab styles
         tabs.forEach(t => {
