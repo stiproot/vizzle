@@ -29,10 +29,15 @@ the selected list is the first six paths in lexicographic order. With
 `-E 'tests/**'`, `tests/api.rs` alone also disappears. The inline module remains
 part of `src/lib.rs`; it is not a separately selected file.
 
-**Decision.** Detect `.rs`, unconditionally exclude `target/`, and otherwise
-apply existing selection without test/build/example conventions. Change this
-only if vizzle introduces a cross-language target-role filter or evaluates
-build configurations.
+**Decision.** `Language::from_path` owns the source-suffix mapping and adds
+`.rs` → `Language::Rust`; the same `Language` implementation owns the accepted
+selector names, including `rust`. `SelectOptions::languages` parses those names
+through that shared definition, and the Python CLI obtains its `-l` choices
+from the core boundary rather than maintaining another list. This follows
+CLAUDE.md's rule that source suffixes are defined once. Unconditionally exclude
+`target/`, and otherwise apply existing selection without test/build/example
+conventions. Change this only if vizzle introduces a cross-language target-role
+filter or evaluates build configurations.
 
 ## 2. Elements become boxes
 

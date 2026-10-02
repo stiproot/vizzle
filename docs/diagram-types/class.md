@@ -404,7 +404,7 @@ the centre.
 ## 8. CLI surface
 
 ```sh
-vizzle class <repo> [-o out.mmd|out.html] [-I glob] [-E glob] [-l python|typescript]
+vizzle class <repo> [-o out.mmd|out.html] [-I glob] [-E glob] [-l python|typescript|rust]
                    [--no-members] [--group-by none|module|component] [--externals]
                    [--direction LR] [--title]
                    [--modules]                        # §2.5, off by default
