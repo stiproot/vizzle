@@ -286,7 +286,7 @@ pub fn build(
             );
         }
     }
-    let graph = parse::parse_files(files)?;
+    let graph = parse::parse_files_with_manifests(files, manifests)?;
     Ok(build_from_graph(&graph, files, manifests, splits))
 }
 
@@ -458,7 +458,12 @@ fn build_from_graph(
                 .unwrap_or(path)
                 .to_owned();
             file_hashes.insert(rel, file_hasher.finish());
-            module_owner.insert(parse::module_path(path), idx);
+            let mod_key = if Language::from_path(path) == Some(Language::Rust) {
+                parse::rust_qualified_prefix(path, manifests).replace("::", ".")
+            } else {
+                parse::module_path(path)
+            };
+            module_owner.insert(mod_key, idx);
             if Language::from_path(path) == Some(Language::Python) {
                 let root = detector.import_root(path, &components[idx].path);
                 for name in importable_py_prefixes(path, &root) {
@@ -491,7 +496,13 @@ fn build_from_graph(
         }
     }
 
-    let edges = build_edges(&code.imports, &components, &detector, &py_names);
+    let mut edges = build_edges(&code.imports, &components, &detector, &py_names);
+    // Add manifest path-dep edges at weight 0 for deps with no observed import (spec §7).
+    for edge in build_cargo_path_dep_edges(manifests, &components) {
+        if !edges.iter().any(|e| e.from == edge.from && e.to == edge.to) {
+            edges.push(edge);
+        }
+    }
 
     let mut graph = ComponentGraph {
         components,
@@ -696,6 +707,79 @@ fn resolve_py(
         }
     }
     Resolved::External(segments[0].to_owned())
+}
+
+/// Build weight-0 edges from Cargo `path = "..."` dependencies (spec §7).
+/// These cover manifest-declared crate edges even when no `use` import is observed.
+fn build_cargo_path_dep_edges(
+    manifests: &[(String, String)],
+    components: &[Component],
+) -> Vec<ComponentEdge> {
+    let mut edges = Vec::new();
+    for (manifest_path, contents) in manifests {
+        if !manifest_path.ends_with("Cargo.toml") {
+            continue;
+        }
+        let manifest_dir = dir_of(manifest_path);
+        let Some(from_idx) = components.iter().position(|c| c.path == manifest_dir) else {
+            continue;
+        };
+        for dep_path in cargo_path_deps(manifest_dir, contents) {
+            if let Some(to_idx) = components.iter().position(|c| c.path == dep_path) {
+                if from_idx != to_idx {
+                    edges.push(ComponentEdge {
+                        from: components[from_idx].path.clone(),
+                        to: EdgeTarget::Component(components[to_idx].path.clone()),
+                        weight: 0,
+                        change: ChangeKind::Unchanged,
+                    });
+                }
+            }
+        }
+    }
+    edges
+}
+
+/// Extract resolved paths from `[dependencies]`, `[dev-dependencies]`, and
+/// `[build-dependencies]` sections of a Cargo.toml.
+fn cargo_path_deps(manifest_dir: &str, contents: &str) -> Vec<String> {
+    let mut result = Vec::new();
+    let mut in_deps = false;
+    for line in contents.lines() {
+        let line = line.trim();
+        if line.starts_with('[') {
+            let section = line.trim_start_matches('[').trim_end_matches(']').trim();
+            in_deps = matches!(
+                section,
+                "dependencies" | "dev-dependencies" | "build-dependencies"
+            );
+            continue;
+        }
+        if !in_deps {
+            continue;
+        }
+        if let Some(path) = extract_toml_path_value(line) {
+            if let Some(resolved) = normalize_join(manifest_dir, path) {
+                result.push(resolved);
+            }
+        }
+    }
+    result
+}
+
+/// Find `path = "..."` in a TOML dependency line.
+fn extract_toml_path_value(line: &str) -> Option<&str> {
+    let pos = line.find("path")?;
+    let after = line[pos + 4..].trim_start();
+    let after = after.strip_prefix('=')?;
+    let trimmed = after.trim();
+    if let Some(inner) = trimmed.strip_prefix('"') {
+        inner.split('"').next()
+    } else if let Some(inner) = trimmed.strip_prefix('\'') {
+        inner.split('\'').next()
+    } else {
+        None
+    }
 }
 
 fn resolve_rust(import: &Import, crate_names: &[(&str, usize)], _detector: &Detector) -> Resolved {

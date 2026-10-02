@@ -125,14 +125,14 @@ pub fn diagram_from_dir(
     lens: &Lens,
 ) -> Result<String> {
     let files = walk::collect_files(root, &select.include, &select.exclude, &select.languages()?)?;
-    let graph = parse::parse_files(&files)?;
+    let manifests = walk::collect_manifests(root)?;
+    let graph = parse::parse_files_with_manifests(&files, &manifests)?;
     let (graph, lit) = apply_class_lens(graph, lens)?;
     let mut render = render.clone();
     render.highlight = lit;
     if render.grouping != Grouping::Component {
         return Ok(mermaid::render(&graph, &render));
     }
-    let manifests = walk::collect_manifests(root)?;
     let components = component::build(&files, &manifests, &select.splits)?;
     let names: std::collections::HashMap<&str, &str> = components
         .components
@@ -279,7 +279,8 @@ fn select_both(
 /// Render a curated diagram (docs/curated-diagrams.md) for the repo at `root`.
 pub fn curated_from_dir(root: &Path, select: &SelectOptions, manifest: &str) -> Result<String> {
     let files = walk::collect_files(root, &select.include, &select.exclude, &select.languages()?)?;
-    let graph = parse::parse_files(&files)?;
+    let manifests = walk::collect_manifests(root)?;
+    let graph = parse::parse_files_with_manifests(&files, &manifests)?;
     let manifest = curated::parse_manifest(manifest)?;
     curated::render(&manifest, &graph)
 }
@@ -287,7 +288,8 @@ pub fn curated_from_dir(root: &Path, select: &SelectOptions, manifest: &str) -> 
 /// Export the class graph for every supported source file under `root` as JSON.
 pub fn json_from_dir(root: &Path, select: &SelectOptions, lens: &Lens) -> Result<String> {
     let files = walk::collect_files(root, &select.include, &select.exclude, &select.languages()?)?;
-    let graph = parse::parse_files(&files)?;
+    let manifests = walk::collect_manifests(root)?;
+    let graph = parse::parse_files_with_manifests(&files, &manifests)?;
     let (graph, lit) = apply_class_lens(graph, lens)?;
     Ok(export::to_json_with_lens(&graph, lit.as_ref()))
 }

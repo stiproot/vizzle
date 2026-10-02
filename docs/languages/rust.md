@@ -1,6 +1,6 @@
 # Rust language specification
 
-Status: v1 implemented
+Status: In progress — §10.1 fixes merged, §10.2 (serde) not yet verified
 
 This document fixes the Rust-to-vizzle model before an implementation exists.
 It extends the language-neutral class and import graphs described by the
