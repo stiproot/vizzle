@@ -434,82 +434,29 @@ fn extract_method(node: Node, src: &str, members: &mut Vec<Member>) {
 }
 
 fn extract_imports(node: Node, src: &str, graph: &mut CodeGraph) {
-    // use_declaration can contain one or more import items
-    let mut cursor = node.walk();
-    for child in node.named_children(&mut cursor) {
-        match child.kind() {
-            "use_as_clause" => {
-                // use foo as bar;
-                if let Some(path) = child.child_by_field_name("path") {
-                    let target = text(path, src);
-                    if !target.is_empty() {
-                        let first_segment = target.split("::").next().unwrap_or(&target);
-                        graph.imports.push(Import {
-                            file: String::new(),
-                            target: first_segment.to_owned(),
-                            lang: Language::Rust,
-                        });
-                    }
-                }
-            }
-            "use_wildcard" => {
-                // use foo::*;
-                if let Some(path) = child.child_by_field_name("path") {
-                    let target = text(path, src);
-                    if !target.is_empty() {
-                        let first_segment = target.split("::").next().unwrap_or(&target);
-                        graph.imports.push(Import {
-                            file: String::new(),
-                            target: first_segment.to_owned(),
-                            lang: Language::Rust,
-                        });
-                    }
-                }
-            }
-            "scoped_use_list" => {
-                // use foo::{bar, baz};
-                if let Some(path) = child.child_by_field_name("path") {
-                    let target = text(path, src);
-                    if !target.is_empty() {
-                        let first_segment = target.split("::").next().unwrap_or(&target);
-                        graph.imports.push(Import {
-                            file: String::new(),
-                            target: first_segment.to_owned(),
-                            lang: Language::Rust,
-                        });
-                    }
-                }
-            }
-            "use_list" => {
-                // use foo::bar, foo::baz;
-                // Extract paths from the list
-                let mut list_cursor = child.walk();
-                for item in child.named_children(&mut list_cursor) {
-                    if let Some(path) = item.child_by_field_name("path") {
-                        let target = text(path, src);
-                        if !target.is_empty() {
-                            let first_segment = target.split("::").next().unwrap_or(&target);
-                            graph.imports.push(Import {
-                                file: String::new(),
-                                target: first_segment.to_owned(),
-                                lang: Language::Rust,
-                            });
-                        }
-                    }
-                }
-            }
-            _ => {
-                // Might be just a path node for simple imports like "use foo;"
-                if child.kind() == "identifier" || child.kind().contains("path") {
-                    let target = text(child, src);
-                    if !target.is_empty() && !target.contains('{') && !target.contains(';') {
-                        let first_segment = target.split("::").next().unwrap_or(&target);
-                        graph.imports.push(Import {
-                            file: String::new(),
-                            target: first_segment.to_owned(),
-                            lang: Language::Rust,
-                        });
-                    }
+    // Parse the use statement text directly as a fallback approach
+    let full_text = text(node, src);
+
+    // Extract "use " followed by the path
+    if let Some(rest) = full_text.strip_prefix("use ") {
+        // Find the first segment: everything up to ::, {, as, or ;
+        let path = rest
+            .trim_start_matches("::")  // strip leading ::
+            .split(|c| c == ':' || c == '{' || c == ';' || c == ' ')
+            .next()
+            .unwrap_or("")
+            .trim();
+
+        if !path.is_empty() && path != "crate" && path != "super" && path != "self" {
+            let segments: Vec<&str> = path.split("::").collect();
+            if !segments.is_empty() {
+                let first = segments[0].trim();
+                if !first.is_empty() {
+                    graph.imports.push(Import {
+                        file: String::new(),
+                        target: first.to_owned(),
+                        lang: Language::Rust,
+                    });
                 }
             }
         }
