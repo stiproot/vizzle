@@ -695,6 +695,36 @@ def test_doc_warns_inside_the_mermaid_margin_but_passes(tmp_path, monkeypatch):
     assert "short of mermaid's" in result.output
 
 
+def test_doc_read_ignores_a_prose_only_marker_mention(tmp_path):
+    """Documenting the format must not make the document itself 'managed'."""
+    from vizzle_cli import managed
+
+    doc = tmp_path / "prose.md"
+    doc.write_text("# Format\n\nvizzle reads the `gen:c4-code` manifest as written.\n\n```text\ngen:c4-code\n```\n")
+    assert managed.read(doc) is None
+
+
+def test_doc_read_still_raises_on_a_malformed_manifest_comment(tmp_path):
+    """The loud failure for a real manifest typo stays loud (the trap)."""
+    from vizzle_cli import managed
+
+    doc = tmp_path / "broken.md"
+    doc.write_text("# X\n<!-- gen:c4-code {not json -->\n")
+    with pytest.raises(managed.ManagedDocError):
+        managed.read(doc)
+
+
+def test_doc_check_ignores_a_prose_only_marker_in_a_directory(tmp_path):
+    """`--dir` over a directory that documents the format checks nothing and says so."""
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "format.md").write_text("# Format\n\nvizzle reads the `gen:c4-code` manifest as written.\n")
+
+    result = CliRunner().invoke(main, ["doc", "--dir", str(docs), "--check"])
+    assert result.exit_code == 0, result.output
+    assert "0 managed document(s) checked" in result.output
+
+
 def test_class_group_by_component_needs_no_flag_change_for_module(tmp_path):
     """--group stays a working alias so existing invocations keep their output."""
     _scoped_repo(tmp_path)
