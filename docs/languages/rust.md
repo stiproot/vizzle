@@ -170,6 +170,14 @@ crate segment stays external. Cargo package names use Rust identifier spelling
 (`-` becomes `_`). A type key is
 `<crate-identifier>::<module-path>::<Type>`, omitting an empty module path.
 
+For a Rust `Class`, `qualified` is that type key. `module` remains the non-empty,
+dotted, file-derived value returned by `parse::module_path`: crate-root files use
+their crate identifier (for example, `vizzle_core`), while child modules append
+their file path (for example, `vizzle_core.model`). Keeping this placement key
+separate from Rust's declaration identity lets `--group-by module` and component
+drill-down use the existing module-to-component map; no crate-root type is placed
+in an empty namespace.
+
 **Worked example.** This crate's `lib.rs` declares `pub mod model;` at
 `crates/vizzle-core/src/lib.rs:16`, resolving to
 `crates/vizzle-core/src/model.rs`; `pub use model::ChangeCounts;` at
@@ -180,7 +188,8 @@ and does not create a second `vizzle_core::ChangeCounts` box. A hypothetical
 cannot be resolved.
 
 **Decision.** Use the declaration-built module tree and lexical/import rules
-above; qualified identity follows package, module, and type rather than file.
+above; `qualified` identity follows package, module, and type rather than file,
+while `module` remains the non-empty file-derived placement key described above.
 Change this only when rustc/Cargo metadata becomes an explicit resolution
 source.
 

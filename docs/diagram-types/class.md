@@ -32,8 +32,8 @@ dataclasses, and the structural type aliases of §2.3.
 | Attribute | Meaning |
 |---|---|
 | `name` | Bare name (`AgentRunner`); nested classes read `Outer.Inner` |
-| `qualified` | Unique key, `<module>.<name>` |
-| `module` | Dotted path derived from the file path |
+| `qualified` | Unique key: `<module>.<name>` for Python/TypeScript; `<crate>::<module-path>::<Type>` for Rust |
+| `module` | Non-empty dotted path derived from the file path; Rust crate roots use the crate identifier |
 | `annotation` | UML stereotype: `interface`, `abstract`, `enumeration`, `dataclass`, `type`, `union`, `schema`, `module` |
 | `members` | Fields and methods (§2.2) |
 | `change` | `ChangeKind`, shared with every other diagram type |
