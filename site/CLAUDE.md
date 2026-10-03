@@ -31,12 +31,38 @@ font sizes, border-radius, etc. It is part of the `lint` script.
 
 ### Diagrams
 
-The three example diagrams (`h-components.html`, `h-classes.html`, `h-diff.html`)
-live in `../examples/` and are copied to `dist/diagrams/` during the `prebuild`
-step (which runs before `astro build`). The build fails if:
+There are two galleries. The h example diagrams (`h-components.html`,
+`h-classes.html`, `h-diff.html`) live in `../examples/` and are copied to
+`dist/diagrams/` during the `prebuild` step (which runs before `astro build`).
 
-- Any diagram file is missing
-- Any diagram does not contain `<svg` (empty or corrupt file)
+The vizzle self diagrams are different: they are regenerated from THIS
+repository's own checkout on every build, so the site always shows the commit
+being deployed. `scripts/generate-self.ts` (also run by `prebuild`, after
+`prebuild.ts`) runs vizzle via `uv run --project ..` from `site/`:
+
+- `vizzle component <repo root> -o public/diagrams/vizzle-components.html`
+- `vizzle class <repo root>/crates -l rust -o public/diagrams/vizzle-classes.html`
+- `vizzle doc --dir <repo root>/docs/diagrams --check` — the real managed-doc check
+- the same check against a temp copy of `docs/diagrams/core-model.md` with one
+  member row inside its generated fence deliberately edited (the stale demo)
+
+It writes `src/generated/self.json` (commit sha + date, both checks' output and
+exit codes, and each diagram's stats line) for `index.astro` to render. Both
+generated diagrams and `src/generated/` are gitignored. The build fails if:
+
+- Any diagram file is missing or does not contain `<svg` (empty or corrupt)
+- The component diagram does not mention `vizzle-core`
+- The real `doc --check` is non-zero
+- The stale demo is zero, or its output does not contain `out of date` (a copy
+  that fails for malformation would exit non-zero with an error, not drift)
+- The Rust class graph lacks `vizzle_core::model::Language` with its post-#57
+  `Rust` variant (guards against rendering from a stale extension)
+
+The self diagrams are regenerated per deploy; in CI `.github/workflows/site.yml`
+builds vizzle from the checkout with `uv sync --reinstall-package vizzle` first.
+The managed doc `docs/diagrams/core-model.md` must stay current, and the `Lint`
+CI job runs `vizzle doc --dir docs/diagrams --check` to gate that. The hero
+eyebrow advertises the Rust engine: "UML for git · Python + TypeScript + Rust".
 
 ### Node version
 
@@ -66,13 +92,15 @@ Node ≥ 22.12 is required (see `package.json` engines field and
 
 ## Structure
 
-- `src/pages/index.astro` — The gallery page (direction A). HTML, no components yet.
+- `src/pages/index.astro` — The gallery page: h examples and the self diagrams, plus the live `doc --check` output. Renders via `DiagramTabs.astro`.
+- `src/components/DiagramTabs.astro` — Shared tabbed diagram gallery (ARIA tabs, lazy iframes, keyboard nav, command strip). Used by both the h and self galleries; a new gallery uses this component, not a copied page.
 - `src/pages/robots.txt.ts` — Robots.txt endpoint (driven by INDEXABLE flag).
 - `src/layouts/BaseLayout.astro` — Page shell (head, body, meta tags).
 - `src/config/site.ts` — Site constants (SITE_URL, INDEXABLE).
 - `src/styles/tokens.css` — Design tokens (colors, spacing, typography).
 - `src/styles/global.css` — Global styles (imports, resets, utilities).
-- `scripts/prebuild.ts` — Copy diagrams from `../examples/` before build.
+- `scripts/prebuild.ts` — Copy h diagrams from `../examples/` before build.
+- `scripts/generate-self.ts` — Draw vizzle's own diagrams from the checkout, run both `doc --check`s, and write `src/generated/self.json`; fails the build on drift.
 - `scripts/check-tokens.ts` — Guard script: fail on hardcoded design values.
 - `astro.config.mjs` — Astro config (output, integrations, vite plugins).
 - `firebase.json` — Firebase Hosting config (site name, cache headers).
@@ -91,4 +119,5 @@ deploy, you must:
 5. `GITHUB_TOKEN` is automatic
 
 The workflow at `.github/workflows/site.yml` reads these secrets and deploys
-on push to `main` when `site/**`, `examples/**`, or the workflow file changes.
+on push to `main` when `site/**`, `examples/**`, `crates/**`, `packages/**`,
+`docs/diagrams/**`, or the workflow file changes.
