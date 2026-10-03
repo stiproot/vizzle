@@ -128,4 +128,3 @@ on push to `main` when `site/**`, `examples/**`, `crates/**`, `packages/**`,
 `Cargo.toml` (main can be ahead of the last release, and the page must not name a version `uvx vizzle`
 cannot fetch). PyPI caches that endpoint for 15 minutes, and the site only picks up a release on its
 next deploy; if PyPI is unreachable the section omits the number rather than guessing.
-

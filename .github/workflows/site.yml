@@ -10,6 +10,16 @@ on:
       - "packages/**"
       - "docs/diagrams/**"
       - ".github/workflows/site.yml"
+  # The same build on pull requests, minus the deploy, so a site change is checked
+  # before it merges rather than first failing on main.
+  pull_request:
+    paths:
+      - "site/**"
+      - "examples/**"
+      - "crates/**"
+      - "packages/**"
+      - "docs/diagrams/**"
+      - ".github/workflows/site.yml"
   workflow_dispatch:
 
 permissions:
@@ -56,6 +66,7 @@ jobs:
         run: bun run build
 
       - name: Deploy to Firebase Hosting
+        if: github.event_name != 'pull_request'
         uses: FirebaseExtended/action-hosting-deploy@500ac625ca2dd40cbd15f7659af953801858032a # v0.11.0
         with:
           repoToken: ${{ secrets.GITHUB_TOKEN }}
