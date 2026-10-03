@@ -121,3 +121,11 @@ deploy, you must:
 The workflow at `.github/workflows/site.yml` reads these secrets and deploys
 on push to `main` when `site/**`, `examples/**`, `crates/**`, `packages/**`,
 `docs/diagrams/**`, or the workflow file changes.
+
+## The Install section's version
+
+`scripts/generate-self.ts` reads the released version from PyPI's JSON API at build time, never from
+`Cargo.toml` (main can be ahead of the last release, and the page must not name a version `uvx vizzle`
+cannot fetch). PyPI caches that endpoint for 15 minutes, and the site only picks up a release on its
+next deploy; if PyPI is unreachable the section omits the number rather than guessing.
+

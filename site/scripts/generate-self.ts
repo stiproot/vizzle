@@ -189,9 +189,29 @@ const sha = shaRun.stdout.trim();
 const commitDate = dateRun.stdout.trim();
 if (!sha) fail("could not read the commit SHA");
 
+// The released version the Install section names. PyPI, not Cargo.toml: main can be ahead of
+// the last release, and the page must never name a version `uvx vizzle` cannot fetch. When
+// PyPI is unreachable the page omits the number rather than guessing one.
+async function pypiVersion(): Promise<string | null> {
+  try {
+    const response = await fetch("https://pypi.org/pypi/vizzle/json", {
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const body = (await response.json()) as { info?: { version?: string } };
+    return body.info?.version ?? null;
+  } catch (error) {
+    console.warn(
+      `generate-self — PyPI version unavailable, Install section omits it: ${String(error)}`,
+    );
+    return null;
+  }
+}
+
 const payload = {
   sha,
   commitDate,
+  pypiVersion: await pypiVersion(),
   checks: {
     fresh: {
       command: "vizzle doc --dir docs/diagrams --check",
