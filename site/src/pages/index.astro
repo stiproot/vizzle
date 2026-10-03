@@ -40,6 +40,7 @@ if (!existsSync(selfPath)) {
 const self = JSON.parse(readFileSync(selfPath, 'utf8')) as {
   sha: string;
   commitDate: string;
+  pypiVersion: string | null;
   checks: {
     fresh: { command: string; exitCode: number; output: string };
     stale: { command: string; exitCode: number; output: string; label?: string };
@@ -95,6 +96,7 @@ const terminalLines = [
         <div class="flex flex-wrap items-center justify-end gap-x-[var(--space-4)] gap-y-[var(--space-2)] text-[length:var(--text-sm)]">
           <a href="#examples" class="hover:text-[var(--color-structure)]">Examples</a>
           <a href="https://github.com/stiproot/vizzle#readme" target="_blank" rel="noopener noreferrer" class="hover:text-[var(--color-structure)]">Docs</a>
+          <a href="#install" class="hover:text-[var(--color-structure)]">Install</a>
           <a href="#agents" class="hover:text-[var(--color-structure)]">For agents</a>
           <a href="https://github.com/stiproot/vizzle" target="_blank" rel="noopener noreferrer" class="flex items-center gap-[var(--space-1)] hover:text-[var(--color-structure)]">
             GitHub
@@ -234,6 +236,36 @@ const terminalLines = [
             ></iframe>
           </div>
         </div>
+      </div>
+    </section>
+
+    <!-- Install -->
+    <section id="install" class="bg-[var(--color-page)] border-b border-[var(--color-border)]">
+      <div class="max-w-[var(--measure-page)] mx-auto px-[var(--space-6)] py-[var(--space-16)]">
+        <h2 class="text-[length:var(--text-3xl)] font-[var(--font-weight-bold)] mb-[var(--space-4)]">Nothing to install.</h2>
+        <p class="text-[var(--color-muted)] mb-[var(--space-8)] max-w-[var(--measure-copy)]">
+          vizzle is on <a href="https://pypi.org/project/vizzle/" target="_blank" rel="noopener noreferrer" class="text-[var(--color-structure)] hover:underline">PyPI</a>{self.pypiVersion && <> (<span class="font-mono">{self.pypiVersion}</span>)</>} as one wheel: the CLI and its compiled Rust core together. Run it straight from PyPI, with nothing added to the repo you are looking at, or keep it around.
+        </p>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-[var(--space-6)]">
+          <div class="flex flex-col gap-[var(--space-3)]">
+            <h3 class="font-mono text-[length:var(--text-xs)] uppercase tracking-wider text-[var(--color-muted)]">Run it once</h3>
+            <div class="bg-[var(--color-ink)] text-[var(--color-page)] p-[var(--space-4)] rounded-[var(--radius-lg)] overflow-x-auto font-mono text-[length:var(--text-sm)]">
+              <code class="whitespace-nowrap">uvx vizzle component .</code>
+            </div>
+          </div>
+          <div class="flex flex-col gap-[var(--space-3)]">
+            <h3 class="font-mono text-[length:var(--text-xs)] uppercase tracking-wider text-[var(--color-muted)]">Keep it around</h3>
+            <div class="bg-[var(--color-ink)] text-[var(--color-page)] p-[var(--space-4)] rounded-[var(--radius-lg)] overflow-x-auto font-mono text-[length:var(--text-sm)]">
+              <code class="whitespace-nowrap">uv tool install vizzle</code>
+            </div>
+            <div class="bg-[var(--color-ink)] text-[var(--color-page)] p-[var(--space-4)] rounded-[var(--radius-lg)] overflow-x-auto font-mono text-[length:var(--text-sm)]">
+              <code class="whitespace-nowrap">pipx install vizzle</code>
+            </div>
+          </div>
+        </div>
+        <p class="text-[length:var(--text-sm)] text-[var(--color-muted)] mt-[var(--space-6)]">
+          Needs Python ≥ 3.10 and <code class="font-mono">git</code> on PATH; on Linux, glibc ≥ 2.28.
+        </p>
       </div>
     </section>
 
