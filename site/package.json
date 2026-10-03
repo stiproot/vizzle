@@ -4,7 +4,7 @@
   "description": "vizzle — code diagrams that sync with git",
   "type": "module",
   "scripts": {
-    "prebuild": "bun scripts/prebuild.ts",
+    "prebuild": "bun scripts/prebuild.ts && bun scripts/generate-self.ts",
     "dev": "astro dev",
     "build": "astro build",
     "preview": "astro preview",

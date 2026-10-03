@@ -1,0 +1,133 @@
+---
+/**
+ * A tabbed gallery of vizzle diagrams. One component, used by both the h example
+ * gallery and the vizzle self gallery — a new gallery is a new use of this
+ * component, never a copied page.
+ *
+ * Props:
+ *   group — id namespace so two instances on one page keep unique ids.
+ *   tabs  — src is the clean diagram path (no .html), first is active.
+ * The `caption` slot carries the subject/commit lines.
+ */
+interface Tab {
+  id: string;
+  label: string;
+  src: string;
+  command: string;
+  title?: string;
+}
+
+interface Props {
+  group: string;
+  tabs: Tab[];
+}
+
+const { group, tabs } = Astro.props;
+
+const baseTab =
+  "px-[var(--space-6)] py-[var(--space-3)] font-[var(--font-weight-medium)] text-[length:var(--text-sm)] border-b-2 whitespace-nowrap";
+const activeTab = "border-[var(--color-structure)] text-[var(--color-ink)]";
+const inactiveTab = "border-transparent text-[var(--color-muted)] hover:text-[var(--color-ink)]";
+const frame =
+  "tab-content w-[var(--size-full)] h-[var(--space-diagram)] md:h-[var(--space-diagram-wide)] border-0";
+---
+
+<div class="card" data-diagram-tabs data-group={group}>
+  <div class="flex border-b border-[var(--color-border)] overflow-x-auto" role="tablist">
+    {
+      tabs.map((tab, index) => (
+        <button
+          id={`tab-${group}-${tab.id}`}
+          role="tab"
+          aria-selected={index === 0 ? "true" : "false"}
+          aria-controls={`diagram-${group}-${tab.id}`}
+          tabindex={index === 0 ? "0" : "-1"}
+          data-tab={tab.id}
+          data-src={`/diagrams/${tab.src}`}
+          data-command={tab.command}
+          class={`${baseTab} ${index === 0 ? activeTab : inactiveTab}`}
+        >
+          {tab.label}
+        </button>
+      ))
+    }
+  </div>
+
+  <div class="relative">
+    {
+      tabs.map((tab, index) => (
+        <iframe
+          id={`diagram-${group}-${tab.id}`}
+          role="tabpanel"
+          aria-labelledby={`tab-${group}-${tab.id}`}
+          class={index === 0 ? frame : `${frame} hidden`}
+          src={`/diagrams/${tab.src}`}
+          title={tab.title ?? `${tab.label} diagram`}
+          loading="lazy"
+        />
+      ))
+    }
+  </div>
+
+  <div class="px-[var(--space-6)] py-[var(--space-4)] border-t border-[var(--color-border)] bg-[var(--color-panel)] min-w-0">
+    <!-- Mobile fullscreen link lives in the strip, not over the frame, so it
+         cannot overlap the diagram's own header at narrow widths. -->
+    <a
+      href={`/diagrams/${tabs[0].src}`}
+      class="md:hidden inline-block mb-[var(--space-3)] px-[var(--space-3)] py-[var(--space-2)] bg-[var(--color-structure)] text-[var(--color-page)] text-[length:var(--text-xs)] rounded hover:bg-opacity-90"
+      data-fullscreen>Open full screen ↗</a
+    >
+    <p
+      class="text-[length:var(--text-xs)] font-mono text-[var(--color-muted)] mb-[var(--space-2)] overflow-x-auto whitespace-nowrap"
+      data-command>{tabs[0].command}</p
+    >
+    <p class="text-[length:var(--text-xs)] text-[var(--color-muted)]">Drag to pan · Scroll to zoom</p>
+    <slot name="caption" />
+  </div>
+</div>
+
+<script>
+  // Hoisted once and shared by every <DiagramTabs> instance, so each handler
+  // stays scoped to its own root: ids are unique per group, lookups are local.
+  const roots = document.querySelectorAll<HTMLElement>("[data-diagram-tabs]");
+  const ACTIVE = ["border-[var(--color-structure)]", "text-[var(--color-ink)]"];
+  const INACTIVE = ["border-transparent", "text-[var(--color-muted)]", "hover:text-[var(--color-ink)]"];
+
+  roots.forEach((root) => {
+    const tabs = Array.from(root.querySelectorAll<HTMLElement>('[role="tab"]'));
+    const panels = Array.from(root.querySelectorAll<HTMLElement>(".tab-content"));
+
+    const select = (tab: HTMLElement): void => {
+      tabs.forEach((candidate) => {
+        const selected = candidate === tab;
+        candidate.setAttribute("aria-selected", selected ? "true" : "false");
+        candidate.setAttribute("tabindex", selected ? "0" : "-1");
+        ACTIVE.forEach((name) => candidate.classList.toggle(name, selected));
+        INACTIVE.forEach((name) => candidate.classList.toggle(name, !selected));
+      });
+
+      const panelId = tab.getAttribute("aria-controls");
+      panels.forEach((panel) => panel.classList.toggle("hidden", panel.id !== panelId));
+
+      const command = root.querySelector<HTMLElement>("[data-command]");
+      if (command) command.textContent = tab.dataset.command ?? "";
+
+      const fullscreen = root.querySelector<HTMLAnchorElement>("[data-fullscreen]");
+      if (fullscreen && tab.dataset.src) fullscreen.href = tab.dataset.src;
+    };
+
+    tabs.forEach((tab) => {
+      tab.addEventListener("click", () => select(tab));
+      tab.addEventListener("keydown", (event) => {
+        if (event.key !== "ArrowRight" && event.key !== "ArrowLeft") return;
+        const index = tabs.indexOf(tab);
+        const next =
+          event.key === "ArrowRight" ? (index + 1) % tabs.length : (index - 1 + tabs.length) % tabs.length;
+        const target = tabs[next];
+        if (!target) return;
+        target.click();
+        target.focus();
+      });
+    });
+  });
+</script>

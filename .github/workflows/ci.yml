@@ -61,6 +61,9 @@ jobs:
           enable-cache: true
       - run: uv run ruff format --check .
       - run: uv run ruff check .
+      # Dogfood the managed-doc lint: docs/diagrams/ must stay current, or a
+      # refactor that changes the core model ships a diagram that lies.
+      - run: uv run vizzle doc --dir docs/diagrams --check
       # The version is stated once and copied by scripts/bump-version.sh; this
       # catches a copy edited by hand (the plugin manifest, the lock file).
       - run: bash scripts/bump-version.sh check
