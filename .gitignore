@@ -27,6 +27,8 @@ node_modules/
 # site/ (Astro + Tailwind)
 site/.astro/
 site/public/diagrams/
+# vizzle's self diagrams and the live check evidence, regenerated per build.
+site/src/generated/
 
 # Editors / OS
 .DS_Store
