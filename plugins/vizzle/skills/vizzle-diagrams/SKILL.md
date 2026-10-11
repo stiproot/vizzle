@@ -61,7 +61,7 @@ Useful additions:
 - `--weights` — label each edge with how many files import across it, so you
   can see which dependencies are load-bearing and which are incidental.
 - `--externals` — add a node per external package (npm/PyPI).
-- `-E 'tests/*'` — exclude paths *before* detection, removing those components.
+- Tests are excluded by default. Use `--tests` to draw them.
 
 **Pointing at something.** When the diagram is there to make a point — an
 incident's code path, the two classes a change is about — say so, and let
@@ -187,6 +187,8 @@ decide "did anything change" or "will this fit in a comment" by searching the
 diagram text for `diffAdded` or a `✚`: those are rendering choices and can
 change in any release, and a script keyed on them fails silently as "no
 change".
+
+`tests` (`added`/`removed`/`modified`/`unit:"files"`) counts test files changed between the revisions, regardless of `--tests`; a test-only PR reads `changed: false, tests.modified: 1`.
 
 ## Reading the output
 
