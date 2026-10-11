@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import fnmatch
 import json
 import sys
 from pathlib import Path
@@ -13,6 +14,79 @@ from . import render as render_mod
 from .html import build_component_html, build_html, summarize, summarize_components
 
 GROUPINGS = ("none", "module", "component")
+
+# The one definition of "a test source file". File selection appends these to
+# the caller's -E list; `--stats` counts changed files against the same globs.
+DEFAULT_TEST_EXCLUDES = (
+    "**/test_*.py",
+    "**/*_test.py",
+    "**/tests/**",
+    "**/conftest.py",
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "**/*.test.mts",
+    "**/*.spec.ts",
+    "**/*.spec.tsx",
+    "**/__tests__/**",
+    "**/__snapshots__/**",
+)
+
+
+def _split_test_globs() -> tuple[tuple[str, ...], frozenset[str]]:
+    """Derive filename patterns and directory names from DEFAULT_TEST_EXCLUDES.
+
+    PurePosixPath.match() wants a component before `**`, so a root-level
+    `conftest.py` or `tests/x.py` would slip past it; matching names and
+    directory components directly has no such blind spot.
+    """
+    names: list[str] = []
+    dirs: set[str] = set()
+    for glob in DEFAULT_TEST_EXCLUDES:
+        parts = glob.split("/")
+        if parts[-1] == "**":
+            dirs.add(parts[-2])
+        else:
+            names.append(parts[-1])
+    return tuple(names), frozenset(dirs)
+
+
+_TEST_FILE_PATTERNS, _TEST_DIR_NAMES = _split_test_globs()
+
+
+def _is_test_path(path: str) -> bool:
+    *directories, name = path.split("/")
+    return any(fnmatch.fnmatch(name, pattern) for pattern in _TEST_FILE_PATTERNS) or any(
+        d in _TEST_DIR_NAMES for d in directories
+    )
+
+
+def _effective_exclude(exclude: tuple[str, ...], tests: bool) -> list[str]:
+    """The caller's -E globs, plus the test globs unless --tests opted them in."""
+    return list(exclude) + ([] if tests else list(DEFAULT_TEST_EXCLUDES))
+
+
+def _without_tests(files: list[tuple[str, str]], tests: bool) -> list[tuple[str, str]]:
+    """Drop test sources from a changed-file set unless --tests opted them in.
+
+    The core errors when a selection removes every changed file, which is the
+    right answer for the caller's own -E but wrong for a test-only change: that
+    is a valid diff with nothing production-side to draw.
+    """
+    return files if tests else [(p, c) for p, c in files if not _is_test_path(p)]
+
+
+def _test_file_stats(root: Path, base: str, head: str | None) -> dict[str, object]:
+    """Changed test files between base and head, counted whatever --tests draws.
+
+    The drawing hides test sources by default; this count is what lets a
+    consumer tell a test-only change from no change at all.
+    """
+    counts = {"added": 0, "removed": 0, "modified": 0}
+    for changed in git.changed_files(root, base, head, None):
+        if not (_is_test_path(changed.path) or (changed.old_path and _is_test_path(changed.old_path))):
+            continue
+        counts[{"A": "added", "D": "removed"}.get(changed.status, "modified")] += 1
+    return {**counts, "unit": "files"}
 
 
 def _grouping(group_by: str | None, group: bool) -> str:
@@ -57,8 +131,10 @@ def _component_render_kwargs(
     }
 
 
-def _selection_kwargs(include: tuple[str, ...], exclude: tuple[str, ...], lang: tuple[str, ...]) -> dict:
-    return {"include": list(include), "exclude": list(exclude), "langs": list(lang)}
+def _selection_kwargs(
+    include: tuple[str, ...], exclude: tuple[str, ...], lang: tuple[str, ...], tests: bool
+) -> dict:
+    return {"include": list(include), "exclude": _effective_exclude(exclude, tests), "langs": list(lang)}
 
 
 def _component_scope_path(path: Path) -> str:
@@ -128,6 +204,7 @@ def _write_diff_stats(
     edges: dict[str, int] | None = None,
     omitted: int | None = None,
     zoom: dict[str, object] | None = None,
+    tests: dict[str, object] | None = None,
 ) -> None:
     """The verdict behind a diff, for a consumer that must not read the drawing.
 
@@ -139,6 +216,8 @@ def _write_diff_stats(
     is measured against comes along, so the consumer only has to compare.
     `edges` (component diffs) counts the dependency edges alone, so a consumer
     can tell "the application was rewired" from "a component changed inside".
+    `tests` counts changed test files apart from the drawing, so a test-only
+    change reads `changed: false` with `tests.modified` above zero.
     """
     if path is None:
         return
@@ -158,6 +237,8 @@ def _write_diff_stats(
         stats["omitted"] = omitted
     if zoom is not None:
         stats["zoom"] = zoom
+    if tests is not None:
+        stats["tests"] = tests
     path.write_text(json.dumps(stats, indent=2) + "\n", encoding="utf-8")
 
 
@@ -187,6 +268,12 @@ select_options = _compose(
         multiple=True,
         type=click.Choice(["python", "typescript", "rust"]),
         help="Restrict languages (repeatable).",
+    ),
+    click.option(
+        "--tests",
+        "tests",
+        is_flag=True,
+        help="Include test sources (default: excluded). Use with diff, class, component, doc, serve.",
     ),
 )
 
@@ -350,6 +437,7 @@ def class_diagram(
     include: tuple[str, ...],
     exclude: tuple[str, ...],
     lang: tuple[str, ...],
+    tests: bool,
     highlight: tuple[str, ...],
     around: tuple[str, ...],
     depth: int,
@@ -373,7 +461,7 @@ def class_diagram(
     lens = _lens_kwargs(highlight, around, depth)
     if resolved_fmt == "html":
         graph_json = _core.graph_json_from_dir(
-            str(path), include=list(include), exclude=list(exclude), langs=list(lang), **lens
+            str(path), include=list(include), exclude=_effective_exclude(exclude, tests), langs=list(lang), **lens
         )
         page = build_html(
             graph_json,
@@ -388,7 +476,7 @@ def class_diagram(
     diagram = _core.class_diagram_from_dir(
         str(path),
         include=list(include),
-        exclude=list(exclude),
+        exclude=_effective_exclude(exclude, tests),
         langs=list(lang),
         **lens,
         **_render_kwargs(members, modules, _grouping(group_by, group), externals, direction, title),
@@ -422,6 +510,7 @@ def doc_command(
     include: tuple[str, ...],
     exclude: tuple[str, ...],
     lang: tuple[str, ...],
+    tests: bool,
 ) -> None:
     """Regenerate managed diagram documents from their gen:c4-code manifest.
 
@@ -452,13 +541,13 @@ def doc_command(
             scope = managed.scope_of(doc.manifest)
             if scope is None:
                 diagram = _core.curated_diagram_from_dir(
-                    str(root), doc.manifest, include=list(include), exclude=list(exclude), langs=list(lang)
+                    str(root), doc.manifest, include=list(include), exclude=_effective_exclude(exclude, tests), langs=list(lang)
                 )
             else:
                 diagram = _core.class_diagram_from_dir(
                     str(root / scope.path),
                     include=list(include) + list(scope.include),
-                    exclude=list(exclude) + list(scope.exclude),
+                    exclude=_effective_exclude(exclude, tests) + list(scope.exclude),
                     langs=list(lang) or ([scope.lang] if scope.lang else []),
                     **_render_kwargs(scope.members, False, scope.group, False, scope.direction, None),
                 )
@@ -615,6 +704,7 @@ def component_diagram(
     include: tuple[str, ...],
     exclude: tuple[str, ...],
     lang: tuple[str, ...],
+    tests: bool,
     split: tuple[str, ...],
     highlight: tuple[str, ...],
     around: tuple[str, ...],
@@ -641,7 +731,7 @@ def component_diagram(
         graph_json = _core.component_json_from_dir(
             str(path),
             include=list(include),
-            exclude=list(exclude),
+            exclude=_effective_exclude(exclude, tests),
             langs=list(lang),
             splits=splits,
             classes=classes,
@@ -658,7 +748,7 @@ def component_diagram(
     diagram = _core.component_diagram_from_dir(
         str(path),
         include=list(include),
-        exclude=list(exclude),
+        exclude=_effective_exclude(exclude, tests),
         langs=list(lang),
         splits=splits,
         **lens,
@@ -805,6 +895,7 @@ def diff_diagram(
     include: tuple[str, ...],
     exclude: tuple[str, ...],
     lang: tuple[str, ...],
+    tests: bool,
     members: bool,
     modules: bool,
     group_by: str | None,
@@ -834,13 +925,14 @@ def diff_diagram(
             "comes from the package manifests on disk, and a diff renders two "
             "revisions held in memory. Use --group-by module."
         )
-    selection = _selection_kwargs(include, exclude, lang)
+    selection = _selection_kwargs(include, exclude, lang, tests)
     if diagram_type != "component" and (split or focus or zoom_path):
         raise click.UsageError("--split, --focus and --zoom apply to --type component only")
     # Title keeps the reader's spelling of the base; the revisions compared
     # are the fork point and head.
     resolved_title = title or f"changes vs {base}"
     base = _fork_point(path, base, head)
+    tests_stats = _test_file_stats(_repo_root(path), base, head)
     if diagram_type == "component":
         base_files, base_manifests, head_files, head_manifests = _collect_component_diff(path, base, head)
         scope_path = _component_scope_path(path)
@@ -867,6 +959,7 @@ def diff_diagram(
                 content=page,
                 changes=graph_stats["changes"],
                 omitted=graph_stats["omitted"],
+            tests=tests_stats,
             )
             _emit(page, output, summarize_components(graph_json))
             return
@@ -900,6 +993,7 @@ def diff_diagram(
             edges=verdict["edges"],
             omitted=verdict["omitted"],
             zoom=zoom_stats,
+            tests=tests_stats,
         )
         _emit_mermaid(diagram, output)
         return
@@ -909,6 +1003,7 @@ def diff_diagram(
         raise click.ClickException(
             f"no changed Python/TypeScript files between {base} and {head or 'the working tree'}"
         )
+    base_files, head_files = _without_tests(base_files, tests), _without_tests(head_files, tests)
 
     grouping = _grouping(group_by, group)
     if grouping == "component":
@@ -933,6 +1028,7 @@ def diff_diagram(
             fmt=resolved_format,
             content=page,
             changes=json.loads(graph_json)["stats"]["changes"],
+            tests=tests_stats,
         )
         _emit(page, output, summarize(graph_json, show_modules=modules))
         return
@@ -950,6 +1046,7 @@ def diff_diagram(
         fmt=resolved_format,
         content=diagram,
         changes={k: verdict[k] for k in ("added", "removed", "modified")},
+        tests=tests_stats,
     )
     _emit_mermaid(diagram, output)
 
@@ -993,6 +1090,7 @@ def serve_command(
     include: tuple[str, ...],
     exclude: tuple[str, ...],
     lang: tuple[str, ...],
+    tests: bool,
     members: bool,
     modules: bool,
     externals: bool,
@@ -1014,7 +1112,7 @@ def serve_command(
     if head:
         diff_mode = True
 
-    selection = _selection_kwargs(include, exclude, lang)
+    selection = _selection_kwargs(include, exclude, lang, tests)
 
     def build_page() -> str:
         if diagram_type == "component":
@@ -1041,6 +1139,7 @@ def serve_command(
             return build_component_html(graph_json, title=page_title, include_externals=externals)
         if diff_mode:
             base_files, head_files = _collect_diff_files(path, _fork_point(path, base, head), head)
+            base_files, head_files = _without_tests(base_files, tests), _without_tests(head_files, tests)
             graph_json = _core.graph_json_diff(base_files, head_files, **selection)
             page_title = title or f"changes vs {base} (live)"
         else:
