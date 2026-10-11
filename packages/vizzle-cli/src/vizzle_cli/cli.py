@@ -131,9 +131,7 @@ def _component_render_kwargs(
     }
 
 
-def _selection_kwargs(
-    include: tuple[str, ...], exclude: tuple[str, ...], lang: tuple[str, ...], tests: bool
-) -> dict:
+def _selection_kwargs(include: tuple[str, ...], exclude: tuple[str, ...], lang: tuple[str, ...], tests: bool) -> dict:
     return {"include": list(include), "exclude": _effective_exclude(exclude, tests), "langs": list(lang)}
 
 
@@ -541,7 +539,11 @@ def doc_command(
             scope = managed.scope_of(doc.manifest)
             if scope is None:
                 diagram = _core.curated_diagram_from_dir(
-                    str(root), doc.manifest, include=list(include), exclude=_effective_exclude(exclude, tests), langs=list(lang)
+                    str(root),
+                    doc.manifest,
+                    include=list(include),
+                    exclude=_effective_exclude(exclude, tests),
+                    langs=list(lang),
                 )
             else:
                 diagram = _core.class_diagram_from_dir(
@@ -959,7 +961,7 @@ def diff_diagram(
                 content=page,
                 changes=graph_stats["changes"],
                 omitted=graph_stats["omitted"],
-            tests=tests_stats,
+                tests=tests_stats,
             )
             _emit(page, output, summarize_components(graph_json))
             return

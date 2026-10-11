@@ -1239,9 +1239,7 @@ def test_diff_excludes_test_sources_by_default(tmp_path: Path, fmt: str) -> None
     repo = _repo_with_tests(tmp_path / "r")
     out = tmp_path / ("d.html" if fmt == "html" else "d.mmd")
     stats_path = tmp_path / "s.json"
-    result = CliRunner().invoke(
-        main, ["diff", str(repo), "--format", fmt, "-o", str(out), "--stats", str(stats_path)]
-    )
+    result = CliRunner().invoke(main, ["diff", str(repo), "--format", fmt, "-o", str(out), "--stats", str(stats_path)])
     assert result.exit_code == 0, result.output
     text = out.read_text(encoding="utf-8")
     assert "TestProd" not in text, "test class appeared in output without --tests"
