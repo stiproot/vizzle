@@ -471,27 +471,43 @@ a diff is a hairball in which the two changed boxes are hard to find.
 `--focus` keeps what a reader of the change needs and drops the rest:
 
 - every changed component (added, removed or modified);
-- every added or removed edge, with both its endpoints;
-- every unchanged component an existing edge ties to a changed one — the
-  neighbours, because a change to `persistence` matters to whoever imports it,
-  and an edge with one end missing tells the reader nothing;
-- the edges among those.
+- every added, removed or modified edge, with both its endpoints — so a
+  neighbour is drawn only when the edge between it and a changed component
+  changed;
+- the unchanged edges between two changed components, so the drawn part of
+  the graph stays connected the way the code is.
 
-Everything else is left out and **counted**: the trailer says
-`N component(s) not drawn`, and `stats.omitted` / the `--stats` sidecar carry
-N, so a consumer can say so in prose (the same trailer serves `--around`). Boundary nodes
-carry no change of their own and survive only as neighbours. When nothing
-changed, focus draws nothing and counts everything; `--stats` already says
-`changed: false`.
+A neighbour an *unchanged* edge ties to a changed component says nothing
+about the change and is left out. Everything left out is **counted**: the
+trailer says `N component(s) not drawn`, and `stats.omitted` / the `--stats`
+sidecar carry N, so a consumer can say so in prose (the same trailer serves
+`--around`). Boundary nodes carry no change of their own and survive only as
+endpoints of a changed edge. When nothing changed, focus draws nothing and
+counts everything; `--stats` already says `changed: false`.
 
 Focus runs last — after selection, diff and scope — because it is a view
 choice over a graph that has already been built in full.
 
-Measured on PR #17682 with the split above: whole graph 39 components / 241
-edges, 27,700 chars; focused 26 / 48, 7,400 chars, 13 not drawn. Still busy,
-because `orchestrator` is a hub with twenty neighbours; a tighter mode
-(changed components and changed edges only) is the next step if reviewers
-find neighbours noise rather than signal.
+**Why the neighbour rule is the tight one (shipped for issue #71).** The
+first version also kept every unchanged neighbour of a changed component,
+measured on PR #17682 with the split above: whole graph 39 components / 241
+edges, 27,700 chars; focused 26 / 48, 7,400 chars, 13 not drawn — still busy,
+because `orchestrator` is a hub with twenty neighbours. Measured again on
+vizzle 0.12.0 against a 33-component TypeScript + Python monorepo (private
+fixture, tests excluded): a 27-commit release range gave
+`changes {modified: 6}`, `edges {0, 0, 0}`, `omitted 11` — 22 of 33 drawn for
+zero rewiring. A six-PR subset gave `modified 5`, `omitted 12` — 21 drawn, 16
+of them unchanged neighbours over unchanged edges. On a one-function PR
+(`modified 1`, `omitted 27`), 6 drawn, 5 of them such neighbours. Grey context
+boxes the reader did not ask for were most of the picture; with the tight
+rule the same release range draws 6 of 33 (`omitted 27`, 1,701 chars).
+
+*What would change it back:* reviewers finding they need every neighbour
+regardless of edge change. The condition lives in one place, `focus` in
+`component.rs`; this section and the focus tests change with it.
+
+`focus(box)` in `viz-core.js` is an unrelated viewport pan, not this graph
+filter; the shared name is intentional.
 
 ### 6.4 Zoom: the classes inside the changed components (`--zoom FILE`)
 

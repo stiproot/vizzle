@@ -979,7 +979,9 @@ def test_component_split_rejects_a_missing_directory(monolith: Path) -> None:
     assert "no such directory" in result.output
 
 
-def test_component_diff_split_and_focus_draw_the_change_and_its_neighbours(monolith: Path, tmp_path: Path) -> None:
+def test_component_diff_split_and_focus_draw_only_the_change_and_its_changed_edges(
+    monolith: Path, tmp_path: Path
+) -> None:
     (monolith / "svc/src/svc/store/db.py").write_text("class Db:\n    def ping(self): ...\n")
     stats_path = tmp_path / "s.json"
     result = CliRunner().invoke(
@@ -987,15 +989,16 @@ def test_component_diff_split_and_focus_draw_the_change_and_its_neighbours(monol
         ["diff", str(monolith), "--type", "component", "--split", "svc/src/svc", "--focus", "--stats", str(stats_path)],
     )
     assert result.exit_code == 0, result.output
-    # store changed; api imports it (neighbour); the root module and audit do not.
+    # store changed; api imports it over an unchanged edge, so it is context
+    # the change did not touch and is not drawn, like the root module and audit.
     assert "<b>store ✱</b>" in result.output
-    assert "<b>api</b>" in result.output
+    assert "<b>api</b>" not in result.output
     assert "<b>audit" not in result.output
-    assert "%% vizzle: 2 component(s) not drawn" in result.output
+    assert "%% vizzle: 3 component(s) not drawn" in result.output
     stats = _stats(stats_path)
     assert stats["changed"] is True
     assert stats["changes"] == {"added": 0, "removed": 0, "modified": 1}
-    assert stats["omitted"] == 2
+    assert stats["omitted"] == 3
 
 
 def test_diff_split_and_focus_need_the_component_type(monolith: Path) -> None:
