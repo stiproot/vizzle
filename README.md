@@ -154,14 +154,18 @@ without losing its surroundings.
 
 ### On a pull request
 
-`.github/workflows/pr-diagram.yml` posts a component diff as a PR comment, so
-reviewers see what a change did to the shape of the application without
-installing anything. GitHub renders ` ```mermaid ` blocks natively, so there is
+`.github/workflows/pr-diagram.yml` posts a focused component diff as a PR
+comment, with a zoom on the changed classes and a glyph legend, so reviewers
+see what a change did to the shape of the application without installing
+anything. GitHub renders ` ```mermaid ` blocks natively, so there is
 no image hosting involved. Copy the file into any repo with Python or
 TypeScript in it — the only requirement is `uvx` on the runner.
 
 It edits one comment rather than appending, says so in a single line when
-nothing structural moved, and skips fork PRs (which get a read-only token)
+nothing structural moved (or "Tests only" when just test files changed, once
+the pin reaches the release that excludes tests by default; until then they are
+drawn), falls back to a link to the run when a diagram is too large for a
+comment, and skips fork PRs (which get a read-only token)
 rather than failing them. It deliberately does not use `pull_request_target`;
 the reasoning is in `docs/distribution.md` §2.3.
 

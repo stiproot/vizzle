@@ -95,8 +95,9 @@ and the only rung that reaches readers who will never install anything.
 
 **Implemented 2026-08-16** in `.github/workflows/pr-diagram.yml`.
 
-`vizzle diff --type component --base <base-sha>` on a PR, with the Mermaid
-posted as a comment and the HTML uploaded as a build artifact. GitHub renders
+`vizzle diff --type component --focus --modules --zoom` against the PR's base,
+with two Mermaid diagrams posted as a comment — the focused diff, then a zoom
+on the changed classes — and the HTML and zoom uploaded as a build artifact. GitHub renders
 ` ```mermaid ` fenced blocks natively in comments and in Markdown files, so the
 diagram appears inline with **no image hosting, no asset pipeline, and no
 external service**. That property is worth protecting in the Mermaid renderer:
@@ -116,18 +117,30 @@ turns a nice idea into something people would switch off:
 - **It edits one comment instead of appending.** A twelve-commit PR should not
   accumulate twelve diagrams; a hidden `<!-- vizzle-component-diff -->` marker
   finds the previous one.
-- **It says "no structural change" when nothing moved.** vizzle emits change
-  markers only when something actually changed, so their absence is a reliable
-  signal — and one honest line is better than a full diagram of an unchanged
-  graph on every docs PR.
+- **It says what kind of nothing moved.** The verdict comes from `--stats`, not
+  the diagram text. With no structural change it is one honest line rather than
+  a full diagram of an unchanged graph on every docs PR — and when `stats.tests`
+  shows test files changed, that line becomes "Tests only", so a PR that added
+  coverage does not read the same as one that touched nothing.
 - **It checks vizzle can see the repo at all** before drawing (§2.6): with no
   `.py`/`.ts` present there is nothing to draw, and an empty diagram would read
   as a claim about the architecture rather than a limit of the tool.
 
+Under the focused diagram sits a glyph legend (✚ added · ✖ removed · ✱
+modified; an added or removed arrow means the application was rewired). The
+zoom section is left out when no class changed.
+
 Comments cap at 65536 characters, but the tighter limit is Mermaid's own:
 past 50,000 characters it draws an error graphic instead of a diagram. So the
 workflow swaps in a link to the run's artifact when `--stats` reports
-`oversized`, which vizzle judges against that ceiling.
+`oversized` — separately for the focused diagram and for the zoom, which vizzle
+judges against that ceiling.
+
+The workflow reads `stats.zoom` and `stats.tests` with defaults, because
+releases before the default test exclusion do not emit `stats.tests`. Until the
+pin moves to that release, test sources are drawn in the diagram and the
+"Tests only" sentence cannot fire; the workflow deliberately carries no
+test-glob list of its own, which would go stale when the pin moves.
 
 ### 2.4 Committed diagrams, checked for drift
 
