@@ -462,9 +462,9 @@ Measured on h @ 17011fa, `--base HEAD~1`: the full component diff is 31
 components / 62 dependencies; `-E 'apps/**'` gives 16 / 17. Scoped to
 `packages/js/engine-core` it is 6 / 5 (§6.1); adding `-E 'apps/**'` drops the
 `workflow-svc` boundary node and its edge, giving 5 / 4 with the trailer
-`%% vizzle: selection: exclude apps/**`.
+`%% vizzle: selection: exclude apps/**; tests excluded` (with `--tests`, `exclude apps/**` alone).
 
-Test sources (`test_*.py`, `*_test.py`, `tests/`, `conftest.py`; `*.test.ts(x)`, `*.spec.ts(x)`, `__tests__/`, `__snapshots__/`, `*.test.mts`) are excluded by default. Use `--tests` to include them. Measured on a six-PR release range of a TypeScript + Python monorepo with `--focus --zoom`: 14 zoom classes / 6,120 chars with tests; 8 / 2,720 without. `vizzle diff --stats FILE` reports `tests.modified` (unit: files) regardless of `--tests`, so a test-only PR reads `changed: false, tests.modified: 1` rather than "no structural change".
+Test sources (`test_*.py`, `*_test.py`, `tests/`, `conftest.py`; `*.test.ts(x)`, `*.spec.ts(x)`, `__tests__/`, `__snapshots__/`, `*.test.mts`) are excluded by default. Use `--tests` to include them. The default test set is `DEFAULT_TEST_GLOBS` in `vizzle-core`, not the CLI: the trailer and legend describe that rule as the single phrase `tests excluded` (after the caller's own `exclude <glob>` entries, before `lang`/`split`) instead of eleven `exclude` clauses that bury the caller's own globs. The core owns it because it is the layer that applies the rule, so only it can describe the rule truthfully; `--tests` drops the phrase. The CLI reads the same list (`_core.default_test_globs()`) for `--stats`. Measured on a six-PR release range of a TypeScript + Python monorepo with `--focus --zoom`: 14 zoom classes / 6,120 chars with tests; 8 / 2,720 without. `vizzle diff --stats FILE` reports `tests.modified` (unit: files) regardless of `--tests`, so a test-only PR reads `changed: false, tests.modified: 1` rather than "no structural change".
 
 ### 6.3 Focus (`--focus`)
 

@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 from click.testing import CliRunner
-from vizzle_cli.cli import DEFAULT_TEST_EXCLUDES, main
+from vizzle_cli.cli import main
 
 
 def git(cwd: Path, *args: str) -> None:
@@ -290,7 +290,7 @@ def test_component_diff_exclude_drops_a_component_on_both_revisions(workspace: P
     # The fixture exists at both revisions; filtering it must not surface as a change.
     assert "✚" not in filtered.output and "✖" not in filtered.output, filtered.output
     assert "«component»<br/><b>@w/core ✱</b>" in filtered.output
-    assert f"%% vizzle: selection: exclude {FIXTURE_GLOB}" in filtered.output
+    assert f"%% vizzle: selection: exclude {FIXTURE_GLOB}; tests excluded" in filtered.output
 
 
 def test_component_diff_exclude_wins_over_boundary(workspace: Path) -> None:
@@ -336,10 +336,30 @@ def test_component_diff_html_legend_carries_the_selection(workspace: Path, tmp_p
     payload = json.loads(re.search(r'id="graph-data"[^>]*>(.*?)</script>', page, re.S).group(1))
     assert payload["stats"]["selection"] == [
         f"exclude {FIXTURE_GLOB}",
-        *(f"exclude {glob}" for glob in DEFAULT_TEST_EXCLUDES),
+        "tests excluded",
         "lang typescript",
     ]
     assert "fixture-repo" not in page
+
+
+def test_component_diff_tests_flag_suppresses_tests_excluded_trailer(workspace: Path) -> None:
+    (workspace / "packages/core/src/extra.ts").write_text("export const v = 2;\n")
+
+    # Control: the default run must show the phrase.
+    default_run = CliRunner().invoke(main, ["diff", str(workspace), "--type", "component"])
+    assert default_run.exit_code == 0, default_run.output
+    assert "tests excluded" in default_run.output
+
+    # --tests suppresses it: phrase absent, and no selection line without a caller -E.
+    with_flag = CliRunner().invoke(main, ["diff", str(workspace), "--type", "component", "--tests"])
+    assert with_flag.exit_code == 0, with_flag.output
+    assert "tests excluded" not in with_flag.output
+    assert "selection:" not in with_flag.output
+
+    # With a caller glob, only that glob is disclosed.
+    with_glob = CliRunner().invoke(main, ["diff", str(workspace), "--type", "component", "--tests", "-E", "apps/**"])
+    assert with_glob.exit_code == 0, with_glob.output
+    assert "%% vizzle: selection: exclude apps/**\n" in with_glob.output
 
 
 def test_class_diff_selection_that_filters_everything_is_an_error(repo: Path) -> None:

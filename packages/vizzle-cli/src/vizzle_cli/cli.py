@@ -15,25 +15,10 @@ from .html import build_component_html, build_html, summarize, summarize_compone
 
 GROUPINGS = ("none", "module", "component")
 
-# The one definition of "a test source file". File selection appends these to
-# the caller's -E list; `--stats` counts changed files against the same globs.
-DEFAULT_TEST_EXCLUDES = (
-    "**/test_*.py",
-    "**/*_test.py",
-    "**/tests/**",
-    "**/conftest.py",
-    "**/*.test.ts",
-    "**/*.test.tsx",
-    "**/*.test.mts",
-    "**/*.spec.ts",
-    "**/*.spec.tsx",
-    "**/__tests__/**",
-    "**/__snapshots__/**",
-)
-
 
 def _split_test_globs() -> tuple[tuple[str, ...], frozenset[str]]:
-    """Derive filename patterns and directory names from DEFAULT_TEST_EXCLUDES.
+    """Derive filename patterns and directory names from the core's test globs
+    (`--stats` counts changed files against the same set selection excludes).
 
     PurePosixPath.match() wants a component before `**`, so a root-level
     `conftest.py` or `tests/x.py` would slip past it; matching names and
@@ -41,7 +26,7 @@ def _split_test_globs() -> tuple[tuple[str, ...], frozenset[str]]:
     """
     names: list[str] = []
     dirs: set[str] = set()
-    for glob in DEFAULT_TEST_EXCLUDES:
+    for glob in _core.default_test_globs():
         parts = glob.split("/")
         if parts[-1] == "**":
             dirs.add(parts[-2])
@@ -58,11 +43,6 @@ def _is_test_path(path: str) -> bool:
     return any(fnmatch.fnmatch(name, pattern) for pattern in _TEST_FILE_PATTERNS) or any(
         d in _TEST_DIR_NAMES for d in directories
     )
-
-
-def _effective_exclude(exclude: tuple[str, ...], tests: bool) -> list[str]:
-    """The caller's -E globs, plus the test globs unless --tests opted them in."""
-    return list(exclude) + ([] if tests else list(DEFAULT_TEST_EXCLUDES))
 
 
 def _without_tests(files: list[tuple[str, str]], tests: bool) -> list[tuple[str, str]]:
@@ -132,7 +112,7 @@ def _component_render_kwargs(
 
 
 def _selection_kwargs(include: tuple[str, ...], exclude: tuple[str, ...], lang: tuple[str, ...], tests: bool) -> dict:
-    return {"include": list(include), "exclude": _effective_exclude(exclude, tests), "langs": list(lang)}
+    return {"include": list(include), "exclude": list(exclude), "tests": tests, "langs": list(lang)}
 
 
 def _component_scope_path(path: Path) -> str:
@@ -459,7 +439,7 @@ def class_diagram(
     lens = _lens_kwargs(highlight, around, depth)
     if resolved_fmt == "html":
         graph_json = _core.graph_json_from_dir(
-            str(path), include=list(include), exclude=_effective_exclude(exclude, tests), langs=list(lang), **lens
+            str(path), include=list(include), exclude=list(exclude), tests=tests, langs=list(lang), **lens
         )
         page = build_html(
             graph_json,
@@ -474,7 +454,8 @@ def class_diagram(
     diagram = _core.class_diagram_from_dir(
         str(path),
         include=list(include),
-        exclude=_effective_exclude(exclude, tests),
+        exclude=list(exclude),
+        tests=tests,
         langs=list(lang),
         **lens,
         **_render_kwargs(members, modules, _grouping(group_by, group), externals, direction, title),
@@ -542,14 +523,16 @@ def doc_command(
                     str(root),
                     doc.manifest,
                     include=list(include),
-                    exclude=_effective_exclude(exclude, tests),
+                    exclude=list(exclude),
+                    tests=tests,
                     langs=list(lang),
                 )
             else:
                 diagram = _core.class_diagram_from_dir(
                     str(root / scope.path),
                     include=list(include) + list(scope.include),
-                    exclude=_effective_exclude(exclude, tests) + list(scope.exclude),
+                    exclude=list(exclude) + list(scope.exclude),
+                    tests=tests,
                     langs=list(lang) or ([scope.lang] if scope.lang else []),
                     **_render_kwargs(scope.members, False, scope.group, False, scope.direction, None),
                 )
@@ -733,7 +716,8 @@ def component_diagram(
         graph_json = _core.component_json_from_dir(
             str(path),
             include=list(include),
-            exclude=_effective_exclude(exclude, tests),
+            exclude=list(exclude),
+            tests=tests,
             langs=list(lang),
             splits=splits,
             classes=classes,
@@ -750,7 +734,8 @@ def component_diagram(
     diagram = _core.component_diagram_from_dir(
         str(path),
         include=list(include),
-        exclude=_effective_exclude(exclude, tests),
+        exclude=list(exclude),
+        tests=tests,
         langs=list(lang),
         splits=splits,
         **lens,
