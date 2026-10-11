@@ -72,7 +72,13 @@ jobs:
           # release goes out; see the release checklist in CLAUDE.md. It cannot
           # be bumped on the release's own branch: the version does not exist
           # on PyPI until the tag is pushed.
-          uvx 'vizzle==0.12.0' diff . --base "$BASE" --type component -o diagram.mmd --stats stats.json
+          #
+          # --focus --modules keep the comment readable on an application-scale
+          # repo; --zoom writes the changed classes to their own diagram. No -E
+          # test globs here: the default test exclusion ships with the next
+          # release, and a hand-written copy would go stale the day the pin
+          # moves. Until then tests are drawn.
+          uvx 'vizzle==0.12.0' diff . --base "$BASE" --type component --focus --modules --zoom zoom.mmd -o diagram.mmd --stats stats.json
           uvx 'vizzle==0.12.0' diff . --base "$BASE" --type component -o diagram.html
 
           # The verdict comes from --stats, never from the diagram text. The
@@ -85,13 +91,24 @@ jobs:
           print(f"changed={'true' if stats['changed'] else 'false'}")
           print(f"oversized={'true' if stats.get('oversized') else 'false'}")
           print(f"chars={stats['chars']}")
+          # `zoom` and `tests` are absent from the stats of releases before
+          # the pin catches up; .get() keeps those a 0, not a KeyError.
+          zoom = stats.get("zoom") or {}
+          print(f"zoom_oversized={'true' if zoom.get('oversized') else 'false'}")
+          print(f"zoom_chars={zoom.get('chars', 0)}")
+          print(f"zoom_classes={zoom.get('classes', 0)}")
+          tests = stats.get("tests") or {}
+          tests_changed = tests.get("added", 0) + tests.get("removed", 0) + tests.get("modified", 0)
+          print(f"tests_changed={tests_changed}")
           PY
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: steps.applicable.outputs.sources != '0'
         with:
           name: component-diagram
-          path: diagram.html
+          path: |
+            diagram.html
+            zoom.mmd
           if-no-files-found: error
 
       - name: Comment on the pull request
@@ -101,6 +118,10 @@ jobs:
           CHANGED: ${{ steps.render.outputs.changed }}
           OVERSIZED: ${{ steps.render.outputs.oversized }}
           CHARS: ${{ steps.render.outputs.chars }}
+          ZOOM_OVERSIZED: ${{ steps.render.outputs.zoom_oversized }}
+          ZOOM_CHARS: ${{ steps.render.outputs.zoom_chars }}
+          ZOOM_CLASSES: ${{ steps.render.outputs.zoom_classes }}
+          TESTS_CHANGED: ${{ steps.render.outputs.tests_changed }}
         with:
           script: |
             const fs = require('fs');
@@ -108,26 +129,36 @@ jobs:
             // adding one per push — a 12-commit PR should not have 12 diagrams.
             const MARKER = '<!-- vizzle-component-diff -->';
 
+            // Unset or empty env arrives as '' or undefined; read both as 0
+            // rather than letting NaN pick a branch silently.
+            const count = name => parseInt(process.env[name] || '0', 10) || 0;
+            const testsChanged = count('TESTS_CHANGED');
+            const zoomClasses = count('ZOOM_CLASSES');
+            const run = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const head = `${MARKER}\n### What this changed\n\n`;
+
             let body;
             if (process.env.CHANGED !== 'true') {
-              body = `${MARKER}\n### Component diagram\n\n` +
-                `No structural change — this pull request does not add, remove, or rewire any component.`;
-            } else {
-              const mmd = fs.readFileSync('diagram.mmd', 'utf8');
-              const run = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+              body = testsChanged > 0
+                ? head + `Tests only — ${testsChanged} test file(s) changed, no component added, removed, rewired or modified.`
+                : head + `No structural change — this pull request does not add, remove, or rewire any component.`;
+            } else if (process.env.OVERSIZED === 'true') {
               // `oversized` is vizzle's judgement against mermaid's own layout
               // ceiling, which is lower than GitHub's comment cap.
-              if (process.env.OVERSIZED === 'true') {
-                body = `${MARKER}\n### Component diagram\n\n` +
-                  `The diagram is ${process.env.CHARS} characters, past what a comment can hold. ` +
-                  `Download the interactive version from [the workflow run](${run}).`;
-              } else {
-                body = `${MARKER}\n### What this changed in the shape of the application\n\n` +
-                  '```mermaid\n' + mmd + '\n```\n\n' +
-                  `<sub>✚ added · ✖ removed · ✱ modified. An added or removed *arrow* means the ` +
-                  `application was rewired, which is a bigger deal than a changed component. ` +
-                  `The draggable version is attached to [the run](${run}).</sub>`;
+              body = head +
+                `The diagram is ${process.env.CHARS} characters, past what a comment can hold. ` +
+                `Download the interactive version from [the workflow run](${run}).`;
+            } else {
+              body = head + '```mermaid\n' + fs.readFileSync('diagram.mmd', 'utf8') + '\n```\n\n';
+              if (zoomClasses > 0) {
+                body += '#### Zoom: the changed classes\n\n';
+                body += process.env.ZOOM_OVERSIZED === 'true'
+                  ? `The zoom diagram is ${process.env.ZOOM_CHARS} characters, past what a comment can hold. ` +
+                    `Download it from [the workflow run](${run}).\n\n`
+                  : '```mermaid\n' + fs.readFileSync('zoom.mmd', 'utf8') + '\n```\n\n';
               }
+              body += `<sub>✚ added · ✖ removed · ✱ modified · an added or removed arrow means the application was rewired</sub>\n\n` +
+                `<sub>The draggable version is attached to [the run](${run}).</sub>`;
             }
 
             const { owner, repo } = context.repo;
