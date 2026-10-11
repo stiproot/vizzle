@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 from click.testing import CliRunner
-from vizzle_cli.cli import main
+from vizzle_cli.cli import DEFAULT_TEST_EXCLUDES, main
 
 
 def git(cwd: Path, *args: str) -> None:
@@ -278,7 +278,7 @@ def test_component_diff_exclude_drops_a_component_on_both_revisions(workspace: P
     _add_fixture_component(workspace)
     (workspace / "packages/core/src/extra.ts").write_text("export const v = 2;\n")
 
-    unfiltered = CliRunner().invoke(main, ["diff", str(workspace), "--type", "component"])
+    unfiltered = CliRunner().invoke(main, ["diff", str(workspace), "--type", "component", "--tests"])
     assert unfiltered.exit_code == 0, unfiltered.output
     assert "fixture-repo" in unfiltered.output
     assert _component_count(unfiltered.output) == 4
@@ -315,7 +315,7 @@ def test_component_diff_change_confined_to_excluded_paths_is_no_change(workspace
     _add_fixture_component(workspace)
     (workspace / "packages/core/tests/fixtures/repo/index.ts").write_text("export class Fixture { x = 1 }\n")
 
-    unfiltered = CliRunner().invoke(main, ["diff", str(workspace), "--type", "component"])
+    unfiltered = CliRunner().invoke(main, ["diff", str(workspace), "--type", "component", "--tests"])
     assert unfiltered.exit_code == 0, unfiltered.output
     assert "diffModified" in unfiltered.output
 
@@ -334,7 +334,11 @@ def test_component_diff_html_legend_carries_the_selection(workspace: Path, tmp_p
     assert result.exit_code == 0, result.output
     page = out.read_text()
     payload = json.loads(re.search(r'id="graph-data"[^>]*>(.*?)</script>', page, re.S).group(1))
-    assert payload["stats"]["selection"] == [f"exclude {FIXTURE_GLOB}", "lang typescript"]
+    assert payload["stats"]["selection"] == [
+        f"exclude {FIXTURE_GLOB}",
+        *(f"exclude {glob}" for glob in DEFAULT_TEST_EXCLUDES),
+        "lang typescript",
+    ]
     assert "fixture-repo" not in page
 
 
@@ -964,7 +968,7 @@ def test_component_split_turns_one_manifest_into_subpackages(monolith: Path) -> 
     assert _component_count(split.output) == 4, split.output
     # Absolute self-imports resolve to the subpackage that owns them.
     assert "c_svc_src_svc_api -.-> c_svc_src_svc_store" in split.output
-    assert "%% vizzle: selection: split svc/src/svc" in split.output
+    assert "; split svc/src/svc" in split.output
 
 
 def test_component_split_accepts_a_path_relative_to_the_walk_root(monolith: Path) -> None:
@@ -1206,3 +1210,88 @@ def test_component_highlight_lights_a_component_by_name_or_path(workspace: Path)
     assert by_path.exit_code == 0, by_path.output
     assert "packages_util" not in by_path.output, "util is not a neighbour of svc"
     assert "%% vizzle: highlight: 1 of 2 components" in by_path.output
+
+
+def _repo_with_tests(root: Path, *, prod: bool = True, extra: bool = False) -> Path:
+    """A base commit with one production and one test class, then both modified."""
+
+    def write(rel: str, text: str) -> None:
+        (root / rel).parent.mkdir(parents=True, exist_ok=True)
+        (root / rel).write_text(text)
+
+    root.mkdir()
+    git(root, "init")
+    write("prod.py", "class Prod:\n    pass\n")
+    write("tests/test_prod.py", "class TestProd:\n    pass\n")
+    write("extra/ignore.py", "class Ignored:\n    pass\n")
+    git(root, "add", ".")
+    git(root, "commit", "-m", "base")
+    if prod:
+        write("prod.py", "class Prod:\n    x: int\n")
+    write("tests/test_prod.py", "class TestProd:\n    y: int\n")
+    if extra:
+        write("extra/ignore.py", "class Ignored:\n    z: int\n")
+    return root
+
+
+@pytest.mark.parametrize("fmt", ["mermaid", "html"])
+def test_diff_excludes_test_sources_by_default(tmp_path: Path, fmt: str) -> None:
+    repo = _repo_with_tests(tmp_path / "r")
+    out = tmp_path / ("d.html" if fmt == "html" else "d.mmd")
+    stats_path = tmp_path / "s.json"
+    result = CliRunner().invoke(main, ["diff", str(repo), "--format", fmt, "-o", str(out), "--stats", str(stats_path)])
+    assert result.exit_code == 0, result.output
+    text = out.read_text(encoding="utf-8")
+    assert "TestProd" not in text, "test class appeared in output without --tests"
+    assert "prod.Prod" in text
+    stats = _stats(stats_path)
+    assert stats["tests"] == {"added": 0, "removed": 0, "modified": 1, "unit": "files"}
+    assert stats["changed"] is True
+
+
+@pytest.mark.parametrize("fmt", ["mermaid", "html"])
+def test_diff_includes_test_sources_with_flag(tmp_path: Path, fmt: str) -> None:
+    repo = _repo_with_tests(tmp_path / "r")
+    out = tmp_path / ("d.html" if fmt == "html" else "d.mmd")
+    stats_path = tmp_path / "s.json"
+    result = CliRunner().invoke(
+        main, ["diff", str(repo), "--tests", "--format", fmt, "-o", str(out), "--stats", str(stats_path)]
+    )
+    assert result.exit_code == 0, result.output
+    text = out.read_text(encoding="utf-8")
+    assert "TestProd" in text
+    assert "prod.Prod" in text
+    # The flag controls drawing only; counting is always on.
+    assert _stats(stats_path)["tests"]["modified"] == 1
+
+
+def test_diff_test_only_change_stats(tmp_path: Path) -> None:
+    repo = _repo_with_tests(tmp_path / "r", prod=False)
+    stats_path = tmp_path / "s.json"
+    result = CliRunner().invoke(main, ["diff", str(repo), "--stats", str(stats_path)])
+    assert result.exit_code == 0, result.output
+    stats = _stats(stats_path)
+    assert stats["changed"] is False
+    assert stats["changes"] == {"added": 0, "removed": 0, "modified": 0}
+    assert stats["tests"]["modified"] == 1
+
+
+def test_dash_E_adds_to_default_excludes(tmp_path: Path) -> None:
+    repo = _repo_with_tests(tmp_path / "r", extra=True)
+    out = tmp_path / "d.mmd"
+    result = CliRunner().invoke(main, ["diff", str(repo), "-E", "extra/**", "-o", str(out)])
+    assert result.exit_code == 0, result.output
+    text = out.read_text(encoding="utf-8")
+    assert "TestProd" not in text
+    assert "Ignored" not in text
+    assert "prod.Prod" in text
+
+
+def test_class_omits_test_sources_unless_asked(tmp_path: Path) -> None:
+    repo = _repo_with_tests(tmp_path / "r")
+    default = CliRunner().invoke(main, ["class", str(repo)])
+    assert default.exit_code == 0, default.output
+    assert "TestProd" not in default.output
+    assert "prod.Prod" in default.output
+    opted_in = CliRunner().invoke(main, ["class", str(repo), "--tests"])
+    assert "TestProd" in opted_in.output

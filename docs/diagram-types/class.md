@@ -421,6 +421,8 @@ vizzle serve <repo> [--diff] [--base REV] [--head REV] [--host] [--port] [--open
 and `serve`. `--group-by component` is refused on `diff`, where the parsed set
 is the touched files and component ownership would be a guess.
 
+Test sources (`test_*.py`, `*_test.py`, `tests/`, `conftest.py`; `*.test.ts(x)`, `*.spec.ts(x)`, `__tests__/`, `__snapshots__/`, `*.test.mts`) are excluded by default. Use `--tests` to include them. Measured on a six-PR release range of a TypeScript + Python monorepo with `--focus --zoom`: 14 zoom classes / 6,120 chars with tests; 8 / 2,720 without. `vizzle diff --stats FILE` reports `tests.modified` (unit: files) regardless of `--tests`, so a test-only PR reads `changed: false, tests.modified: 1` rather than "no structural change".
+
 `--stats` exists so a consumer never reads the verdict off the diagram: the
 JSON export's `stats.changes` (tallied over classes) and `stats.diff` carry it,
 and the sidecar repeats them beside the rendered file with its size. The

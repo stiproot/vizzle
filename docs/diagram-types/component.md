@@ -464,6 +464,8 @@ components / 62 dependencies; `-E 'apps/**'` gives 16 / 17. Scoped to
 `workflow-svc` boundary node and its edge, giving 5 / 4 with the trailer
 `%% vizzle: selection: exclude apps/**`.
 
+Test sources (`test_*.py`, `*_test.py`, `tests/`, `conftest.py`; `*.test.ts(x)`, `*.spec.ts(x)`, `__tests__/`, `__snapshots__/`, `*.test.mts`) are excluded by default. Use `--tests` to include them. Measured on a six-PR release range of a TypeScript + Python monorepo with `--focus --zoom`: 14 zoom classes / 6,120 chars with tests; 8 / 2,720 without. `vizzle diff --stats FILE` reports `tests.modified` (unit: files) regardless of `--tests`, so a test-only PR reads `changed: false, tests.modified: 1` rather than "no structural change".
+
 ### 6.3 Focus (`--focus`)
 
 A split service has tens of components and hundreds of edges; drawn whole,
