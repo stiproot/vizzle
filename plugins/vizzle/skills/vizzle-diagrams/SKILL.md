@@ -142,9 +142,9 @@ Python package whose real architecture is its subpackages, a component diff
 shows one box, and every PR reads as "the service changed". Say where the
 subsystems live with `--split <dir>`: each direct child of `<dir>` becomes a
 component, and `pkg.sub.mod` imports resolve to `sub`. Then add `--focus` to a
-diff so it draws only the changed components, changed edges and their
-neighbours, and states how many it left out. `vizzle component <path> --split
-<dir>` shows the same split without a diff.
+diff so it draws the changed components and the neighbours whose edge to them
+changed (added, removed, or modified); the rest are counted in `omitted`.
+`vizzle component <path> --split <dir>` shows the same split without a diff.
 
 Then `--zoom FILE` writes a second diagram: the changed classes inside the
 changed components, changed members only, one namespace per component, every

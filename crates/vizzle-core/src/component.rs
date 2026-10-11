@@ -1005,11 +1005,13 @@ pub fn scope(graph: &ComponentGraph, scope_path: &str) -> ComponentGraph {
 }
 
 /// Keep only what a reader of a change needs (§6.3): every changed
-/// component, every added or removed edge with both its endpoints, and the
-/// unchanged neighbours an existing edge ties to a changed component. Every
-/// other component is left out and counted in `omitted`, so the trailer and
-/// the JSON can say how much of the picture is not shown. Boundary nodes
-/// carry no change of their own and survive only as neighbours.
+/// component, every added, removed or modified edge with both its endpoints,
+/// and the unchanged edges between two changed components. A neighbour an
+/// unchanged edge ties to a changed component says nothing about the change,
+/// so it is left out with every other component and counted in `omitted`,
+/// so the trailer and the JSON can say how much of the picture is not shown.
+/// Boundary nodes carry no change of their own and survive only as
+/// endpoints of a changed edge.
 pub fn focus(graph: &ComponentGraph) -> ComponentGraph {
     let changed: BTreeSet<&str> = graph
         .components
@@ -1025,9 +1027,9 @@ pub fn focus(graph: &ComponentGraph) -> ComponentGraph {
             EdgeTarget::Component(path) => Some(path.as_str()),
             EdgeTarget::External(_) => None,
         };
-        let touches_changed =
-            changed.contains(edge.from.as_str()) || to.is_some_and(|t| changed.contains(t));
-        if edge.change != ChangeKind::Unchanged || touches_changed {
+        let between_changed =
+            changed.contains(edge.from.as_str()) && to.is_some_and(|t| changed.contains(t));
+        if edge.change != ChangeKind::Unchanged || between_changed {
             keep.insert(edge.from.as_str());
             if let Some(t) = to {
                 keep.insert(t);
@@ -1950,11 +1952,11 @@ mod tests {
     }
 
     #[test]
-    fn focus_keeps_changed_components_their_neighbours_and_counts_the_rest() {
+    fn focus_keeps_changed_components_and_counts_unchanged_neighbours_as_omitted() {
         let (base_files, manifests) = monolith();
         let mut head_files = base_files.clone();
-        // store changes; api depends on it (neighbour); the package root does
-        // not touch store and is unrelated to the change.
+        // store changes; api depends on it over an edge that does not change,
+        // so api is context the change did not touch; the root is unrelated.
         head_files[2].1 = "class Db:\n    def ping(self): ...\n".to_owned();
         let split = ["svc/src/svc".to_owned()];
         let base = build(&base_files, &manifests, &split).unwrap();
@@ -1964,17 +1966,38 @@ mod tests {
 
         let focused = focus(&merged);
         let paths: Vec<&str> = focused.components.iter().map(|c| c.path.as_str()).collect();
-        assert_eq!(paths, vec!["svc/src/svc/api", "svc/src/svc/store"]);
-        assert_eq!(focused.omitted, 1);
+        assert_eq!(paths, vec!["svc/src/svc/store"]);
+        assert_eq!(focused.omitted, 2);
         assert_eq!(
             focused.edges.len(),
-            1,
-            "only the edge into the changed component: {:?}",
+            0,
+            "no changed edge, no edge drawn: {:?}",
             focused.edges
         );
         assert!(focused.change_counts().changed());
         assert!(render_mermaid(&focused, &ComponentRenderOptions::default())
-            .contains("%% vizzle: 1 component(s) not drawn"));
+            .contains("%% vizzle: 2 component(s) not drawn"));
+    }
+
+    #[test]
+    fn focus_drops_neighbour_whose_edge_is_unchanged() {
+        let (base_files, manifests) = monolith();
+        let mut head_files = base_files.clone();
+        head_files[2].1 = "class Db:\n    def ping(self): ...\n".to_owned();
+        // consumer is new and imports store: its edge is Added, so it stays.
+        head_files.push((
+            "svc/src/svc/consumer/use.py".to_owned(),
+            "from svc.store.db import Db\nclass User: ...\n".to_owned(),
+        ));
+        let split = ["svc/src/svc".to_owned()];
+        let base = build(&base_files, &manifests, &split).unwrap();
+        let head = build(&head_files, &manifests, &split).unwrap();
+        let merged = diff(&base, &head);
+
+        let focused = focus(&merged);
+        let paths: Vec<&str> = focused.components.iter().map(|c| c.path.as_str()).collect();
+        assert_eq!(paths, vec!["svc/src/svc/consumer", "svc/src/svc/store"]);
+        assert_eq!(focused.omitted, 2, "api (unchanged edge) and the root");
     }
 
     #[test]

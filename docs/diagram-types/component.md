@@ -358,140 +358,27 @@ base is a moving branch. `vizzle diff --base main` resolves `main` to
 diagram types and for `serve --diff`, so commits the base gained since the
 branch forked are drawn as unchanged context, not as this change. For a linear
 history the fork point *is* the base, so `--base HEAD~20` is unaffected. The
-title keeps the reader's spelling (`changes vs main`). Measured on PR #17682
-against a `main` that had moved 58 commits: 11 components read as modified
-against the tip, 3 against the fork point — and only the 3 were the PR's.
+title keeps the reader's spelling (`changes vs main`). Measured on PR #17682 with the split above, under the earlier rule (every
+unchanged neighbour kept): whole graph 39 components / 241 edges, 27,700
+chars; focused 26 / 48, 7,400 chars, 13 not drawn. Still busy, because
+`orchestrator` is a hub with twenty neighbours.
 
-### 6.1 Path-based scoping and boundary detection
+**Tighter neighbour rule — shipped (issue #71).** Measured on vizzle 0.12.0
+against a 33-component TypeScript + Python monorepo (private fixture, tests
+excluded): a 27-commit release range gave `changes {modified: 6}`,
+`edges {0, 0, 0}`, `omitted 11` — 22 of 33 drawn for zero rewiring. A
+six-PR subset gave `modified 5`, `omitted 12` — 21 drawn, 16 of them
+unchanged neighbours over unchanged edges. On a one-function PR
+(`modified 1`, `omitted 27`), 6 drawn, 5 of them such neighbours. Grey
+context boxes the reader did not ask for were most of the picture.
 
-`vizzle diff --type component <path>` accepts a path but **must produce a diagram of
-`<path>`, not the repository**. Unlike the class diff, scope filtering cannot
-happen at file-collection time (edge existence depends on the full graph), so:
+*What would change it back:* if reviewers find they still need every
+neighbour regardless of edge change, restore the `|| touches_changed`
+condition in `focus` (`component.rs`); this section and the focus tests are
+the single place to change with it.
 
-**Scoping strategy:** Collect both revisions in full, diff them in full, filter at the
-end. Retain every component whose files live under `<path>`, plus every component
-outside `<path>` that shares a dependency edge (in either direction) with an
-in-scope component. This boundary set shows structural dependencies at the scope
-edge — a critical signal when code is organized into layers or feature areas
-where crossing boundaries indicates rewiring.
-
-**Example:** The repository's full graph has 31 components. Scoping to
-`packages/js/engine-core` (1 in-scope component) keeps that component plus 5
-out-of-scope neighbours that import from or export to it, totalling 6
-components and 5 edges. Removing the scope filter brings back the full 31.
-
-**Visual distinction:** Out-of-scope boundary neighbours are marked with
-`«boundary»` (distinct from `«external»`, which remains third-party packages
-only) and render in a dashed-border style to signal "this is part of a
-cross-boundary edge". The legend reflects the scope when active.
-
-**Boundary nodes as pure context:** A boundary node renders as context regardless
-of whether it changed outside the scope. It receives no change glyph (✚ ✖ ✱),
-no change fill/stroke class (diffAdded etc.), and no change stereotype label.
-The rule: if `is_boundary`, apply only the boundary style; change annotations from
-outside the scope are irrelevant to a reviewer focused on `<path>`.
-
-**Non-root path refusal:** If `<path>` is inside a component root but not at one
-(i.e. no manifest file sits directly in `<path>`), the CLI exits non-zero with an
-error naming the nearest enclosing component root:
-```
-Error: no component is rooted at packages/vizzle-cli/src
-The nearest enclosing component is packages/vizzle-cli
-```
-
-Measured on h @ 17011fa: `packages/js/engine-core` scoped component diff
-reports 6 components, 5 dependencies (vs 31/62 full-repo or 1/0 if naively
-filtered before build — the trap).
-
-### 6.2 Selection (`-I` / `-E` / `-l`) composes before scoping
-
-A component root is "a directory with a manifest in it" (§3.1), so anything
-carrying a manifest is drawn as architecture — including test fixtures that are
-themselves small packages, example projects and scaffolding templates. The
-selection flags are how a reader says "that one is not architecture", and
-they mean the same thing on `diff` as on `component`: **`-I`/`-E` are globs
-over repo-relative source paths, `-l` restricts languages, and a component
-left owning no files is never created.** One matcher in the core
-(`walk::Selector`) serves every command, so a glob cannot mean two things.
-
-Three rules follow, each decided rather than defaulted:
-
-**Selection applies to BOTH revisions, before either graph is built.** A
-fixture excluded at head but present at base would render as *removed*; the
-filter would be manufacturing the very change it was asked to hide. So the
-selector runs on each revision's file set first, and only then are the two
-graphs built and compared. Nothing can appear added or removed because of a
-filter — a filtered component is absent on both sides.
-
-**Selection runs BEFORE scope; scope runs AFTER diff.** These are two
-different questions with opposite answers, and §6.1's trap is not a
-contradiction. Scope asks *which part of the graph to show* — it needs the full
-graph on both sides to find the boundary at all, so it must come last.
-Selection asks *what is not architecture* — a component the reader said not to
-show must not come back as a `«boundary»` neighbour, so it has to be gone
-before the boundary is computed. The consequence, stated plainly: **an
-excluded component is dropped even when an in-scope component depends on it,
-and the edge into it goes with it.** That edge is real structure and it is no
-longer drawn; the legend says so (below). The alternative — keeping it dashed
-as a boundary — would be the tool overriding the reader.
-
-**Exclusion is total, change markers included.** A pull request that touches
-only excluded paths renders as *no structural change*. The diagram claims to
-describe the selected architecture; a marker for a component it does not draw
-would be a marker pointing at nothing. This is what a per-PR consumer wants
-from `-E '**/tests/fixtures/**'`: a fixture-only change should not light the
-"shape changed" signal (`--stats` reports `changed: false`). It is arguably a
-lie about the *repository*; it is the truth about the *selection*, which is
-why the selection is always stated.
-
-**The legend states the selection.** Every renderer carries the active
-selection so a reader knows what the diagram is not claiming: the HTML legend
-gains a `selection: exclude …` entry (and un-hides for it), the JSON export
-carries `stats.selection`, and Mermaid — which has no legend — appends a
-`%% vizzle: selection: …` trailer beside the component count. The wording is
-`include <glob>` / `exclude <glob>` / `lang <name>` rather than the CLI flag
-spellings, because the core does not know how the CLI spells `-E`.
-
-Selecting everything away is an error, not an empty diagram: on the class
-diff, `-E` that removes every changed file exits with
-`no changed files match the include/exclude/lang selection`, since the caller
-already established there WERE changed files and the reader should hear that
-the selection ate them.
-
-Measured on h @ 17011fa, `--base HEAD~1`: the full component diff is 31
-components / 62 dependencies; `-E 'apps/**'` gives 16 / 17. Scoped to
-`packages/js/engine-core` it is 6 / 5 (§6.1); adding `-E 'apps/**'` drops the
-`workflow-svc` boundary node and its edge, giving 5 / 4 with the trailer
-`%% vizzle: selection: exclude apps/**`.
-
-### 6.3 Focus (`--focus`)
-
-A split service has tens of components and hundreds of edges; drawn whole,
-a diff is a hairball in which the two changed boxes are hard to find.
-`--focus` keeps what a reader of the change needs and drops the rest:
-
-- every changed component (added, removed or modified);
-- every added or removed edge, with both its endpoints;
-- every unchanged component an existing edge ties to a changed one — the
-  neighbours, because a change to `persistence` matters to whoever imports it,
-  and an edge with one end missing tells the reader nothing;
-- the edges among those.
-
-Everything else is left out and **counted**: the trailer says
-`N component(s) not drawn`, and `stats.omitted` / the `--stats` sidecar carry
-N, so a consumer can say so in prose (the same trailer serves `--around`). Boundary nodes
-carry no change of their own and survive only as neighbours. When nothing
-changed, focus draws nothing and counts everything; `--stats` already says
-`changed: false`.
-
-Focus runs last — after selection, diff and scope — because it is a view
-choice over a graph that has already been built in full.
-
-Measured on PR #17682 with the split above: whole graph 39 components / 241
-edges, 27,700 chars; focused 26 / 48, 7,400 chars, 13 not drawn. Still busy,
-because `orchestrator` is a hub with twenty neighbours; a tighter mode
-(changed components and changed edges only) is the next step if reviewers
-find neighbours noise rather than signal.
+`focus(box)` in `viz-core.js` is an unrelated viewport pan/zoom, not this
+graph filter; the shared name is intentional.
 
 ### 6.4 Zoom: the classes inside the changed components (`--zoom FILE`)
 
