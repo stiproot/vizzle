@@ -61,7 +61,7 @@ Useful additions:
 - `--weights` — label each edge with how many files import across it, so you
   can see which dependencies are load-bearing and which are incidental.
 - `--externals` — add a node per external package (npm/PyPI).
-- Tests are excluded by default. Use `--tests` to draw them.
+- Tests are excluded by default, and the selection trailer says so once: `tests excluded` (or `exclude apps/**; tests excluded` with `-E 'apps/**'`). Use `--tests` to draw them; the phrase then goes away, leaving only your own globs.
 
 **Pointing at something.** When the diagram is there to make a point — an
 incident's code path, the two classes a change is about — say so, and let
@@ -163,7 +163,7 @@ reads as added or removed because of the filter. An excluded component is
 dropped even if it would have been a «boundary» neighbour (and the edge into it
 goes with it), and a change confined to excluded paths renders as no structural
 change. The active selection is stated in the HTML legend and in a
-`%% vizzle: selection:` trailer on the Mermaid.
+`%% vizzle: selection:` trailer on the Mermaid, which reads `tests excluded` by default, `exclude apps/**; tests excluded` with `-E 'apps/**'`, and only the caller globs with `--tests`.
 
 `--type component` is the interesting one: it shows whether your change
 *rewired* the application — an added or removed dependency edge between modules

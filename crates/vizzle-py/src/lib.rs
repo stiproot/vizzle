@@ -6,6 +6,15 @@ use pyo3::prelude::*;
 use ::vizzle_core as vc;
 use vc::{ComponentRenderOptions, Grouping, RenderOptions, SelectOptions};
 
+/// The globs that define a test source file, for the CLI's `--stats`.
+#[pyfunction]
+fn default_test_globs() -> Vec<String> {
+    vc::default_test_globs()
+        .iter()
+        .map(|g| (*g).to_owned())
+        .collect()
+}
+
 fn to_py_err(err: anyhow::Error) -> PyErr {
     PyValueError::new_err(format!("{err:#}"))
 }
@@ -13,12 +22,14 @@ fn to_py_err(err: anyhow::Error) -> PyErr {
 fn selection(
     include: Vec<String>,
     exclude: Vec<String>,
+    tests: bool,
     langs: Vec<String>,
     splits: Vec<String>,
 ) -> SelectOptions {
     SelectOptions {
         include,
         exclude,
+        tests,
         langs,
         splits,
     }
@@ -55,6 +66,7 @@ fn options(
     *,
     include = vec![],
     exclude = vec![],
+    tests = false,
     langs = vec![],
     highlight = vec![],
     around = vec![],
@@ -71,6 +83,7 @@ fn class_diagram_from_dir(
     root: &str,
     include: Vec<String>,
     exclude: Vec<String>,
+    tests: bool,
     langs: Vec<String>,
     highlight: Vec<String>,
     around: Vec<String>,
@@ -85,6 +98,7 @@ fn class_diagram_from_dir(
     let select = SelectOptions {
         include,
         exclude,
+        tests,
         langs,
         splits: vec![],
     };
@@ -145,6 +159,7 @@ fn class_diagram_from_files(
     *,
     include = vec![],
     exclude = vec![],
+    tests = false,
     langs = vec![],
     show_members = true,
     show_modules = false,
@@ -159,6 +174,7 @@ fn class_diagram_diff(
     head_files: Vec<(String, String)>,
     include: Vec<String>,
     exclude: Vec<String>,
+    tests: bool,
     langs: Vec<String>,
     show_members: bool,
     show_modules: bool,
@@ -175,7 +191,7 @@ fn class_diagram_diff(
         direction,
         title,
     )?;
-    let select = selection(include, exclude, langs, vec![]);
+    let select = selection(include, exclude, tests, langs, vec![]);
     let diagram =
         vc::diff_diagram(&base_files, &head_files, &select, &render).map_err(to_py_err)?;
     Ok(diff_pair(diagram))
@@ -233,6 +249,7 @@ fn lens(highlight: Vec<String>, around: Vec<String>, depth: usize) -> vc::Lens {
     *,
     include = vec![],
     exclude = vec![],
+    tests = false,
     langs = vec![],
     splits = vec![],
     highlight = vec![],
@@ -249,6 +266,7 @@ fn component_diagram_from_dir(
     root: &str,
     include: Vec<String>,
     exclude: Vec<String>,
+    tests: bool,
     langs: Vec<String>,
     splits: Vec<String>,
     highlight: Vec<String>,
@@ -263,6 +281,7 @@ fn component_diagram_from_dir(
     let select = SelectOptions {
         include,
         exclude,
+        tests,
         langs,
         splits,
     };
@@ -278,12 +297,13 @@ fn component_diagram_from_dir(
 
 /// Export the component graph under `root` as JSON (for external renderers).
 #[pyfunction]
-#[pyo3(signature = (root, *, include = vec![], exclude = vec![], langs = vec![], splits = vec![], classes = true, highlight = vec![], around = vec![], depth = 1))]
+#[pyo3(signature = (root, *, include = vec![], exclude = vec![], tests = false, langs = vec![], splits = vec![], classes = true, highlight = vec![], around = vec![], depth = 1))]
 #[allow(clippy::too_many_arguments)]
 fn component_json_from_dir(
     root: &str,
     include: Vec<String>,
     exclude: Vec<String>,
+    tests: bool,
     langs: Vec<String>,
     splits: Vec<String>,
     classes: bool,
@@ -294,6 +314,7 @@ fn component_json_from_dir(
     let select = SelectOptions {
         include,
         exclude,
+        tests,
         langs,
         splits,
     };
@@ -317,6 +338,7 @@ fn component_json_from_dir(
     *,
     include = vec![],
     exclude = vec![],
+    tests = false,
     langs = vec![],
     splits = vec![],
     focus = false,
@@ -336,6 +358,7 @@ fn component_diagram_diff(
     head_manifests: Vec<(String, String)>,
     include: Vec<String>,
     exclude: Vec<String>,
+    tests: bool,
     langs: Vec<String>,
     splits: Vec<String>,
     focus: bool,
@@ -348,7 +371,7 @@ fn component_diagram_diff(
     scope: Option<String>,
 ) -> PyResult<(String, String, Option<String>)> {
     let render = component_options(group, weights, include_externals, direction, title);
-    let select = selection(include, exclude, langs, splits);
+    let select = selection(include, exclude, tests, langs, splits);
     let view = diff_view(scope, focus, zoom);
     let diagram = vc::component_diff_diagram(
         &base_files,
@@ -373,6 +396,7 @@ fn component_diagram_diff(
     *,
     include = vec![],
     exclude = vec![],
+    tests = false,
     langs = vec![],
     splits = vec![],
     focus = false,
@@ -387,13 +411,14 @@ fn component_json_diff(
     head_manifests: Vec<(String, String)>,
     include: Vec<String>,
     exclude: Vec<String>,
+    tests: bool,
     langs: Vec<String>,
     splits: Vec<String>,
     focus: bool,
     classes: bool,
     scope: Option<String>,
 ) -> PyResult<String> {
-    let select = selection(include, exclude, langs, splits);
+    let select = selection(include, exclude, tests, langs, splits);
     let view = diff_view(scope, focus, false);
     vc::component_json_diff(
         &base_files,
@@ -409,17 +434,19 @@ fn component_json_diff(
 
 /// Render a curated diagram from a `gen:c4-code` manifest and the sources under `root`.
 #[pyfunction]
-#[pyo3(signature = (root, manifest, *, include = vec![], exclude = vec![], langs = vec![]))]
+#[pyo3(signature = (root, manifest, *, include = vec![], exclude = vec![], tests = false, langs = vec![]))]
 fn curated_diagram_from_dir(
     root: &str,
     manifest: &str,
     include: Vec<String>,
     exclude: Vec<String>,
+    tests: bool,
     langs: Vec<String>,
 ) -> PyResult<String> {
     let select = SelectOptions {
         include,
         exclude,
+        tests,
         langs,
         splits: vec![],
     };
@@ -450,12 +477,13 @@ fn diff_classdefs() -> String {
 
 /// Export the class graph under `root` as JSON (for external renderers).
 #[pyfunction]
-#[pyo3(signature = (root, *, include = vec![], exclude = vec![], langs = vec![], highlight = vec![], around = vec![], depth = 1))]
+#[pyo3(signature = (root, *, include = vec![], exclude = vec![], tests = false, langs = vec![], highlight = vec![], around = vec![], depth = 1))]
 #[allow(clippy::too_many_arguments)]
 fn graph_json_from_dir(
     root: &str,
     include: Vec<String>,
     exclude: Vec<String>,
+    tests: bool,
     langs: Vec<String>,
     highlight: Vec<String>,
     around: Vec<String>,
@@ -464,6 +492,7 @@ fn graph_json_from_dir(
     let select = SelectOptions {
         include,
         exclude,
+        tests,
         langs,
         splits: vec![],
     };
@@ -477,15 +506,16 @@ fn graph_json_from_dir(
 
 /// Export a change-annotated class graph from base/head revisions as JSON.
 #[pyfunction]
-#[pyo3(signature = (base_files, head_files, *, include = vec![], exclude = vec![], langs = vec![]))]
+#[pyo3(signature = (base_files, head_files, *, include = vec![], exclude = vec![], tests = false, langs = vec![]))]
 fn graph_json_diff(
     base_files: Vec<(String, String)>,
     head_files: Vec<(String, String)>,
     include: Vec<String>,
     exclude: Vec<String>,
+    tests: bool,
     langs: Vec<String>,
 ) -> PyResult<String> {
-    let select = selection(include, exclude, langs, vec![]);
+    let select = selection(include, exclude, tests, langs, vec![]);
     vc::json_diff(&base_files, &head_files, &select).map_err(to_py_err)
 }
 
@@ -502,6 +532,7 @@ fn vizzle_core_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(curated_diagram_from_dir, m)?)?;
     m.add_function(wrap_pyfunction!(diff_palette_css, m)?)?;
     m.add_function(wrap_pyfunction!(sequence_tints, m)?)?;
+    m.add_function(wrap_pyfunction!(default_test_globs, m)?)?;
     m.add_function(wrap_pyfunction!(diff_classdefs, m)?)?;
     m.add_function(wrap_pyfunction!(graph_json_from_dir, m)?)?;
     m.add_function(wrap_pyfunction!(graph_json_diff, m)?)?;

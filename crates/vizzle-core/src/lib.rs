@@ -68,11 +68,37 @@ pub struct DiffDiagram {
 /// A file set as the entry points take it: repo-relative `(path, contents)` pairs.
 pub type Files = Vec<(String, String)>;
 
+/// The one definition of "a test source file". Selection appends these to the
+/// caller's excludes unless tests are opted in, and `--stats` counts changed
+/// files against the same globs. The core owns the rule so that the trailer can
+/// describe it in one phrase rather than echoing every glob.
+const DEFAULT_TEST_GLOBS: [&str; 11] = [
+    "**/test_*.py",
+    "**/*_test.py",
+    "**/tests/**",
+    "**/conftest.py",
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "**/*.test.mts",
+    "**/*.spec.ts",
+    "**/*.spec.tsx",
+    "**/__tests__/**",
+    "**/__snapshots__/**",
+];
+
+/// [`DEFAULT_TEST_GLOBS`] for consumers outside the crate.
+pub fn default_test_globs() -> &'static [&'static str] {
+    &DEFAULT_TEST_GLOBS
+}
+
 /// File-selection options shared by the high-level entry points.
 #[derive(Debug, Clone, Default)]
 pub struct SelectOptions {
     pub include: Vec<String>,
+    /// The caller's own excludes; the test globs are added by [`Self::exclusions`].
     pub exclude: Vec<String>,
+    /// Whether test sources are in. False (the default) excludes them.
+    pub tests: bool,
     /// Language names ("python", "typescript"); empty means all supported.
     pub langs: Vec<String>,
     /// Directories whose direct children are components of their own
@@ -83,8 +109,18 @@ pub struct SelectOptions {
 }
 
 impl SelectOptions {
+    /// What the walk actually excludes: the caller's globs plus the test set
+    /// unless tests are opted in. The single place the two are merged.
+    fn exclusions(&self) -> Vec<String> {
+        let mut exclude = self.exclude.clone();
+        if !self.tests {
+            exclude.extend(DEFAULT_TEST_GLOBS.iter().map(|g| (*g).to_owned()));
+        }
+        exclude
+    }
+
     fn selector(&self) -> Result<walk::Selector> {
-        walk::Selector::new(&self.include, &self.exclude, &self.languages()?)
+        walk::Selector::new(&self.include, &self.exclusions(), &self.languages()?)
     }
 
     /// The selection as a reader sees it in a legend or trailer, one entry per
@@ -94,6 +130,9 @@ impl SelectOptions {
         let mut out = Vec::new();
         out.extend(self.include.iter().map(|g| format!("include {g}")));
         out.extend(self.exclude.iter().map(|g| format!("exclude {g}")));
+        if !self.tests {
+            out.push("tests excluded".to_owned());
+        }
         out.extend(self.langs.iter().map(|l| format!("lang {l}")));
         out.extend(self.splits.iter().map(|p| format!("split {p}")));
         out
@@ -124,7 +163,12 @@ pub fn diagram_from_dir(
     render: &RenderOptions,
     lens: &Lens,
 ) -> Result<String> {
-    let files = walk::collect_files(root, &select.include, &select.exclude, &select.languages()?)?;
+    let files = walk::collect_files(
+        root,
+        &select.include,
+        &select.exclusions(),
+        &select.languages()?,
+    )?;
     let manifests = walk::collect_manifests(root)?;
     let graph = parse::parse_files_with_manifests(&files, &manifests)?;
     let (graph, lit) = apply_class_lens(graph, lens)?;
@@ -278,7 +322,12 @@ fn select_both(
 
 /// Render a curated diagram (docs/curated-diagrams.md) for the repo at `root`.
 pub fn curated_from_dir(root: &Path, select: &SelectOptions, manifest: &str) -> Result<String> {
-    let files = walk::collect_files(root, &select.include, &select.exclude, &select.languages()?)?;
+    let files = walk::collect_files(
+        root,
+        &select.include,
+        &select.exclusions(),
+        &select.languages()?,
+    )?;
     let manifests = walk::collect_manifests(root)?;
     let graph = parse::parse_files_with_manifests(&files, &manifests)?;
     let manifest = curated::parse_manifest(manifest)?;
@@ -287,7 +336,12 @@ pub fn curated_from_dir(root: &Path, select: &SelectOptions, manifest: &str) -> 
 
 /// Export the class graph for every supported source file under `root` as JSON.
 pub fn json_from_dir(root: &Path, select: &SelectOptions, lens: &Lens) -> Result<String> {
-    let files = walk::collect_files(root, &select.include, &select.exclude, &select.languages()?)?;
+    let files = walk::collect_files(
+        root,
+        &select.include,
+        &select.exclusions(),
+        &select.languages()?,
+    )?;
     let manifests = walk::collect_manifests(root)?;
     let graph = parse::parse_files_with_manifests(&files, &manifests)?;
     let (graph, lit) = apply_class_lens(graph, lens)?;
@@ -329,7 +383,12 @@ fn component_graph_from_dir(
     root: &Path,
     select: &SelectOptions,
 ) -> Result<component::ComponentGraph> {
-    let files = walk::collect_files(root, &select.include, &select.exclude, &select.languages()?)?;
+    let files = walk::collect_files(
+        root,
+        &select.include,
+        &select.exclusions(),
+        &select.languages()?,
+    )?;
     let manifests = walk::collect_manifests(root)?;
     let mut graph = component::build(&files, &manifests, &select.splits)?;
     graph.selection = select.describe();
@@ -544,7 +603,59 @@ mod tests {
         }
         assert_eq!(
             value["stats"]["selection"],
-            serde_json::json!(["exclude **/tests/fixtures/**"])
+            serde_json::json!(["exclude **/tests/fixtures/**", "tests excluded"])
+        );
+    }
+
+    #[test]
+    fn selection_describe_emits_tests_excluded_once() {
+        let select = SelectOptions {
+            tests: false,
+            ..SelectOptions::default()
+        };
+        assert_eq!(select.describe(), vec!["tests excluded"]);
+
+        let select_with_tests = SelectOptions {
+            tests: true,
+            ..SelectOptions::default()
+        };
+        assert!(select_with_tests.describe().is_empty());
+
+        let select_with_exclude = SelectOptions {
+            exclude: vec!["apps/**".to_owned()],
+            tests: false,
+            ..SelectOptions::default()
+        };
+        assert_eq!(
+            select_with_exclude.describe(),
+            vec!["exclude apps/**", "tests excluded"]
+        );
+    }
+
+    #[test]
+    fn selector_excludes_test_files_when_tests_is_false_and_includes_when_true() {
+        let opts = SelectOptions {
+            tests: false,
+            ..SelectOptions::default()
+        };
+        let sel = opts.selector().unwrap();
+        assert!(
+            !sel.accepts("app/tests/unit/foo.ts"),
+            "tests/** must be excluded when tests=false"
+        );
+        assert!(
+            sel.accepts("app/src/main.ts"),
+            "non-test source must be accepted when tests=false"
+        );
+
+        let opts_tests = SelectOptions {
+            tests: true,
+            ..SelectOptions::default()
+        };
+        let sel_tests = opts_tests.selector().unwrap();
+        assert!(
+            sel_tests.accepts("app/tests/unit/foo.ts"),
+            "tests/** must be accepted when tests=true"
         );
     }
 
@@ -557,7 +668,10 @@ mod tests {
             &base_manifests,
             &head_files,
             &head_manifests,
-            &SelectOptions::default(),
+            &SelectOptions {
+                tests: true,
+                ..SelectOptions::default()
+            },
             &DiffView {
                 scope: "pkgs/core".to_owned(),
 
@@ -577,7 +691,10 @@ mod tests {
             &base_manifests,
             &head_files,
             &head_manifests,
-            &select(&["apps/**"]),
+            &SelectOptions {
+                tests: true,
+                ..select(&["apps/**"])
+            },
             &DiffView {
                 scope: "pkgs/core".to_owned(),
 
