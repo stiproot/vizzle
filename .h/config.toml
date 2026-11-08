@@ -5,15 +5,6 @@
 # Written by `h workspaces init`. Commit it; .h/.gitignore says what stays out.
 charts_dir = ".h/charts"
 
-# The operator's established h workspace. Declared rather than left to the install's defaults
-# because a PACKAGED h (uv tool) defaults to ~/.h/*, which is not where this machine's clones or
-# ledger live — so an unqualified `h ... --local` from this repo would run with an empty
-# workspace. Absolute (`~`-expanded) on purpose: these live OUTSIDE the repo, and a relative path
-# here would resolve beside a worktree rather than beside the clone, which fails silently.
-workspace_dir = "~/code/repo/h-workspace"     # the managed-clones boundary; where h works
-worktrees_dir = "~/code/repo/h-worktrees"     # where h cuts worktrees from its clones
-runs_dir      = "~/code/repo/h-workspace/.runs"  # the run ledger
-
 # Agent credentials, RELATIVE on purpose — this repo is self-contained and never reaches into
 # another checkout for them. It resolves against whichever root h runs from: the clone when you
 # fire from there, the worktree when an agent fires from inside one. That second case only works
@@ -22,3 +13,34 @@ runs_dir      = "~/code/repo/h-workspace/.runs"  # the run ledger
 # setting is h's own documented bug: every worktree runs with no credentials, and the symptom is
 # agent-cli naming environment variables, which leads nowhere near a missing file.
 dotenv = ".env"
+
+# Writing steps (implement, create-pr, revise-pr) push, open PRs and reply as h-implementer[bot].
+[github]
+implementer_credential = "app"
+
+[github.implementer_app]
+app_id = "5482803"
+installation_id = 175527311
+
+# Reviews are read and posted as h-reviewer[bot], through the hosted reviewer MCP.
+[github.reviewer_app]
+app_id = "5422064"
+installation_id = 174020766
+
+[github.reviewer_mcp]
+url = "https://ajcjounhwukqzsnbdkep.supabase.co/functions/v1/h-reviewer-gh-mcp"
+
+# The reviewer's approval is the merge gate: a CLEAN verdict from a two-provider panel, every
+# review thread resolved, at the pinned head. CI's required checks still bind through the ruleset.
+[github.reviewer_gate]
+approve = true
+auto_merge = true
+merge_method = "squash"
+
+[github.reviewer_gate.rules]
+verdict_clean = true
+min_panelists = 2
+distinct_providers = true
+sweep_green = false
+threads_resolved = true
+head_pinned = true
