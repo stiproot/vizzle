@@ -25,6 +25,7 @@ would `ls` — not as a last resort.
 
 **Prefer Mermaid over any JSON export.** Mermaid is 3–6× cheaper for the same
 graph and needs no parsing step. This is the opposite of the usual instinct.
+(`-f json` is for designing a change; see *Designing a change* below.)
 
 ## First: can vizzle see this repo?
 
@@ -248,6 +249,58 @@ you post one that sets its own colours, look at it both ways:
 ```sh
 uvx vizzle render diagram.mmd out/ --theme both   # out/diagram.png + out/diagram.dark.png
 ```
+
+## Designing a change: planned parts over real code
+
+A design needs a picture of code that does not exist yet, drawn beside the real
+code it touches. Don't hand-draw the whole thing, because the real parts rot.
+Write only the planned parts as an **overlay**, and let vizzle merge them into
+the real graph. Planned parts draw as a diff would draw them: added parts green
+`✚`, touched parts amber `✱`, removed parts struck.
+
+```sh
+uvx vizzle component <path> -f json -o graph.json             # extract: the real graph
+jq -r '.classes[].qualified' graph.json                       # the names an overlay may target
+uvx vizzle overlay graph.json proposal.json -o merged.json    # merge the planned parts
+uvx vizzle draw merged.json -o design.html                    # the page (for the human)
+uvx vizzle draw merged.json -f mermaid                        # for a doc or PR
+uvx vizzle component <path> --overlay proposal.json -f mermaid   # all three in one go, same output
+uvx vizzle overlay graph.json proposal.json --check           # CI: 0 current, 1 stale, 2 cannot run
+```
+
+```json
+{
+  "add": {
+    "components": [{ "path": "cache", "files": ["cache/src/cache/store.py"] }],
+    "classes": [{ "qualified": "cache.src.cache.store.Store", "component": "cache",
+                  "file": "cache/src/cache/store.py", "annotation": "interface",
+                  "members": [{ "name": "fetch", "detail": "key: str", "returns": "str", "isMethod": true }] }],
+    "edges": [{ "from": "api", "to": "cache" }],
+    "classRelations": [{ "from": "api.src.api.handlers.Handler", "to": "cache.src.cache.store.Store", "kind": "dependency" }]
+  },
+  "modify": [{ "class": "api.src.api.handlers.Handler",
+               "members": ["get", { "name": "invalidate", "detail": "key: str", "isMethod": true }] }],
+  "remove": []
+}
+```
+
+- Components are named by path and classes by qualified name, exactly as they
+  appear in `graph.json`. Anything you leave out of an `add` entry is derived:
+  `name` and `module` from the qualified name, `lang` from the file suffix,
+  visibility `+`, and the counts.
+- In `modify`, a member given as a **string** is an existing member, which is
+  marked `✱`. A member given as an **object** is a new one, marked `✚`. The
+  class and its component turn amber.
+- Relation kinds are `inherits`, `implements`, `association` and `dependency`.
+  `realization` and `generalization` are accepted as the UML words for the
+  first two.
+- **A stale overlay draws nothing.** `overlay` exits 1 and names every entry
+  that is stale: a `modify`, `remove` or relation end the code no longer has,
+  or an `add` the code already has. If something was renamed, update the
+  overlay. If something was built, change its `add` to a `modify` or drop it.
+- `--overlay` implies `--classes`, because the overlay's class targets have to
+  be in the graph to be checked.
+- `draw` also accepts a class graph (`vizzle class -f json`), as HTML only.
 
 ## Drawing a diagram yourself: use vizzle's colours
 

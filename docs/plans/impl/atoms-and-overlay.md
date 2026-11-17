@@ -1,6 +1,7 @@
 # Atoms: extract, overlay, draw — planned parts over real code
 
-**Status:** proposed 2026-11-17 (agree before code).
+**Status:** implemented 2026-11-17 on `feat/atoms-overlay` (§8 records what the spec left open).
+**Established:** 2026-11-17
 
 ## 1. Why
 
@@ -75,3 +76,71 @@ reads files and calls the core. The page templates do not change.
 
 The hybrid architecture style (layout by a person, held to the code by vizzle passes and cited paths) moves here from
 its first home, as `vizzle hybrid`; the code-comprehension diagram skills fold into this plugin.
+
+## 8. Decisions made while building (2026-11-17)
+
+What §1–§6 left open, what was chosen, and what would change it.
+
+**Shape of the code.** `crates/vizzle-core/src/import.rs` reads a component graph back from JSON;
+`overlay.rs` merges an overlay into it; `lib.rs` exposes `overlay_json` and
+`component_diagram_from_json`. The merge works on the typed graph and writes through the same
+`component::to_json` (so `export::change_str` and `export::class_json` stay the only writers), not on
+raw JSON. The CLI's `_draw` is one function behind both `vizzle draw` and `component --overlay`.
+
+1. **An imported graph carries its class relations.** The JSON has no member type references or
+   raw bases, so relations cannot be resolved again. `component::json_with_relations` takes them
+   as facts. Round-trip `export → import → export` is byte-exact (tested on a plain graph, a lensed
+   graph and a diff). The wire structs refuse unknown fields: a field added to the export without
+   being taught to the import fails that test instead of being dropped silently.
+2. **Wire strings are read through the inverse of their writer.** These are `export::parse_change`,
+   `Language::from_name`, `Visibility::from_sigil` and `RelationKind::from_name`, each defined by
+   searching the writer's output, so no string is spelled twice.
+3. **Component graphs only, for overlay and mermaid drawing.** A class graph (`class -f json`) draws
+   as HTML, because the page is a pure function of the JSON. It does not overlay or draw as mermaid:
+   `draw` says so and points at `vizzle class`. Change this when a design needs planned classes with
+   no component around them.
+4. **Targets are exact.** A class is named by its `qualified` name and a component by its `path`.
+   There is no bare-name or glob matching, because a renamed class must go stale rather than quietly
+   match something else.
+5. **What counts as stale (exit 1):** a `modify` or `remove` class, a `modify` member, or a relation
+   end that the code lacks. Also an `add.classes` component or `add.edges` end that is in neither the
+   code nor `add.components`, and any `add` the code already has (component path, class, edge
+   `from→to`, or relation `from→to`). Every finding is listed, not only the first.
+6. **What counts as "could not run" (exit 2):** an unreadable file, input that is not JSON, a class
+   graph given as GRAPH, an unknown field anywhere in the overlay (so a misspelt `ad` is not
+   silently empty), and an unknown relation kind, `lang` or visibility.
+7. **A stale overlay draws nothing.** `overlay` without `--check`, and `component --overlay`, exit 1
+   with the same findings and write nothing. A planned part naming what the code lacks would draw a
+   picture that lies. `--check` differs only in that, when clean, it writes nothing.
+8. **`modify.members`:** a string names an existing member, which is marked `modified`. An object
+   plans a new member, marked `added`; if one of that name exists, the entry is stale. A
+   `modify`/`remove` on a class marks its component `modified` and adds the file to `changedFiles`
+   (relative to the component, as the extractor writes it).
+9. **Relation kinds:** the export's four names (`inherits`, `implements`, `association`,
+   `dependency`), plus `realization` → `implements` and `generalization` → `inherits`. A design
+   document is where an author writes the UML word. Output always uses the export's names.
+10. **A planned edge does not mark its importer modified.** The overlay does not say which file
+    will import, so it does not guess. If the importer should read amber, add a `modify` for it,
+    which is what real code of that shape would show. The core test
+    `an_overlay_draws_the_mermaid_the_real_change_would` proves the mermaid matches a real diff
+    byte for byte when the overlay says so.
+11. **Counts:** a planned component's `files` is its file list plus any planned class files outside
+    it. A real component's `files` is left as extracted, because the JSON does not list a
+    component's files, so the extractor cannot tell whether a planned file is new. The file does
+    still appear in `changedFiles`. `classes` and `langs` grow with each planned class. `stats` is
+    recomputed by the export.
+12. **`remove`** strikes the class and every member, as a diff draws a deleted class. Removing a
+    component or an edge is out of scope until a design needs it.
+13. **`add.classes` share the extract's class wire shape** (`import::WireClass`), so the defaults
+    (`name` and `module` from `qualified`, `lang` from the file suffix, visibility `+`) are worked
+    out in one place. A `change` given on a planned class is overridden to `added`.
+14. **`-f json` on `class`, `component` and `diff`** (both types), and an `-o *.json` suffix picks
+    it. `component --overlay` implies `--classes`, because class targets must be in the graph to be
+    checked.
+15. **The lens survives the round trip.** `stats.highlight` is carried, and `draw -f mermaid` applies
+    it unless given its own.
+16. **Same page, given the same title.** `component --overlay` and the piped atoms are byte-identical
+    for HTML and mermaid when given the same `--title` (tested). Without a title, `draw` names the
+    graph file (`<stem> — component diagram`, or `graph` for stdin), because it cannot know the
+    repository's name. Input JSON is stripped of surrounding whitespace, so a pipe's trailing
+    newline does not ride into the page.
