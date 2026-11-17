@@ -159,6 +159,8 @@ def _resolve_format(fmt: str | None, output: Path | None) -> str:
         return fmt
     if output and output.suffix.lower() in (".html", ".htm"):
         return "html"
+    if output and output.suffix.lower() == ".json":
+        return "json"
     return "mermaid"
 
 
@@ -344,9 +346,12 @@ output_options = _compose(
         "-f",
         "--format",
         "fmt",
-        type=click.Choice(["mermaid", "html"]),
+        type=click.Choice(["mermaid", "html", "json"]),
         default=None,
-        help="Output format. Defaults to html when the output file ends in .html, else mermaid.",
+        help=(
+            "Output format. json is the graph the page is drawn from, for `vizzle overlay` "
+            "and `vizzle draw`. Defaults from the output file's suffix (.html, .json), else mermaid."
+        ),
     ),
     click.option(
         "-o",
@@ -437,10 +442,13 @@ def class_diagram(
     """
     resolved_fmt = _resolve_format(fmt, output)
     lens = _lens_kwargs(highlight, around, depth)
-    if resolved_fmt == "html":
+    if resolved_fmt in ("html", "json"):
         graph_json = _core.graph_json_from_dir(
             str(path), include=list(include), exclude=list(exclude), tests=tests, langs=list(lang), **lens
         )
+        if resolved_fmt == "json":
+            _emit(graph_json, output, summarize(graph_json))
+            return
         page = build_html(
             graph_json,
             title=title or f"{path.resolve().name} — class diagram",
@@ -683,6 +691,17 @@ def palette_command(fmt: str) -> None:
     help="Embed each component's classes so they can be opened in the page (html only).",
 )
 @click.option("--externals", is_flag=True, help="Show one node per external package (npm/PyPI).")
+@click.option(
+    "--overlay",
+    "overlay_path",
+    type=click.Path(dir_okay=False, allow_dash=True, path_type=Path),
+    default=None,
+    metavar="FILE",
+    help=(
+        "Draw planned parts over the real code: extract, `vizzle overlay FILE`, then draw, "
+        "in one process. Implies --classes. Spec: docs/plans/impl/atoms-and-overlay.md."
+    ),
+)
 @output_options
 def component_diagram(
     path: Path,
@@ -698,6 +717,7 @@ def component_diagram(
     weights: bool,
     classes: bool,
     externals: bool,
+    overlay_path: Path | None,
     direction: str | None,
     title: str | None,
     fmt: str | None,
@@ -712,36 +732,234 @@ def component_diagram(
     resolved_fmt = _resolve_format(fmt, output)
     splits = _split_paths(path, split)
     lens = _lens_kwargs(highlight, around, depth)
-    if resolved_fmt == "html":
-        graph_json = _core.component_json_from_dir(
+    selection = _selection_kwargs(include, exclude, lang, tests)
+    if resolved_fmt == "mermaid" and overlay_path is None:
+        diagram = _core.component_diagram_from_dir(
             str(path),
-            include=list(include),
-            exclude=list(exclude),
-            tests=tests,
-            langs=list(lang),
             splits=splits,
-            classes=classes,
+            **selection,
             **lens,
+            **_component_render_kwargs(group, weights, externals, direction, title),
         )
-        page = build_component_html(
-            graph_json,
-            title=title or f"{path.resolve().name} — component diagram",
-            include_externals=externals,
-        )
-        _emit(page, output, summarize_components(graph_json))
+        _emit_mermaid(diagram, output)
         return
 
-    diagram = _core.component_diagram_from_dir(
+    graph_json = _core.component_json_from_dir(
         str(path),
-        include=list(include),
-        exclude=list(exclude),
-        tests=tests,
-        langs=list(lang),
         splits=splits,
+        # An overlay names real classes, so they must be in the graph to check.
+        classes=classes or overlay_path is not None,
+        **selection,
         **lens,
-        **_component_render_kwargs(group, weights, externals, direction, title),
     )
-    _emit_mermaid(diagram, output)
+    if overlay_path is not None:
+        graph_json = _merge_overlay(graph_json, _read_input(overlay_path, "overlay"))
+    _draw(
+        graph_json,
+        resolved_fmt,
+        output,
+        title=title,
+        default_title=f"{path.resolve().name} — component diagram",
+        group=group,
+        weights=weights,
+        include_externals=externals,
+        direction=direction,
+    )
+
+
+class _CouldNotRun(click.ClickException):
+    """Exit 2: the command could not run (an unreadable file, input that is not
+    a graph or an overlay). Kept apart from exit 1, which `overlay` reserves
+    for a stale overlay, so a CI step can tell "the document is out of date"
+    from "the check itself is broken". The same split as `vizzle doc --check`.
+    """
+
+    exit_code = 2
+
+
+def _read_input(path: Path, what: str) -> str:
+    """A file's text, or stdin's for `-`; unreadable is exit 2.
+
+    Stripped: these are JSON documents, whose surrounding whitespace means
+    nothing, and a pipe hands over `-f json`'s trailing newline. Left in, it
+    would ride into the page and the piped atoms would not draw byte-for-byte
+    what `component --overlay` draws.
+    """
+    try:
+        if str(path) == "-":
+            return click.get_text_stream("stdin").read().strip()
+        return path.read_text(encoding="utf-8").strip()
+    except (OSError, UnicodeDecodeError) as err:
+        raise _CouldNotRun(f"cannot read {what} {path}: {err}") from err
+
+
+def _overlay_outcome(graph_json: str, overlay_text: str) -> tuple[str, list[str]]:
+    """The core's merge, with its refusals as exit 2."""
+    try:
+        return _core.overlay_json(graph_json, overlay_text)
+    except ValueError as err:
+        raise _CouldNotRun(str(err)) from err
+
+
+def _report_stale(stale: list[str]) -> None:
+    for finding in stale:
+        click.echo(f"stale: {finding}", err=True)
+    raise click.ClickException(
+        f"{len(stale)} stale entr{'y' if len(stale) == 1 else 'ies'} in the overlay: "
+        "the code no longer has what it names; update the overlay"
+    )
+
+
+def _merge_overlay(graph_json: str, overlay_text: str) -> str:
+    """Merged graph JSON, or exit 1 listing every stale entry: a planned part
+    that names what the code lacks would draw a picture that lies."""
+    merged, stale = _overlay_outcome(graph_json, overlay_text)
+    if stale:
+        _report_stale(stale)
+    return merged
+
+
+def _draw(
+    graph_json: str,
+    fmt: str,
+    output: Path | None,
+    *,
+    title: str | None,
+    default_title: str,
+    group: bool,
+    weights: bool,
+    include_externals: bool,
+    direction: str | None,
+) -> None:
+    """The draw atom: graph JSON to json, an HTML page, or mermaid. Shared by
+    `vizzle draw` and `component --overlay`, so the chained atoms and the one-
+    process sugar cannot draw different pictures."""
+    if fmt == "json":
+        _emit(graph_json, output, summarize_components(graph_json))
+    elif fmt == "html":
+        page = build_component_html(graph_json, title=title or default_title, include_externals=include_externals)
+        _emit(page, output, summarize_components(graph_json))
+    else:
+        diagram = _core.component_diagram_from_json(
+            graph_json,
+            **_component_render_kwargs(group, weights, include_externals, direction, title),
+        )
+        _emit_mermaid(diagram, output)
+
+
+@main.command("overlay")
+@click.argument("graph", type=click.Path(dir_okay=False, allow_dash=True, path_type=Path))
+@click.argument("overlay", type=click.Path(dir_okay=False, allow_dash=True, path_type=Path))
+@click.option(
+    "-o",
+    "--output",
+    type=click.Path(dir_okay=False, path_type=Path),
+    default=None,
+    help="Write the merged graph to a file instead of stdout.",
+)
+@click.option(
+    "--check",
+    is_flag=True,
+    help="Only check that the overlay still applies to the code; write nothing. Exit 1 if stale, 2 if unreadable.",
+)
+def overlay_command(graph: Path, overlay: Path, output: Path | None, check: bool) -> None:
+    """Merge planned parts (OVERLAY) into a component graph (GRAPH), marking each as a diff would.
+
+    GRAPH is `vizzle component -f json` output, or `-` for stdin. OVERLAY adds
+    components, classes, edges and class relations, and modifies or removes
+    real classes; the result is the same graph JSON, ready for `vizzle draw`.
+
+    Exit 0 when the overlay applies cleanly; 1 when it is stale (it names a
+    class, member, component or relation end the code lacks, or adds what the
+    code already has); 2 when a file cannot be read or is not a graph or an
+    overlay. Spec: docs/plans/impl/atoms-and-overlay.md.
+    """
+    if str(graph) == "-" and str(overlay) == "-":
+        raise _CouldNotRun("only one of GRAPH and OVERLAY can be read from stdin")
+    graph_json = _read_input(graph, "graph")
+    overlay_text = _read_input(overlay, "overlay")
+    merged, stale = _overlay_outcome(graph_json, overlay_text)
+    if stale:
+        _report_stale(stale)
+    if check:
+        click.echo(f"{overlay}: applies cleanly", err=True)
+        return
+    _emit(merged, output, summarize_components(merged))
+
+
+@main.command("draw")
+@click.argument("graph", type=click.Path(dir_okay=False, allow_dash=True, path_type=Path))
+@click.option(
+    "--group/--no-group",
+    "group",
+    default=True,
+    show_default=True,
+    help="Wrap sibling components in a block per parent directory (mermaid).",
+)
+@click.option("--weights", is_flag=True, help="Label edges with their weight (mermaid).")
+@click.option("--externals", is_flag=True, help="Show one node per external package.")
+@click.option(
+    "--direction",
+    type=click.Choice(["TB", "BT", "LR", "RL"]),
+    default=None,
+    help="Layout direction (mermaid only).",
+)
+@click.option("--title", default=None, help="Diagram title.")
+@click.option(
+    "-f",
+    "--format",
+    "fmt",
+    type=click.Choice(["mermaid", "html"]),
+    default=None,
+    help="Output format. Defaults to html when the output file ends in .html, else mermaid.",
+)
+@click.option(
+    "-o",
+    "--output",
+    type=click.Path(dir_okay=False, path_type=Path),
+    default=None,
+    help="Write the diagram to a file instead of stdout.",
+)
+def draw_command(
+    graph: Path,
+    group: bool,
+    weights: bool,
+    externals: bool,
+    direction: str | None,
+    title: str | None,
+    fmt: str | None,
+    output: Path | None,
+) -> None:
+    """Draw a graph JSON (from `-f json` or `vizzle overlay`) as an HTML page or mermaid.
+
+    GRAPH is a file or `-` for stdin. A component graph draws either way, with
+    the same renderers `vizzle component` uses; a class graph (`vizzle class
+    -f json`) draws as HTML only. Spec: docs/plans/impl/atoms-and-overlay.md.
+    """
+    resolved_fmt = _resolve_format(fmt, output)
+    graph_json = _read_input(graph, "graph")
+    try:
+        is_component = "components" in json.loads(graph_json)
+    except ValueError as err:
+        raise _CouldNotRun(f"{graph}: not valid JSON: {err}") from err
+    if not is_component:
+        if resolved_fmt != "html":
+            raise click.UsageError("a class graph draws as html only (-f html); for mermaid use `vizzle class`")
+        page = build_html(graph_json, title=title or "class diagram", include_externals=externals)
+        _emit(page, output, summarize(graph_json))
+        return
+    name = "graph" if str(graph) == "-" else graph.stem
+    _draw(
+        graph_json,
+        resolved_fmt,
+        output,
+        title=title,
+        default_title=f"{name} — component diagram",
+        group=group,
+        weights=weights,
+        include_externals=externals,
+        direction=direction,
+    )
 
 
 def _repo_root(path: Path) -> Path:
@@ -926,7 +1144,7 @@ def diff_diagram(
         selection["splits"] = _split_paths(_repo_root(path), split, scope=scope_path)
         effective_classes = _effective_classes_for_diff(classes)
         resolved_format = _resolve_format(fmt, output)
-        if resolved_format == "html":
+        if resolved_format in ("html", "json"):
             graph_json = _core.component_json_diff(
                 base_files,
                 base_manifests,
@@ -937,18 +1155,22 @@ def diff_diagram(
                 focus=focus,
                 **selection,
             )
-            page = build_component_html(graph_json, title=resolved_title, include_externals=externals)
+            content = (
+                graph_json
+                if resolved_format == "json"
+                else build_component_html(graph_json, title=resolved_title, include_externals=externals)
+            )
             graph_stats = json.loads(graph_json)["stats"]
             _write_diff_stats(
                 stats_path,
                 diagram_type=diagram_type,
                 fmt=resolved_format,
-                content=page,
+                content=content,
                 changes=graph_stats["changes"],
                 omitted=graph_stats["omitted"],
                 tests=tests_stats,
             )
-            _emit(page, output, summarize_components(graph_json))
+            _emit(content, output, summarize_components(graph_json))
             return
         diagram, verdict_json, zoom = _core.component_diagram_diff(
             base_files,
@@ -1000,24 +1222,28 @@ def diff_diagram(
             "revisions held in memory. Use --group-by module."
         )
     resolved_format = _resolve_format(fmt, output)
-    if resolved_format == "html":
+    if resolved_format in ("html", "json"):
         graph_json = _core.graph_json_diff(base_files, head_files, **selection)
-        page = build_html(
-            graph_json,
-            title=resolved_title,
-            show_members=members,
-            show_modules=modules,
-            include_externals=externals,
+        content = (
+            graph_json
+            if resolved_format == "json"
+            else build_html(
+                graph_json,
+                title=resolved_title,
+                show_members=members,
+                show_modules=modules,
+                include_externals=externals,
+            )
         )
         _write_diff_stats(
             stats_path,
             diagram_type=diagram_type,
             fmt=resolved_format,
-            content=page,
+            content=content,
             changes=json.loads(graph_json)["stats"]["changes"],
             tests=tests_stats,
         )
-        _emit(page, output, summarize(graph_json, show_modules=modules))
+        _emit(content, output, summarize(graph_json, show_modules=modules))
         return
 
     diagram, verdict_json, _ = _core.class_diagram_diff(

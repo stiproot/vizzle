@@ -519,6 +519,29 @@ fn graph_json_diff(
     vc::json_diff(&base_files, &head_files, &select).map_err(to_py_err)
 }
 
+/// Merge an overlay of planned parts into a component graph's JSON:
+/// `(merged_json, stale_findings)`. Raises on an unreadable graph or overlay.
+#[pyfunction]
+fn overlay_json(graph: &str, overlay: &str) -> PyResult<(String, Vec<String>)> {
+    let outcome = vc::overlay_json(graph, overlay).map_err(to_py_err)?;
+    Ok((outcome.json, outcome.stale))
+}
+
+/// Render a component graph read back from JSON as a Mermaid diagram.
+#[pyfunction]
+#[pyo3(signature = (graph, *, group = true, weights = false, include_externals = false, direction = None, title = None))]
+fn component_diagram_from_json(
+    graph: &str,
+    group: bool,
+    weights: bool,
+    include_externals: bool,
+    direction: Option<String>,
+    title: Option<String>,
+) -> PyResult<String> {
+    let render = component_options(group, weights, include_externals, direction, title);
+    vc::component_diagram_from_json(graph, &render).map_err(to_py_err)
+}
+
 #[pymodule]
 #[pyo3(name = "_core")]
 fn vizzle_core_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -536,6 +559,8 @@ fn vizzle_core_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(diff_classdefs, m)?)?;
     m.add_function(wrap_pyfunction!(graph_json_from_dir, m)?)?;
     m.add_function(wrap_pyfunction!(graph_json_diff, m)?)?;
+    m.add_function(wrap_pyfunction!(overlay_json, m)?)?;
+    m.add_function(wrap_pyfunction!(component_diagram_from_json, m)?)?;
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
     Ok(())
 }
