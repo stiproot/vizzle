@@ -8,6 +8,13 @@ pub enum Language {
 }
 
 impl Language {
+    pub const ALL: [Language; 3] = [Language::Python, Language::TypeScript, Language::Rust];
+
+    /// The inverse of [`Language::name`], for graphs read back from JSON.
+    pub fn from_name(name: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|l| l.name() == name)
+    }
+
     pub fn from_path(path: &str) -> Option<Self> {
         let path = path.strip_suffix(".d.ts").map(|_| "").unwrap_or(path);
         match path.rsplit('.').next()? {
@@ -36,6 +43,19 @@ pub enum Visibility {
 }
 
 impl Visibility {
+    pub const ALL: [Visibility; 3] = [
+        Visibility::Public,
+        Visibility::Protected,
+        Visibility::Private,
+    ];
+
+    /// The inverse of [`Visibility::sigil`], for graphs read back from JSON.
+    pub fn from_sigil(sigil: &str) -> Option<Self> {
+        Self::ALL
+            .into_iter()
+            .find(|v| sigil.len() == 1 && sigil.starts_with(v.sigil()))
+    }
+
     pub fn sigil(&self) -> char {
         match self {
             Visibility::Public => '+',
@@ -56,6 +76,13 @@ pub enum ChangeKind {
 }
 
 impl ChangeKind {
+    pub const ALL: [ChangeKind; 4] = [
+        ChangeKind::Unchanged,
+        ChangeKind::Added,
+        ChangeKind::Removed,
+        ChangeKind::Modified,
+    ];
+
     /// Marker appended to a label in diff mode. Every renderer uses these, so
     /// a class, a member, and a component all read the same way.
     pub fn glyph(&self) -> &'static str {
@@ -159,6 +186,18 @@ pub enum RelationKind {
 }
 
 impl RelationKind {
+    pub const ALL: [RelationKind; 4] = [
+        RelationKind::Inherits,
+        RelationKind::Implements,
+        RelationKind::Association,
+        RelationKind::Dependency,
+    ];
+
+    /// The inverse of [`RelationKind::name`].
+    pub fn from_name(name: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|k| k.name() == name)
+    }
+
     /// Mermaid arrow for this relation.
     pub fn arrow(&self) -> &'static str {
         match self {

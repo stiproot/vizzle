@@ -1315,3 +1315,189 @@ def test_class_omits_test_sources_unless_asked(tmp_path: Path) -> None:
     assert "prod.Prod" in default.output
     opted_in = CliRunner().invoke(main, ["class", str(repo), "--tests"])
     assert "TestProd" in opted_in.output
+
+
+# ---------------------------------------------------------------- atoms
+# extract (-f json) → overlay → draw. Spec: docs/plans/impl/atoms-and-overlay.md.
+
+PROPOSAL = {
+    "add": {
+        "components": [{"path": "packages/ctl", "files": ["packages/ctl/src/contract.ts"]}],
+        "classes": [
+            {
+                "qualified": "packages.ctl.src.contract.Controller",
+                "component": "packages/ctl",
+                "file": "packages/ctl/src/contract.ts",
+                "annotation": "interface",
+                "members": [{"name": "start", "detail": "job", "returns": "Result", "isMethod": True}],
+            },
+            {"qualified": "apps.svc.src.plan.Planner", "component": "apps/svc", "file": "apps/svc/src/plan.ts"},
+        ],
+        "edges": [{"from": "apps/svc", "to": "packages/ctl"}],
+        "classRelations": [
+            {"from": "apps.svc.src.plan.Planner", "to": "packages.ctl.src.contract.Controller", "kind": "realization"}
+        ],
+    },
+    "modify": [{"class": "apps.svc.src.main.Svc", "members": ["run"]}],
+}
+
+
+def _invoke(args: list[str], stdin: str | None = None):
+    return CliRunner().invoke(main, args, input=stdin)
+
+
+def _write_json(path: Path, value: object) -> Path:
+    path.write_text(json.dumps(value))
+    return path
+
+
+@pytest.mark.parametrize(
+    "command",
+    [["component"], ["class"]],
+)
+def test_extract_prints_the_graph_json(workspace: Path, command: list[str]) -> None:
+    result = _invoke([*command, str(workspace), "-f", "json"])
+    assert result.exit_code == 0, result.output
+    graph = json.loads(result.output)
+    assert graph["stats"]["classes"] > 0
+
+
+def test_extract_picks_json_from_the_output_suffix(workspace: Path, tmp_path: Path) -> None:
+    out = tmp_path / "graph.json"
+    result = _invoke(["component", str(workspace), "-o", str(out)])
+    assert result.exit_code == 0, result.output
+    assert {c["path"] for c in json.loads(out.read_text())["components"]} >= {"apps/svc", "packages/core"}
+
+
+def test_diff_extracts_json_for_both_types(workspace: Path) -> None:
+    (workspace / "packages/core/src/index.ts").write_text("export class Core { x = 1 }\n")
+    component = _invoke(["diff", str(workspace), "--type", "component", "-f", "json"])
+    assert component.exit_code == 0, component.output
+    assert json.loads(component.output)["stats"]["diff"] is True
+    classes = _invoke(["diff", str(workspace), "-f", "json"])
+    assert classes.exit_code == 0, classes.output
+    assert json.loads(classes.output)["stats"]["changes"]["modified"] == 1
+
+
+def test_overlay_merges_planned_parts_with_diff_marks(workspace: Path, tmp_path: Path) -> None:
+    graph = _invoke(["component", str(workspace), "-f", "json"]).output
+    overlay = _write_json(tmp_path / "proposal.json", PROPOSAL)
+    result = _invoke(["overlay", "-", str(overlay)], stdin=graph)
+    assert result.exit_code == 0, result.output
+    merged = json.loads(result.output)
+    change = {c["path"]: c["change"] for c in merged["components"]}
+    assert change == {
+        "apps/svc": "modified",
+        "packages/core": "unchanged",
+        "packages/ctl": "added",
+        "packages/util": "unchanged",
+    }
+    classes = {c["qualified"]: c for c in merged["classes"]}
+    assert classes["apps.svc.src.plan.Planner"]["change"] == "added"
+    assert classes["apps.svc.src.main.Svc"]["change"] == "modified"
+    assert {m["name"]: m["change"] for m in classes["apps.svc.src.main.Svc"]["members"]}["run"] == "modified"
+    assert {"from": "apps.svc.src.plan.Planner", "to": "packages.ctl.src.contract.Controller"}.items() <= next(
+        r for r in merged["classRelations"] if r["from"] == "apps.svc.src.plan.Planner"
+    ).items()
+    assert merged["stats"]["changes"] == {"added": 2, "removed": 0, "modified": 1}
+
+
+def test_draw_renders_a_merged_graph_as_html_and_mermaid(workspace: Path, tmp_path: Path) -> None:
+    graph = _invoke(["component", str(workspace), "-f", "json"]).output
+    overlay = _write_json(tmp_path / "proposal.json", PROPOSAL)
+    merged = tmp_path / "merged.json"
+    assert _invoke(["overlay", "-", str(overlay), "-o", str(merged)], stdin=graph).exit_code == 0
+
+    page = tmp_path / "p.html"
+    result = _invoke(["draw", str(merged), "-o", str(page)])
+    assert result.exit_code == 0, result.output
+    assert page.read_text().startswith("<!doctype html>")
+    assert '"change":"added"' in page.read_text().replace(" ", "")
+
+    result = _invoke(["draw", str(merged), "-f", "mermaid"])
+    assert result.exit_code == 0, result.output
+    assert "class c_packages_ctl diffAdded" in result.output
+    assert "class c_apps_svc diffModified" in result.output
+    for line in _invoke(["palette"]).output.splitlines():
+        if line.strip().startswith("classDef diff"):
+            assert line in result.output
+
+
+def test_component_overlay_is_the_three_atoms_chained(workspace: Path, tmp_path: Path) -> None:
+    overlay = _write_json(tmp_path / "proposal.json", PROPOSAL)
+    graph = _invoke(["component", str(workspace), "-f", "json"]).output
+    merged = _invoke(["overlay", "-", str(overlay)], stdin=graph).output
+    for fmt in ("html", "mermaid"):
+        chained = _invoke(["draw", "-", "-f", fmt, "--title", "T"], stdin=merged)
+        sugar = _invoke(["component", str(workspace), "--overlay", str(overlay), "-f", fmt, "--title", "T"])
+        assert sugar.exit_code == 0, sugar.output
+        assert sugar.output == chained.output
+
+
+def test_overlay_check_goes_stale_when_the_code_renames_its_target(workspace: Path, tmp_path: Path) -> None:
+    overlay = _write_json(tmp_path / "o.json", {"modify": [{"class": "packages.core.src.index.Core"}]})
+    graph = tmp_path / "g.json"
+
+    def check() -> int:
+        assert _invoke(["component", str(workspace), "-o", str(graph)]).exit_code == 0
+        return _invoke(["overlay", str(graph), str(overlay), "--check"]).exit_code
+
+    assert check() == 0
+    (workspace / "packages/core/src/index.ts").write_text("export class Kernel {}\n")
+    assert check() == 1
+    stale = _invoke(["overlay", str(graph), str(overlay), "--check"])
+    assert "stale: modify: no class `packages.core.src.index.Core`" in stale.output
+    _write_json(overlay, {"modify": [{"class": "packages.core.src.index.Kernel"}]})
+    assert check() == 0
+
+
+def test_a_stale_overlay_draws_nothing(workspace: Path, tmp_path: Path) -> None:
+    overlay = _write_json(tmp_path / "o.json", {"add": {"edges": [{"from": "apps/svc", "to": "packages/core"}]}})
+    result = _invoke(["component", str(workspace), "--overlay", str(overlay)])
+    assert result.exit_code == 1
+    assert "already exists" in result.output
+    assert "flowchart" not in result.output
+
+
+REAL_GRAPH = object()
+
+
+@pytest.mark.parametrize(
+    "graph_text, overlay_text",
+    [
+        (None, "{}"),  # unreadable graph file
+        (REAL_GRAPH, '{"ad": {}}'),  # a misspelt section is not a valid overlay
+        (REAL_GRAPH, '{"add": {"classRelations": [{"from": "a", "to": "b", "kind": "friendship"}]}}'),
+        ('{"classes": [], "relations": []}', "{}"),  # a class graph, not a component graph
+        ("not json", "{}"),
+    ],
+)
+def test_overlay_check_exits_2_when_it_cannot_run(
+    tmp_path: Path, workspace: Path, graph_text: object, overlay_text: str
+) -> None:
+    graph = tmp_path / "g.json"
+    if graph_text is REAL_GRAPH:
+        graph_text = _invoke(["component", str(workspace), "-f", "json"]).output
+    if isinstance(graph_text, str):
+        graph.write_text(graph_text)
+    overlay = tmp_path / "o.json"
+    overlay.write_text(overlay_text)
+    result = _invoke(["overlay", str(graph), str(overlay), "--check"])
+    assert result.exit_code == 2, result.output
+    assert "Traceback" not in result.output
+
+
+def test_overlay_check_exits_2_for_a_missing_overlay(workspace: Path, tmp_path: Path) -> None:
+    graph = tmp_path / "g.json"
+    assert _invoke(["component", str(workspace), "-o", str(graph)]).exit_code == 0
+    result = _invoke(["overlay", str(graph), str(tmp_path / "missing.json"), "--check"])
+    assert result.exit_code == 2
+    assert "cannot read overlay" in result.output
+
+
+def test_draw_takes_a_class_graph_as_html_only(workspace: Path, tmp_path: Path) -> None:
+    graph = _invoke(["class", str(workspace), "-f", "json"]).output
+    assert _invoke(["draw", "-", "-f", "html"], stdin=graph).output.startswith("<!doctype html>")
+    refused = _invoke(["draw", "-", "-f", "mermaid"], stdin=graph)
+    assert refused.exit_code != 0
+    assert "html only" in refused.output

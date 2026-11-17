@@ -12,8 +12,10 @@ pub mod curated;
 pub mod diff;
 pub mod export;
 pub mod highlight;
+pub mod import;
 pub mod mermaid;
 pub mod model;
+pub mod overlay;
 pub mod palette;
 pub mod parse;
 pub mod resolve;
@@ -509,6 +511,45 @@ fn component_diff_graph(
     })
 }
 
+/// A merged graph and what the overlay named that the code does not have.
+#[derive(Debug, Clone)]
+pub struct OverlayOutcome {
+    /// The merged graph, as the same JSON `component -f json` prints.
+    pub json: String,
+    /// Stale findings (atoms-and-overlay.md §4); empty when the overlay
+    /// applies cleanly.
+    pub stale: Vec<String>,
+}
+
+/// Merge an overlay of planned parts into a component graph's JSON
+/// (`docs/plans/impl/atoms-and-overlay.md`). An unreadable graph or overlay is
+/// an error; one that reads but names what the code lacks comes back as
+/// [`OverlayOutcome::stale`], with everything else still merged.
+pub fn overlay_json(graph_json: &str, overlay_json: &str) -> Result<OverlayOutcome> {
+    let graph = import::component_graph(graph_json)?;
+    let overlay = overlay::parse(overlay_json)?;
+    let (merged, stale) = overlay::apply(graph, overlay)?;
+    Ok(OverlayOutcome {
+        json: merged.to_json(),
+        stale,
+    })
+}
+
+/// Draw a component graph read back from JSON as mermaid, with the same
+/// renderer `component -f mermaid` uses. A lens the JSON carries
+/// (`stats.highlight`) applies unless `render` brings its own.
+pub fn component_diagram_from_json(
+    graph_json: &str,
+    render: &ComponentRenderOptions,
+) -> Result<String> {
+    let imported = import::component_graph(graph_json)?;
+    let mut render = render.clone();
+    if render.highlight.is_none() {
+        render.highlight = imported.highlight;
+    }
+    Ok(component::render_mermaid(&imported.graph, &render))
+}
+
 /// Export a change-annotated class graph from two revisions of a file set as JSON.
 pub fn json_diff(
     base_files: &[(String, String)],
@@ -719,6 +760,64 @@ mod tests {
             0,
             "the edge goes with it"
         );
+    }
+
+    /// atoms-and-overlay.md §6: planned parts drawn over the base revision
+    /// read exactly as the real diff once the code is written.
+    #[test]
+    fn an_overlay_draws_the_mermaid_the_real_change_would() {
+        let base_manifests = pairs(&[
+            ("pkgs/core/package.json", r#"{"name": "@x/core"}"#),
+            ("apps/svc/package.json", r#"{"name": "svc"}"#),
+        ]);
+        let base_files = pairs(&[
+            (
+                "pkgs/core/src/index.ts",
+                "export class Core {\n  run(): void {}\n}\n",
+            ),
+            (
+                "apps/svc/src/main.ts",
+                "import { Core } from \"@x/core\";\nexport class Svc {}\n",
+            ),
+        ]);
+        let mut head_manifests = base_manifests.clone();
+        head_manifests.push((
+            "pkgs/ctl/package.json".into(),
+            r#"{"name": "@x/ctl"}"#.into(),
+        ));
+        let head_files = pairs(&[
+            (
+                "pkgs/core/src/index.ts",
+                "import { Controller } from \"@x/ctl\";\nexport class Core {\n  run(): void { return; }\n}\n",
+            ),
+            (
+                "pkgs/ctl/src/contract.ts",
+                "export interface Controller {\n  start(job: string): string;\n}\n",
+            ),
+            (
+                "apps/svc/src/main.ts",
+                "import { Core } from \"@x/core\";\nexport class Svc {}\n",
+            ),
+        ]);
+        let base = component::build(&base_files, &base_manifests, &[]).unwrap();
+        let head = component::build(&head_files, &head_manifests, &[]).unwrap();
+        let opts = ComponentRenderOptions::default();
+        let real = component::render_mermaid(&component::diff(&base, &head), &opts);
+
+        let overlay = r#"{
+          "add": {
+            "components": [{"path": "pkgs/ctl", "name": "@x/ctl", "files": ["pkgs/ctl/src/contract.ts"]}],
+            "classes": [{"qualified": "pkgs.ctl.src.contract.Controller", "component": "pkgs/ctl",
+                         "file": "pkgs/ctl/src/contract.ts", "annotation": "interface"}],
+            "edges": [{"from": "pkgs/core", "to": "pkgs/ctl"}]
+          },
+          "modify": [{"class": "pkgs.core.src.index.Core", "members": ["run"]}]
+        }"#;
+        let merged = overlay_json(&component::to_json(&base, true), overlay).unwrap();
+        assert!(merged.stale.is_empty(), "{:?}", merged.stale);
+        let planned = component_diagram_from_json(&merged.json, &opts).unwrap();
+        assert!(planned.contains(&palette::mermaid_classdefs()));
+        assert_eq!(planned, real);
     }
 
     #[test]

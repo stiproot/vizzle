@@ -113,6 +113,7 @@ classDiagram
     +Python
     +Rust
     +TypeScript
+    +from_name(name)$ Option~Self~
     +from_path(path)$ Option~Self~
     +name(self) &str
   }
@@ -122,6 +123,7 @@ classDiagram
     +Private
     +Protected
     +Public
+    +from_sigil(sigil)$ Option~Self~
     +sigil(self) char
   }
 
@@ -141,6 +143,7 @@ classDiagram
     +Implements
     +Inherits
     +arrow(self) &str
+    +from_name(name)$ Option~Self~
     +name(self) &str
   }
 

@@ -576,10 +576,11 @@ vizzle diff <repo> --type component [--base ... --head ...] [--split DIR] [--foc
 vizzle serve <repo> --type component [--diff]
 ```
 
-Shared flags keep their existing meaning: `-o`, `-f/--format mermaid|html`,
+Shared flags keep their existing meaning: `-o`, `-f/--format mermaid|html|json`,
 `--title`, `-I/-E/-l` (on `diff` and `serve --diff` they apply to both
 revisions, §6.2), `--direction`, `--externals`. New: `--no-group`,
-`--weights`, `--focus` (diff only). `--classes/--no-classes` controls whether
+`--weights`, `--focus` (diff only), `--overlay FILE` (planned parts drawn over the
+real graph; `docs/plans/impl/atoms-and-overlay.md`). `--classes/--no-classes` controls whether
 class detail (drill-down in the HTML view) is embedded; component diff defaults
 to `--no-classes` (class bodies are heavy; a reviewer asking "what rewired"
 typically does not expand them). `--type class` remains the default for `diff`/`serve`,

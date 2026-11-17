@@ -15,6 +15,12 @@ pub(crate) fn change_str(change: ChangeKind) -> &'static str {
     }
 }
 
+/// The inverse of [`change_str`], for graphs read back from JSON. Defined
+/// through it, so the strings themselves stay in one place.
+pub(crate) fn parse_change(name: &str) -> Option<ChangeKind> {
+    ChangeKind::ALL.into_iter().find(|c| change_str(*c) == name)
+}
+
 /// Change counts as JSON: the shape `stats.changes` takes in both exports and
 /// in the CLI's `--stats` sidecar.
 pub fn change_counts_json(counts: &ChangeCounts) -> Value {

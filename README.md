@@ -197,6 +197,12 @@ module|component` (mermaid namespace blocks per module or per component),
 or removed), `--title`, `-f/--format mermaid|html`. `serve` takes the same
 selection flags plus `--no-members`, `--modules`, `--externals` and `--title`.
 
+`-f json` prints the graph a page is drawn from. `vizzle overlay GRAPH OVERLAY`
+merges planned parts into a component graph (`--check` for CI: exit 0 current,
+1 stale, 2 cannot run), and `vizzle draw GRAPH` renders a graph as html or
+mermaid. `vizzle component --overlay FILE` does all three in one step. See
+[`docs/plans/impl/atoms-and-overlay.md`](docs/plans/impl/atoms-and-overlay.md).
+
 Render the `.mmd` output with mermaid-cli:
 
 ```sh
