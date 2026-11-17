@@ -99,7 +99,7 @@ pub struct ComponentGraph {
 }
 
 impl ComponentGraph {
-    fn normalize(&mut self) {
+    pub(crate) fn normalize(&mut self) {
         self.components.sort_by(|a, b| a.path.cmp(&b.path));
         self.edges
             .sort_by(|a, b| (&a.from, &a.to).cmp(&(&b.from, &b.to)));
@@ -168,7 +168,7 @@ fn toml_name(contents: &str, sections: &[&str]) -> Option<String> {
     None
 }
 
-fn dir_of(path: &str) -> &str {
+pub(crate) fn dir_of(path: &str) -> &str {
     path.rsplit_once('/').map(|(dir, _)| dir).unwrap_or("")
 }
 
@@ -182,7 +182,7 @@ fn under<'a>(path: &'a str, dir: &str) -> Option<&'a str> {
     rest.strip_prefix('/')
 }
 
-fn last_segment(path: &str) -> &str {
+pub(crate) fn last_segment(path: &str) -> &str {
     path.rsplit('/').next().unwrap_or(path)
 }
 
@@ -1348,6 +1348,37 @@ pub fn to_json_with_lens(
     include_classes: bool,
     highlight: Option<&BTreeSet<String>>,
 ) -> String {
+    let relations = if include_classes {
+        class_relations(graph)
+    } else {
+        Vec::new()
+    };
+    json_with_relations(graph, include_classes, highlight, &relations)
+}
+
+/// Relations between the drill-down classes, so an exploded component can
+/// render a real class diagram rather than a list of names. Derived from the
+/// same resolver the class diagram uses; internal targets only.
+fn class_relations(graph: &ComponentGraph) -> Vec<crate::resolve::ResolvedRelation> {
+    let code = CodeGraph {
+        classes: graph.classes.iter().map(|p| p.class.clone()).collect(),
+        imports: Vec::new(),
+    };
+    crate::resolve::resolve_all_relations(&code)
+        .into_iter()
+        .filter(|r| matches!(r.to, crate::resolve::Target::Internal(_)))
+        .collect()
+}
+
+/// The export itself, with the class relations supplied. A parsed graph
+/// resolves them from source ([`class_relations`]); a graph read back from
+/// JSON (`crate::import`) has no source left and carries them as facts.
+pub(crate) fn json_with_relations(
+    graph: &ComponentGraph,
+    include_classes: bool,
+    highlight: Option<&BTreeSet<String>>,
+    relations: &[crate::resolve::ResolvedRelation],
+) -> String {
     let components: Vec<Value> = graph
         .components
         .iter()
@@ -1397,19 +1428,8 @@ pub fn to_json_with_lens(
         Vec::new()
     };
 
-    // Relations between those classes, so an exploded component can render a
-    // real class diagram rather than a list of names. Derived from the same
-    // resolver the class diagram uses.
     let class_relations: Vec<Value> = if include_classes {
-        let code = CodeGraph {
-            classes: graph.classes.iter().map(|p| p.class.clone()).collect(),
-            imports: Vec::new(),
-        };
-        crate::resolve::resolve_all_relations(&code)
-            .iter()
-            .filter(|r| matches!(r.to, crate::resolve::Target::Internal(_)))
-            .map(crate::export::relation_json)
-            .collect()
+        relations.iter().map(crate::export::relation_json).collect()
     } else {
         Vec::new()
     };
