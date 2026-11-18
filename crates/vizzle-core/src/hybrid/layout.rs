@@ -449,27 +449,46 @@ pub fn place<'a>(
             layout.nodes[i].y = y;
         }
     }
+    // The JS drew NaN for a node it never placed, and every lint comparison against NaN is false, so the picture
+    // passed. Refuse instead (exit 2), naming the node.
+    for l in &layout.nodes {
+        if ![l.x0, l.y, l.w, l.h].iter().all(|v| v.is_finite()) {
+            bail!(
+                "{}: never placed (its x, y, width or height is not a number): give it an `x` and a `y` that \
+                 names a node defined before it",
+                l.n.id
+            );
+        }
+    }
     Ok(layout)
 }
 
-/// `{below, gap}`, `{top, dy}` or `{at}`, tried in that order. A form with
-/// none of them leaves the node unplaced (NaN), as it always did.
+/// `{below, gap}`, `{top, dy}` or `{at}`, tried in that order. A form with none of them is refused, and so is a
+/// reference to a node not yet placed (one defined later in the spec): both drew NaN in the JS.
 fn relative_y(layout: &Layout, rel: &RelativeY) -> Result<Option<f64>> {
     if let Some(below) = &rel.below {
         let bottoms = below
             .items()
             .into_iter()
-            .map(|id| layout.get(id).map(|o| o.y + o.h))
+            .map(|id| {
+                let o = layout.get(id)?;
+                if !o.y.is_finite() {
+                    bail!("`below` names {id}, which is placed later in the spec: move it first");
+                }
+                Ok(o.y + o.h)
+            })
             .collect::<Result<Vec<f64>>>()?;
         return Ok(Some(max_of(bottoms) + rel.gap.unwrap_or(80.0)));
     }
     if let Some(top) = rel.top.as_deref().filter(|t| !t.is_empty()) {
-        return Ok(Some(
-            layout.val_str(&format!("{top}.top"))? + rel.dy.unwrap_or(0.0),
-        ));
+        let y = layout.val_str(&format!("{top}.top"))?;
+        if !y.is_finite() {
+            bail!("`top` names {top}, which is placed later in the spec: move it first");
+        }
+        return Ok(Some(y + rel.dy.unwrap_or(0.0)));
     }
     if rel.at.is_some() {
         return layout.val(rel.at.as_ref());
     }
-    Ok(None)
+    bail!("a relative `y` needs one of `below`, `top` or `at`")
 }

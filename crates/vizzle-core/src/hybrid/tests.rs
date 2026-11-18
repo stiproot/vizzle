@@ -543,3 +543,69 @@ fn a_real_pass_reconciles_and_its_imports_fill_the_links_band() {
         built.findings
     );
 }
+
+#[test]
+fn an_auto_links_band_holds_only_the_shared_modules_its_component_imports() {
+    // proc runs pkg/a, which imports pkg/s1 and not pkg/s2; both are shared. The band must follow the import
+    // closure: s1 in, s2 out (a band of "every shared module" passed every other test).
+    let mut spec = runtime_spec(&["p:pkg/a"]);
+    spec["shared"] = json!(["p:pkg/s1", "p:pkg/s2"]);
+    spec["nodes"][0]["links"] = json!("auto");
+    spec["nodes"].as_array_mut().unwrap().push(json!({
+        "id": "other", "type": "component", "name": "Other", "x": [40, 440], "y": { "below": "proc" },
+        "modules": [{ "name": "s1", "refs": ["p:pkg/s1"] }, { "name": "s2", "refs": ["p:pkg/s2"] }]
+    }));
+    let g = BTreeMap::from([(
+        "p".to_owned(),
+        ModuleGraph {
+            modules: vec!["pkg/a".into(), "pkg/s1".into(), "pkg/s2".into()],
+            edges: vec![("pkg/a".into(), "pkg/s1".into())],
+        },
+    )]);
+    let built = build_of(&spec, &g, &|_| true);
+    assert_eq!(built.findings, Vec::<String>::new());
+    let svg = built.svg.unwrap();
+    assert!(
+        svg.contains("links</tspan><tspan class=\"small\"> — s1</tspan>"),
+        "{svg}"
+    );
+    assert!(!svg.contains("— s1, s2") && !svg.contains("— s2"), "{svg}");
+}
+
+#[test]
+fn a_relative_y_with_no_form_is_refused_not_drawn_as_nan() {
+    let mut spec = runtime_spec(&["p:pkg/a"]);
+    spec["nodes"][0]["y"] = json!({});
+    let err = build(&spec.to_string(), &graphs(&["pkg/a"]), &|_| true, "s").unwrap_err();
+    assert!(
+        format!("{err:#}").contains("needs one of `below`, `top` or `at`"),
+        "{err:#}"
+    );
+}
+
+#[test]
+fn a_y_naming_a_node_placed_later_is_refused_not_drawn_as_nan() {
+    let mut spec = runtime_spec(&["p:pkg/a"]);
+    spec["nodes"][0]["y"] = json!({ "top": "late" });
+    // `late` is placed relative to `anchor`, so it has no y until the loop reaches it (a numeric y is known
+    // from the start, and a reference to it is fine wherever it sits).
+    let ns = spec["nodes"].as_array_mut().unwrap();
+    ns.push(bx("anchor", 480.0, 100.0, json!({})));
+    ns.push(bx(
+        "late",
+        480.0,
+        0.0,
+        json!({ "y": { "below": "anchor" } }),
+    ));
+    let err = build(&spec.to_string(), &graphs(&["pkg/a"]), &|_| true, "s").unwrap_err();
+    assert!(
+        format!("{err:#}").contains("`top` names late, which is placed later"),
+        "{err:#}"
+    );
+    spec["nodes"][0]["y"] = json!({ "below": "late" });
+    let err = build(&spec.to_string(), &graphs(&["pkg/a"]), &|_| true, "s").unwrap_err();
+    assert!(
+        format!("{err:#}").contains("`below` names late, which is placed later"),
+        "{err:#}"
+    );
+}
