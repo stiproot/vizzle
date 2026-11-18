@@ -64,6 +64,9 @@ jobs:
       # Dogfood the managed-doc lint: docs/diagrams/ must stay current, or a
       # refactor that changes the core model ships a diagram that lies.
       - run: uv run vizzle doc --dir docs/diagrams --check
+      # Dogfood the hybrid style: the example picture of vizzle's own runtime
+      # must still match its spec and the code (exit 1 drift, 2 cannot run).
+      - run: uv run vizzle hybrid --check --dir examples/hybrid
       # The version is stated once and copied by scripts/bump-version.sh; this
       # catches a copy edited by hand (the plugin manifest, the lock file).
       - run: bash scripts/bump-version.sh check

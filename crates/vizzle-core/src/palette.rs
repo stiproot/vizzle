@@ -170,6 +170,59 @@ impl SequenceTint {
     }
 }
 
+/// The hybrid picture's colours (`docs/diagram-types/hybrid.md`, "The visual
+/// language"): GitHub Primer, as h drew them since 2026-10-24. Kept here so one
+/// file owns every colour vizzle draws, though no other renderer shares them.
+pub struct HybridFamily {
+    /// Outline, title text, and the family's line colour.
+    pub stroke: &'static str,
+    /// The pale fill of a container (a component's frame, a store's lid).
+    pub outer: &'static str,
+    /// The stronger fill of what sits inside it (module boxes, cylinders).
+    pub inner: &'static str,
+    /// The fill of a links band in this family.
+    pub band: &'static str,
+}
+
+pub const HYBRID_PRIMARY: HybridFamily = HybridFamily {
+    stroke: "#1a7f37",
+    outer: "#f6fff8",
+    inner: "#dafbe1",
+    band: "#dafbe1",
+};
+pub const HYBRID_SECONDARY: HybridFamily = HybridFamily {
+    stroke: "#0969da",
+    outer: "#f5faff",
+    inner: "#ddf4ff",
+    band: "#ddf4ff",
+};
+pub const HYBRID_SHARED: HybridFamily = HybridFamily {
+    stroke: "#8250df",
+    outer: "#fdf8ff",
+    inner: "#fbefff",
+    band: "#fbefff",
+};
+pub const HYBRID_EXTERNAL: HybridFamily = HybridFamily {
+    stroke: "#57606a",
+    outer: "#f6f8fa",
+    inner: "#eaeef2",
+    band: "#eaeef2",
+};
+pub const HYBRID_ENTRY: HybridFamily = HybridFamily {
+    stroke: "#bf8700",
+    outer: "#fff8e0",
+    inner: "#fff1c2",
+    band: "#fff1c2",
+};
+
+/// Hybrid text and frame colours that belong to no family.
+pub const HYBRID_INK: &str = "#24292f";
+pub const HYBRID_MUTED: &str = "#57606a";
+/// The thin grey border of the legend and a tile's foot.
+pub const HYBRID_RULE: &str = "#d0d7de";
+/// The fill behind a boundary's dashed outline.
+pub const HYBRID_BOUNDARY_FILL: &str = "#f6f8fa";
+
 /// The `classDef` line for the boundary class.
 pub fn mermaid_boundary_classdef() -> String {
     format!(

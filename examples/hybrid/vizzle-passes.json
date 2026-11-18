@@ -1,0 +1,6 @@
+{
+  "$comment": "The vizzle passes the specs in this directory reconcile against: `vizzle component` over the repository root with these arguments, run in-process.",
+  "passes": {
+    "self": { "args": ["-I", "crates/**", "-I", "packages/**"] }
+  }
+}

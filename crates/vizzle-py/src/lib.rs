@@ -542,6 +542,27 @@ fn component_diagram_from_json(
     vc::component_diagram_from_json(graph, &render).map_err(to_py_err)
 }
 
+/// Build one hybrid picture: `(svg | None, findings, width, height)`.
+/// `exists(path)` is called for every path the spec cites; a call that raises
+/// counts as "not in the tree", so the path is reported, never skipped.
+/// Raises on a spec that cannot be read.
+#[pyfunction]
+fn hybrid_svg(
+    spec_json: &str,
+    passes: std::collections::BTreeMap<String, String>,
+    exists: Bound<'_, PyAny>,
+    spec_path: &str,
+) -> PyResult<(Option<String>, Vec<String>, f64, f64)> {
+    let exists = |path: &str| -> bool {
+        exists
+            .call1((path,))
+            .and_then(|v| v.is_truthy())
+            .unwrap_or(false)
+    };
+    let built = vc::hybrid_svg(spec_json, &passes, &exists, spec_path).map_err(to_py_err)?;
+    Ok((built.svg, built.findings, built.width, built.height))
+}
+
 #[pymodule]
 #[pyo3(name = "_core")]
 fn vizzle_core_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -561,6 +582,7 @@ fn vizzle_core_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(graph_json_diff, m)?)?;
     m.add_function(wrap_pyfunction!(overlay_json, m)?)?;
     m.add_function(wrap_pyfunction!(component_diagram_from_json, m)?)?;
+    m.add_function(wrap_pyfunction!(hybrid_svg, m)?)?;
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
     Ok(())
 }

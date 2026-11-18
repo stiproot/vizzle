@@ -302,6 +302,42 @@ uvx vizzle overlay graph.json proposal.json --check           # CI: 0 current, 1
   be in the graph to be checked.
 - `draw` also accepts a class graph (`vizzle class -f json`), as HTML only.
 
+## Architecture pictures: hybrid
+
+`component` shows what the code IS. When the human needs what RUNS (processes,
+containers, stores, the spawn/POST/publish edges between them) opened up to the
+modules each one runs, and wants a layout they chose (a deck slide, an
+onboarding page), use **`vizzle hybrid`**. A person writes the runtime layer
+and a coarse layout as JSON; vizzle supplies the modules fresh on every build
+and refuses to write a picture that disagrees with the code or fails its own
+layout lint. Do not hand-write SVG for this: nothing holds it to the code.
+
+```sh
+uvx vizzle hybrid --dir examples/hybrid --png     # build every spec, + 2x PNGs (needs Chrome)
+uvx vizzle hybrid vizzle-runtime --dir examples/hybrid   # one picture
+uvx vizzle hybrid --check --dir examples/hybrid   # CI: 0 current, 1 drift/lint/stale, 2 cannot run
+```
+
+- Specs live in `--dir` (default `docs/diagrams/hybrid` under `--root`); each
+  `<name>.json` writes `<name>.svg` to the directory's **parent**, PNGs to
+  `<parent>/rendered/`. `vizzle-passes.json` there names the passes:
+  `{"passes": {"self": {"args": ["-I", "crates/**"]}}}` — `component`'s own
+  selection flags, run in-process over `--root`.
+- A module box carries `refs` like `self:crates/vizzle-core`: the pass name,
+  then the module id `<group>/<leaf of its name>`. To see the ids a pass
+  reports, run the same flags as `uvx vizzle component . <args> -f json` and
+  read `components[].group` / `.name`.
+- **The add-a-picture loop:** copy the nearest spec, run with `--png`, fix
+  what each `✗ [<name>] drift: …` / `layout: …` line names, then LOOK at the
+  PNG — passing the lint does not make it readable. Commit the spec and the
+  SVG; never commit the PNG.
+- A new package in a pass scope fails the build until the spec places it in a
+  component or lists it under `omit` with a reason. A concept picture
+  (`"vizzle": []`) is held by the `path` each box cites.
+- Families: `primary`, `secondary`, `shared`, `external`, `entry`. The full
+  format is `docs/diagram-types/hybrid.md` in the vizzle repository; an unknown
+  field is refused (exit 2), so a misspelling cannot pass silently.
+
 ## Drawing a diagram yourself: use vizzle's colours
 
 vizzle does not generate sequence diagrams, but a before/after

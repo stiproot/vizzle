@@ -962,6 +962,181 @@ def draw_command(
     )
 
 
+# ─── hybrid: architecture pictures laid out by a person, held to the code ─────
+# Spec: docs/diagram-types/hybrid.md. The core builds the picture; this command
+# finds the specs, runs each pass through `component`'s own option parser and
+# the same core entry point, and writes, compares or screenshots the result.
+
+HYBRID_DIR = Path("docs/diagrams/hybrid")
+HYBRID_PASSES = "vizzle-passes.json"
+
+# `component` options that change how a graph is drawn, not which modules it
+# has. A pass gives the picture modules and edges only, so naming one of these
+# would be silently ignored; it is refused instead. (`--group` is here too: the
+# module ids are `<group>/<leaf>` whatever it says.)
+_DRAW_ONLY = ("group", "weights", "classes", "externals", "overlay_path", "direction", "title", "fmt", "output")
+
+
+def _hybrid_passes(spec_dir: Path) -> dict[str, list[str]]:
+    """The pass table: `{name: args}`, empty when the directory has none."""
+    path = spec_dir / HYBRID_PASSES
+    if not path.exists():
+        return {}
+    try:
+        table = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as err:
+        raise _CouldNotRun(f"cannot read {path}: {err}") from err
+    if not isinstance(table, dict) or not isinstance(table.get("passes", {}), dict):
+        raise _CouldNotRun(f'{path}: expected {{"passes": {{name: {{"args": [...]}}}}}}')
+    unknown = sorted(set(table) - {"$comment", "passes", "vizzle"})
+    if unknown:
+        raise _CouldNotRun(f"{path}: unknown field {unknown[0]!r}")
+    if "vizzle" in table:
+        click.echo(
+            f"note: {path} pins vizzle {table['vizzle']}; the pin is ignored (the passes run in this vizzle) "
+            "and will be refused in a later minor — drop it",
+            err=True,
+        )
+    passes: dict[str, list[str]] = {}
+    for name, entry in table.get("passes", {}).items():
+        args = entry.get("args") if isinstance(entry, dict) else None
+        extra = sorted(set(entry) - {"$comment", "args"}) if isinstance(entry, dict) else []
+        if not isinstance(args, list) or not all(isinstance(a, str) for a in args) or extra:
+            raise _CouldNotRun(f'{path}: pass {name!r} must be {{"args": [strings]}}')
+        passes[name] = args
+    return passes
+
+
+def _run_hybrid_pass(root: Path, name: str, args: list[str]) -> str:
+    """One pass, in-process: `component` with these arguments, as graph JSON."""
+    try:
+        ctx = component_diagram.make_context("component", [str(root), *args])
+    except click.ClickException as err:
+        raise _CouldNotRun(f"pass {name!r}: {err.format_message()}") from err
+    params = ctx.params
+    for option in _DRAW_ONLY:
+        if ctx.get_parameter_source(option) != click.core.ParameterSource.DEFAULT:
+            raise _CouldNotRun(f"pass {name!r}: {option} shapes how a graph is drawn, not its modules; drop it")
+    try:
+        return _core.component_json_from_dir(
+            str(root),
+            splits=_split_paths(root, params["split"]),
+            classes=False,
+            **_selection_kwargs(params["include"], params["exclude"], params["lang"], params["tests"]),
+            **_lens_kwargs(params["highlight"], params["around"], params["depth"]),
+        )
+    except ValueError as err:
+        raise _CouldNotRun(f"pass {name!r}: {err}") from err
+
+
+def _hybrid_specs(spec_dir: Path, names: tuple[str, ...]) -> list[str]:
+    """Every spec stem in the directory except the pass table, sorted; or the named ones."""
+    if not spec_dir.is_dir():
+        raise _CouldNotRun(f"no spec directory {spec_dir}")
+    found = sorted(p.stem for p in spec_dir.glob("*.json") if p.name != HYBRID_PASSES)
+    for name in names:
+        if name not in found:
+            raise _CouldNotRun(f"no {spec_dir / name}.json")
+    return [n for n in found if not names or n in names]
+
+
+def _shown(path: Path, root: Path) -> str:
+    """A path as the output and the GENERATED comment name it: root-relative when it can be."""
+    try:
+        return path.resolve().relative_to(root.resolve()).as_posix()
+    except ValueError:
+        return path.as_posix()
+
+
+def _stop_on_findings(name: str, findings: list[str]) -> None:
+    for finding in findings:
+        click.echo(f"✗ [{name}] {finding}", err=True)
+    click.echo(
+        f"\n{len(findings)} problem(s). Stopped: this diagram and the ones after it were not written.",
+        err=True,
+    )
+    sys.exit(1)
+
+
+@main.command("hybrid")
+@click.argument("names", nargs=-1, metavar="[NAME]...")
+@click.option(
+    "--dir",
+    "spec_dir",
+    type=click.Path(file_okay=False, path_type=Path),
+    default=None,
+    help=f"Where the specs live. [default: ROOT/{HYBRID_DIR.as_posix()}]",
+)
+@click.option(
+    "--root",
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+    default=Path("."),
+    show_default=True,
+    help="The repository the passes run over and cited paths resolve against.",
+)
+@click.option("--check", is_flag=True, help="Fail if a committed SVG differs from a fresh build; write nothing.")
+@click.option("--png", is_flag=True, help="Also write a 2x PNG of each SVG to ../rendered/ (needs Chrome).")
+def hybrid_command(names: tuple[str, ...], spec_dir: Path | None, root: Path, check: bool, png: bool) -> None:
+    """Build architecture pictures from hand-written specs, held to the code.
+
+    Each NAME.json in --dir is a picture: a runtime layer and a coarse layout
+    written by a person, reconciled on every build against the module layer
+    the spec's vizzle passes report (DIR/vizzle-passes.json). Writes
+    DIR/../NAME.svg. Exit 1 on drift, a layout lint failure or (with --check) a
+    stale SVG; exit 2 when it could not run. Spec: docs/diagram-types/hybrid.md.
+    """
+    spec_dir = spec_dir if spec_dir is not None else root / HYBRID_DIR
+    passes = _hybrid_passes(spec_dir)
+    diagrams = _hybrid_specs(spec_dir, names)
+    png = png and not check
+    chrome = render_mod.find_chrome() if png else None
+    if png and not chrome:
+        raise _CouldNotRun("--png needs Chrome or Chromium: set $CHROME, or install one. The SVGs need nothing.")
+    graphs: dict[str, str] = {}
+    exists = lambda p: (root / p).exists()  # noqa: E731
+    stale = 0
+    for name in diagrams:
+        spec_path = spec_dir / f"{name}.json"
+        text = _read_input(spec_path, "spec")
+        try:
+            wanted = json.loads(text).get("vizzle", [])
+        except (json.JSONDecodeError, AttributeError) as err:
+            raise _CouldNotRun(f"{spec_path} is not a JSON object: {err}") from err
+        for pass_name in wanted if isinstance(wanted, list) else []:
+            if pass_name not in passes:
+                raise _CouldNotRun(f"[{name}] names vizzle pass {pass_name!r}, which {HYBRID_PASSES} does not define")
+            if pass_name not in graphs:
+                graphs[pass_name] = _run_hybrid_pass(root, pass_name, passes[pass_name])
+        try:
+            svg, findings, width, height = _core.hybrid_svg(
+                text, {p: graphs[p] for p in wanted if p in graphs}, exists, _shown(spec_path, root)
+            )
+        except ValueError as err:
+            raise _CouldNotRun(f"[{name}] {err}") from err
+        if findings:
+            _stop_on_findings(name, findings)
+        out = spec_dir.parent / f"{name}.svg"
+        if check:
+            current = out.read_text(encoding="utf-8") if out.exists() else ""
+            if current != svg:
+                click.echo(f"✗ {name}: {_shown(out, root)} differs from a fresh build — run vizzle hybrid", err=True)
+                stale += 1
+            else:
+                click.echo(f"✓ {name}: {_shown(out, root)} matches its spec + vizzle", err=True)
+            continue
+        out.write_text(svg, encoding="utf-8")
+        click.echo(f"wrote {_shown(out, root)} ({width:g}x{height:g})", err=True)
+        if chrome:
+            target = spec_dir.parent / "rendered" / f"{name}.png"
+            try:
+                render_mod.svg_to_png(chrome, svg, width, height, target)
+            except render_mod.RenderError as err:
+                raise _CouldNotRun(str(err)) from err
+            click.echo(f"wrote {_shown(target, root)}", err=True)
+    if stale:
+        sys.exit(1)
+
+
 def _repo_root(path: Path) -> Path:
     """The repository `path` lives in, as a CLI error if there isn't one."""
     try:

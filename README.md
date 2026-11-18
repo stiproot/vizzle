@@ -237,6 +237,22 @@ uvx vizzle doc --dir docs --check        # verify every managed doc, write nothi
 The manifest format and what `--check` guarantees are in
 [`docs/curated-diagrams.md`](https://github.com/stiproot/vizzle/blob/main/docs/curated-diagrams.md).
 
+### Architecture pictures: hybrid
+
+For what *runs* — processes, stores and the runtime edges between them, opened
+up to the modules each one runs — write a JSON spec with the runtime layer and
+a coarse layout, and let vizzle supply the modules and check the two agree:
+
+```sh
+uvx vizzle hybrid --dir examples/hybrid --png    # examples/vizzle-runtime.svg (+ a 2x PNG)
+uvx vizzle hybrid --check --dir examples/hybrid  # CI: 0 current, 1 drift/lint/stale, 2 cannot run
+```
+
+![vizzle at runtime, drawn in the hybrid style](examples/vizzle-runtime.svg)
+
+The spec format, the shapes and what drift means are in
+[`docs/diagram-types/hybrid.md`](docs/diagram-types/hybrid.md).
+
 ## How the diff works
 
 `vizzle diff` asks git for the changed files (`git diff --name-status -M -z`),
