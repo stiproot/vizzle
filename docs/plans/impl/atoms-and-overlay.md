@@ -137,7 +137,8 @@ raw JSON. The CLI's `_draw` is one function behind both `vizzle draw` and `compo
     (`name` and `module` from `qualified`, `lang` from the file suffix, visibility `+`) are worked
     out in one place. ~~A `change` given on a planned class is overridden to `added`.~~ **Changed 2026-11-18:** a `change`
     field on a planned class is refused (exit 2), as decision 6 refuses any other input it would have to ignore.
-    Silently overriding input is the same failure as silently dropping an unknown field. Not yet implemented.
+    Silently overriding input is the same failure as silently dropping an unknown field. Implemented
+    2026-11-18 for planned classes and planned members alike (`WireClass::into_placed`, `WireMember::into_member`).
 14. **`-f json` on `class`, `component` and `diff`** (both types), and an `-o *.json` suffix picks
     it. `component --overlay` implies `--classes`, because class targets must be in the graph to be
     checked.

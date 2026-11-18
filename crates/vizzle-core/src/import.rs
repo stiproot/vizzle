@@ -185,6 +185,12 @@ impl WireMember {
                 .ok_or_else(|| anyhow!("member `{}`: unknown visibility `{sigil}`", self.name))?,
         };
         let change = match forced {
+            // A planned member's change is the overlay's to decide; a `change` written on it is refused rather
+            // than silently overridden, as an unknown field is (atoms spec §8, decision 13).
+            Some(_) if self.change.is_some() => bail!(
+                "member `{}`: a planned member takes no `change` (the overlay marks it); remove the field",
+                self.name
+            ),
             Some(change) => change,
             None => change_of(self.change.as_deref())?,
         };
@@ -223,6 +229,9 @@ impl WireClass {
             })?,
         };
         let change = match forced {
+            Some(_) if self.change.is_some() => bail!(
+                "class `{qualified}`: a planned class takes no `change` (the overlay marks it added); remove the field"
+            ),
             Some(change) => change,
             None => {
                 change_of(self.change.as_deref()).with_context(|| format!("class `{qualified}`"))?
