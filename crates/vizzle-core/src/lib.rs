@@ -12,6 +12,7 @@ pub mod curated;
 pub mod diff;
 pub mod export;
 pub mod highlight;
+pub mod hybrid;
 pub mod import;
 pub mod mermaid;
 pub mod model;
