@@ -108,6 +108,9 @@ impl Selector {
         if !self.langs.is_empty() && !self.langs.contains(&lang) {
             return false;
         }
+        if lang == Language::Go && !go_builds(rel) {
+            return false;
+        }
         if let Some(include) = &self.include {
             if !self.spellings(rel).any(|p| include.is_match(p)) {
                 return false;
@@ -131,6 +134,16 @@ impl Selector {
             .cloned()
             .collect()
     }
+}
+
+/// Whether the Go tool would build a file at this path: never under `vendor/`
+/// or a `testdata/` directory, nor a file or directory whose name starts with
+/// `_` or `.` (docs/languages/go.md §1). These are the toolchain's rules, so they
+/// apply even to checked-in files, as Rust's `target/` exclusion does.
+fn go_builds(rel: &str) -> bool {
+    !rel.split('/').any(|part| {
+        part == "vendor" || part == "testdata" || part.starts_with('_') || part.starts_with('.')
+    })
 }
 
 /// Collect `(relative_path, contents)` for supported source files under `root`,

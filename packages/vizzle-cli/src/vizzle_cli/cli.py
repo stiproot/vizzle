@@ -246,7 +246,7 @@ select_options = _compose(
         "-l",
         "--lang",
         multiple=True,
-        type=click.Choice(["python", "typescript", "rust"]),
+        type=click.Choice(_core.languages()),
         help="Restrict languages (repeatable).",
     ),
     click.option(
@@ -1180,11 +1180,12 @@ def _diff_manifests(
     """The package manifests at each revision, for a class diff that touches Rust.
 
     A Rust type is keyed `crate::module::Type` and the crate name lives in
-    `Cargo.toml`; without it a diff keys types by file path and names nothing
-    the way `vizzle class` does. Python and TypeScript need no manifest, so a
-    diff without Rust files skips the extra reads.
+    `Cargo.toml`; a Go type is keyed by its import path, which starts with
+    `go.mod`'s module path. Without them a diff names nothing the way `vizzle
+    class` does. Python and TypeScript need no manifest, so a diff without Rust
+    or Go files skips the extra reads.
     """
-    if not any(p.endswith(".rs") for p, _ in [*base_files, *head_files]):
+    if not any(p.endswith((".rs", ".go")) for p, _ in [*base_files, *head_files]):
         return {}
     root = _repo_root(path)
     try:
@@ -1406,7 +1407,7 @@ def diff_diagram(
     base_files, head_files = _collect_diff_files(path, base, head)
     if not base_files and not head_files:
         raise click.ClickException(
-            f"no changed Python, TypeScript or Rust files between {base} and {head or 'the working tree'}"
+            f"no changed Python, TypeScript, Rust or Go files between {base} and {head or 'the working tree'}"
         )
     base_files, head_files = _without_tests(base_files, tests), _without_tests(head_files, tests)
     manifests = _diff_manifests(path, base, head, base_files, head_files)

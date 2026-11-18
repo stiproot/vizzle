@@ -2,7 +2,7 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use crate::model::{Class, CodeGraph, RelationKind};
+use crate::model::{Class, CodeGraph, Language, RelationKind};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Target {
@@ -18,6 +18,8 @@ pub struct ResolvedRelation {
     pub from: String,
     pub to: Target,
     pub kind: RelationKind,
+    /// Carried from [`crate::model::Relation::via`].
+    pub via: Option<&'static str>,
 }
 
 /// Resolve every base reference in the graph: same module first, then a
@@ -25,11 +27,17 @@ pub struct ResolvedRelation {
 /// is worse than a missing one).
 pub fn resolve_relations(graph: &CodeGraph) -> Vec<ResolvedRelation> {
     let by_name = index_by_name(graph);
+    let by_qualified = index_by_qualified(graph);
 
     let mut relations = Vec::new();
     for class in &graph.classes {
         for relation in &class.bases {
-            let to = match resolve_base(&relation.to, class, &by_name) {
+            let found = if class.lang == Language::Go {
+                go_target(&relation.to, class, &by_qualified)
+            } else {
+                resolve_base(&relation.to, class, &by_name)
+            };
+            let to = match found {
                 Some(target) => Target::Internal(target.qualified.clone()),
                 None => Target::External(relation.to.clone()),
             };
@@ -37,10 +45,34 @@ pub fn resolve_relations(graph: &CodeGraph) -> Vec<ResolvedRelation> {
                 from: class.qualified.clone(),
                 to,
                 kind: relation.kind,
+                via: relation.via,
             });
         }
     }
     relations
+}
+
+fn index_by_qualified(graph: &CodeGraph) -> HashMap<&str, &Class> {
+    graph
+        .classes
+        .iter()
+        .map(|c| (c.qualified.as_str(), c))
+        .collect()
+}
+
+/// A Go reference is already qualified through its file's imports, so it
+/// resolves by exact name or not at all: Go's names are exact, and the
+/// "globally unique name" fallback would point `http.Client` at an in-tree
+/// `api.Client` (docs/languages/go.md §5.1).
+fn go_target<'g>(
+    qualified: &str,
+    from: &Class,
+    by_qualified: &HashMap<&str, &'g Class>,
+) -> Option<&'g Class> {
+    by_qualified
+        .get(qualified)
+        .copied()
+        .filter(|target| target.qualified != from.qualified)
 }
 
 fn index_by_name(graph: &CodeGraph) -> HashMap<&str, Vec<&Class>> {
@@ -71,6 +103,7 @@ fn type_identifiers(expression: &str) -> Vec<&str> {
 /// strongest kind, so a class holding three fields of one type gets one arrow.
 pub fn resolve_member_relations(graph: &CodeGraph) -> Vec<ResolvedRelation> {
     let by_name = index_by_name(graph);
+    let by_qualified = index_by_qualified(graph);
     let mut strongest: BTreeMap<(&str, String), RelationKind> = BTreeMap::new();
 
     for class in &graph.classes {
@@ -81,8 +114,18 @@ pub fn resolve_member_relations(graph: &CodeGraph) -> Vec<ResolvedRelation> {
                 RelationKind::Association
             };
             for expression in &member.type_refs {
-                for identifier in type_identifiers(expression) {
-                    let Some(target) = resolve_base(identifier, class, &by_name) else {
+                let identifiers = if class.lang == Language::Go {
+                    vec![expression.as_str()]
+                } else {
+                    type_identifiers(expression)
+                };
+                for identifier in identifiers {
+                    let target = if class.lang == Language::Go {
+                        go_target(identifier, class, &by_qualified)
+                    } else {
+                        resolve_base(identifier, class, &by_name)
+                    };
+                    let Some(target) = target else {
                         continue;
                     };
                     let key = (class.qualified.as_str(), target.qualified.clone());
@@ -101,6 +144,7 @@ pub fn resolve_member_relations(graph: &CodeGraph) -> Vec<ResolvedRelation> {
             from: from.to_owned(),
             to: Target::Internal(to),
             kind,
+            via: None,
         })
         .collect()
 }

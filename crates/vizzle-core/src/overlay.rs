@@ -394,6 +394,7 @@ pub fn apply(
             from: planned.from,
             to: target,
             kind,
+            via: None,
         });
     }
 

@@ -6,6 +6,13 @@ use pyo3::prelude::*;
 use ::vizzle_core as vc;
 use vc::{ComponentRenderOptions, Grouping, RenderOptions, SelectOptions};
 
+/// The languages vizzle parses, by selector name, for the CLI's `-l` choices:
+/// the core owns the list, so a new language reaches every flag at once.
+#[pyfunction]
+fn languages() -> Vec<&'static str> {
+    vc::model::Language::ALL.iter().map(|l| l.name()).collect()
+}
+
 /// The globs that define a test source file, for the CLI's `--stats`.
 #[pyfunction]
 fn default_test_globs() -> Vec<String> {
@@ -606,6 +613,7 @@ fn vizzle_core_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(diff_palette_css, m)?)?;
     m.add_function(wrap_pyfunction!(sequence_tints, m)?)?;
     m.add_function(wrap_pyfunction!(default_test_globs, m)?)?;
+    m.add_function(wrap_pyfunction!(languages, m)?)?;
     m.add_function(wrap_pyfunction!(diff_classdefs, m)?)?;
     m.add_function(wrap_pyfunction!(graph_json_from_dir, m)?)?;
     m.add_function(wrap_pyfunction!(graph_json_diff, m)?)?;

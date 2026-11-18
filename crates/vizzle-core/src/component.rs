@@ -617,6 +617,8 @@ fn build_edges(
             Language::TypeScript => resolve_ts(import, &ts_names, detector),
             Language::Python => resolve_py(import, py_names, detector),
             Language::Rust => resolve_rust(import, &ts_names, detector),
+            // Packages as components arrive with the component pass (go.md §7).
+            Language::Go => Resolved::Unknown,
         };
         let target = match resolved {
             Resolved::Component(to) if to == from => continue,

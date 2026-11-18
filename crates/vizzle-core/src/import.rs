@@ -338,6 +338,7 @@ pub fn component_graph(json: &str) -> Result<ImportedGraph> {
                 kind: relation_kind(&r.kind)?,
                 from: r.from,
                 to: Target::Internal(r.to),
+                via: None,
             })
         })
         .collect::<Result<Vec<_>>>()?;
