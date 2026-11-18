@@ -8,7 +8,7 @@ from pathlib import Path
 
 # Keep in sync with Language::from_path in vizzle-core's model.rs: a suffix the
 # core parses but this list lacks is a language `diff` and `serve` never see.
-SUPPORTED_SUFFIXES = (".py", ".ts", ".tsx", ".mts", ".cts", ".rs")
+SUPPORTED_SUFFIXES = (".py", ".ts", ".tsx", ".mts", ".cts", ".rs", ".go")
 
 # Keep in sync with MANIFEST_NAMES in vizzle-core's component.rs.
 MANIFEST_NAMES = ("package.json", "pyproject.toml", "Cargo.toml", "go.mod")

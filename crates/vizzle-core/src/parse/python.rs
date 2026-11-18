@@ -273,6 +273,7 @@ fn extract_class(
                     from: qualified.clone(),
                     to: bare,
                     kind: RelationKind::Inherits,
+                    via: None,
                 }),
             }
         }

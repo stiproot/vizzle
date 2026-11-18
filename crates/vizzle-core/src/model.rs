@@ -7,10 +7,16 @@ pub enum Language {
     Python,
     TypeScript,
     Rust,
+    Go,
 }
 
 impl Language {
-    pub const ALL: [Language; 3] = [Language::Python, Language::TypeScript, Language::Rust];
+    pub const ALL: [Language; 4] = [
+        Language::Python,
+        Language::TypeScript,
+        Language::Rust,
+        Language::Go,
+    ];
 
     /// The inverse of [`Language::name`], for graphs read back from JSON.
     pub fn from_name(name: &str) -> Option<Self> {
@@ -23,6 +29,7 @@ impl Language {
             "py" => Some(Language::Python),
             "ts" | "tsx" | "mts" | "cts" => Some(Language::TypeScript),
             "rs" => Some(Language::Rust),
+            "go" => Some(Language::Go),
             _ => None,
         }
     }
@@ -32,6 +39,7 @@ impl Language {
             Language::Python => "python",
             Language::TypeScript => "typescript",
             Language::Rust => "rust",
+            Language::Go => "go",
         }
     }
 }
@@ -227,6 +235,10 @@ pub struct Relation {
     /// Base type name as written in source (resolved against the graph at render time).
     pub to: String,
     pub kind: RelationKind,
+    /// For a Go implementation: whether the type's own method set satisfies the
+    /// interface (`value`) or only its pointer's does (`pointer`). None elsewhere
+    /// (docs/languages/go.md §5.2).
+    pub via: Option<&'static str>,
 }
 
 /// The stereotype marking a `<<module>>` box (class.md §2.4). Named once: the
@@ -313,6 +325,11 @@ pub struct CodeGraph {
     /// diffed, so ordinary assignment stays out of every diagram; a curated
     /// manifest that names one in `consts` gets it (curated-diagrams.md §4).
     pub module_values: BTreeMap<String, Vec<Member>>,
+    /// A Go method's signature with parameter names dropped and every type
+    /// qualified through its file's imports, keyed `<receiver qualified>::<name>`
+    /// (interfaces' methods included). Inferred implementation compares these
+    /// (docs/languages/go.md §5.2); nothing renders them.
+    pub go_signatures: BTreeMap<String, String>,
 }
 
 impl CodeGraph {
@@ -329,6 +346,7 @@ impl CodeGraph {
         for (module, values) in other.module_values {
             self.module_values.entry(module).or_default().extend(values);
         }
+        self.go_signatures.extend(other.go_signatures);
     }
 
     /// Sort classes and imports for deterministic output.

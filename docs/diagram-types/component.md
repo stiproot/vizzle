@@ -101,7 +101,14 @@ and requires zero configuration for conventional repos.
    component `scripts`). Parsed files sitting directly in the repo root are
    collected into a `(root)` component.
 4. **Empty components are dropped.** A manifest directory containing no files
-   vizzle can parse (no `.py`/`.ts` today) produces no node.
+   vizzle can parse produces no node.
+
+**Go is the exception to rules 1 and 2** (`docs/languages/go.md` §7): a `.go`
+file belongs to its *package* (its directory), and a `go.mod` makes a module
+block holding those packages rather than a component. Go's unit of import is
+the package, and its import paths are exact, so package-level edges need no
+guessing; one component per `go.mod` drew a 26-package module as a single box.
+A `go.mod` at the repository root is a module like any other.
 
 `-I`/`-E` include/exclude globs apply *before* detection, so `-E 'apps/*'`
 removes those components entirely.

@@ -1,5 +1,6 @@
 //! Source parsing via tree-sitter, one extractor per language.
 
+pub(crate) mod go;
 mod python;
 mod rust;
 mod typescript;
@@ -72,6 +73,7 @@ pub fn parse_file_with_manifests(
             python::parse(&module, source)
         }
         Language::Rust => rust::parse(rel_path, source, manifests),
+        Language::Go => go::parse(rel_path, source, manifests),
         Language::TypeScript => {
             let module = module_path(rel_path);
             typescript::parse(&module, source)
@@ -105,6 +107,7 @@ pub fn parse_files_with_manifests(
     for fragment in fragments {
         graph.merge(fragment);
     }
+    go::merge_packages(&mut graph);
     graph.normalize();
     Ok(graph)
 }

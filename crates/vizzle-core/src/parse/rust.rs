@@ -48,6 +48,7 @@ pub fn parse(rel_path: &str, source: &str, manifests: &[(String, String)]) -> Re
                 from: ty_name.clone(),
                 to: trait_name,
                 kind: RelationKind::Implements,
+                via: None,
             });
         }
     }
@@ -264,6 +265,7 @@ fn extract_trait(node: Node, src: &str, qualified_prefix: &str, graph: &mut Code
                         from: qualified.clone(),
                         to: target,
                         kind: RelationKind::Inherits,
+                        via: None,
                     });
                 }
             }

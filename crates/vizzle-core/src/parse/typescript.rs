@@ -155,6 +155,7 @@ fn extract_class(node: Node, src: &str, module: &str, graph: &mut CodeGraph) {
                     from: qualified.clone(),
                     to: bare_type_name(&text(ty, src)),
                     kind,
+                    via: None,
                 });
             }
         }
@@ -196,6 +197,7 @@ fn extract_interface(node: Node, src: &str, module: &str, graph: &mut CodeGraph)
                     from: qualified.clone(),
                     to: bare_type_name(&text(ty, src)),
                     kind: RelationKind::Inherits,
+                    via: None,
                 });
             }
         }
@@ -278,6 +280,7 @@ fn extract_type_alias(node: Node, src: &str, module: &str, graph: &mut CodeGraph
                     from: qualified.clone(),
                     to: bare_type_name(arm),
                     kind: RelationKind::Dependency,
+                    via: None,
                 })
                 .collect();
             ("union", members, bases)

@@ -46,6 +46,7 @@ classDiagram
     +change_counts(self) ChangeCounts
     +classes : Vec~Class~
     +diff_mode(self) bool
+    +go_signatures : BTreeMap~String, String~
     +imports : Vec~Import~
     +merge(self, other)
     +module_values : BTreeMap~String, Vec~Member~~
@@ -91,6 +92,7 @@ classDiagram
     +from : String
     +kind : RelationKind
     +to : String
+    +via : Option~&str~
   }
 
   class Import {
@@ -111,6 +113,7 @@ classDiagram
 
   class Language {
     <<enumeration>>
+    +Go
     +Python
     +Rust
     +TypeScript

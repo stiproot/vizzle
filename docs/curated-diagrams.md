@@ -120,6 +120,14 @@ is only such assignments has no box, and its entry still resolves through
 its case, since those branches have never fed the box. The toolkit also printed a
 string constant's value; vizzle does not.
 
+**Any name a manifest lists explicitly reaches the member, an unexported one
+included** (decided 2026-11-18 with Go support, `docs/languages/go.md` §8). The
+`«module»` box hides an unchanged private helper from an exhaustive diagram,
+because a helper is not module surface; but a curated entry that lists
+`_helper` under `functions` is the author choosing it, the same principle as
+`consts` above. An unlisted entry still draws only the box's surface, and a
+name the module does not have is still the §3 error.
+
 ### 4.1 Decision: curated mode ignores the density heuristics
 
 **Decided 2026-08-17, from a real miss.** Resolving h's

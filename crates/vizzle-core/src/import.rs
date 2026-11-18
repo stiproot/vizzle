@@ -95,6 +95,9 @@ struct WireComponent {
     highlight: Option<bool>,
     #[serde(default)]
     boundary: bool,
+    /// A Go `package main` (docs/languages/go.md §7); absent in older exports.
+    #[serde(default)]
+    main: bool,
 }
 
 #[derive(Deserialize)]
@@ -305,6 +308,7 @@ pub fn component_graph(json: &str) -> Result<ImportedGraph> {
                 file_hashes: Default::default(),
                 changed_files: c.changed_files,
                 is_boundary: c.boundary,
+                main: c.main,
             })
         })
         .collect::<Result<Vec<_>>>()?;
@@ -338,6 +342,7 @@ pub fn component_graph(json: &str) -> Result<ImportedGraph> {
                 kind: relation_kind(&r.kind)?,
                 from: r.from,
                 to: Target::Internal(r.to),
+                via: None,
             })
         })
         .collect::<Result<Vec<_>>>()?;

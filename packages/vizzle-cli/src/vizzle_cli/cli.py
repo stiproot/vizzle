@@ -246,7 +246,7 @@ select_options = _compose(
         "-l",
         "--lang",
         multiple=True,
-        type=click.Choice(["python", "typescript", "rust"]),
+        type=click.Choice(_core.languages()),
         help="Restrict languages (repeatable).",
     ),
     click.option(
@@ -1174,17 +1174,56 @@ def _collect_diff_files(path: Path, base: str, head: str | None) -> tuple[list[t
     return base_files, head_files
 
 
+def _with_go_packages(
+    path: Path, base: str, head: str | None, base_files: list, head_files: list, tests: bool
+) -> tuple[list, list]:
+    """The selected changed files, plus the rest of each changed Go package.
+
+    Siblings are added after the test filter, so a change confined to test
+    files still reads as no change, and filtered again, so a sibling test file
+    stays out unless `--tests`.
+    """
+    base_files, head_files = _without_tests(base_files, tests), _without_tests(head_files, tests)
+    _add_go_package_siblings(_repo_root(path), base, head, base_files, head_files)
+    return _without_tests(base_files, tests), _without_tests(head_files, tests)
+
+
+def _add_go_package_siblings(
+    root: Path, base: str, head: str | None, base_files: list[tuple[str, str]], head_files: list[tuple[str, str]]
+) -> None:
+    """Give a changed Go file the rest of its package, on both revisions.
+
+    A Go type's methods live in any file of its package, so a changed `get.go`
+    parsed alone has methods for a type declared in an unchanged `store.go`, and
+    nothing to attach them to (docs/languages/go.md §4.1). The unchanged
+    siblings read the same on both sides, so they add context, not changes.
+    """
+    dirs = {path.rpartition("/")[0] for path, _ in [*base_files, *head_files] if path.endswith(".go")}
+    if not dirs:
+        return
+
+    def siblings(paths: list[str], have: list[tuple[str, str]]) -> list[str]:
+        known = {path for path, _ in have}
+        return [p for p in paths if p.endswith(".go") and p.rpartition("/")[0] in dirs and p not in known]
+
+    base_files.extend(git.files_at_ref(root, base, siblings(git.tree_paths(root, base), base_files)))
+    head_paths = git.worktree_paths(root) if head is None else git.tree_paths(root, head)
+    extra = siblings(head_paths, head_files)
+    head_files.extend(git.files_in_worktree(root, extra) if head is None else git.files_at_ref(root, head, extra))
+
+
 def _diff_manifests(
     path: Path, base: str, head: str | None, base_files: list, head_files: list
 ) -> dict[str, list[tuple[str, str]]]:
     """The package manifests at each revision, for a class diff that touches Rust.
 
     A Rust type is keyed `crate::module::Type` and the crate name lives in
-    `Cargo.toml`; without it a diff keys types by file path and names nothing
-    the way `vizzle class` does. Python and TypeScript need no manifest, so a
-    diff without Rust files skips the extra reads.
+    `Cargo.toml`; a Go type is keyed by its import path, which starts with
+    `go.mod`'s module path. Without them a diff names nothing the way `vizzle
+    class` does. Python and TypeScript need no manifest, so a diff without Rust
+    or Go files skips the extra reads.
     """
-    if not any(p.endswith(".rs") for p, _ in [*base_files, *head_files]):
+    if not any(p.endswith((".rs", ".go")) for p, _ in [*base_files, *head_files]):
         return {}
     root = _repo_root(path)
     try:
@@ -1406,9 +1445,9 @@ def diff_diagram(
     base_files, head_files = _collect_diff_files(path, base, head)
     if not base_files and not head_files:
         raise click.ClickException(
-            f"no changed Python, TypeScript or Rust files between {base} and {head or 'the working tree'}"
+            f"no changed Python, TypeScript, Rust or Go files between {base} and {head or 'the working tree'}"
         )
-    base_files, head_files = _without_tests(base_files, tests), _without_tests(head_files, tests)
+    base_files, head_files = _with_go_packages(path, base, head, base_files, head_files, tests)
     manifests = _diff_manifests(path, base, head, base_files, head_files)
 
     grouping = _grouping(group_by, group)
@@ -1551,7 +1590,7 @@ def serve_command(
         if diff_mode:
             fork = _fork_point(path, base, head)
             base_files, head_files = _collect_diff_files(path, fork, head)
-            base_files, head_files = _without_tests(base_files, tests), _without_tests(head_files, tests)
+            base_files, head_files = _with_go_packages(path, fork, head, base_files, head_files, tests)
             manifests = _diff_manifests(path, fork, head, base_files, head_files)
             graph_json = _core.graph_json_diff(base_files, head_files, **manifests, **selection)
             page_title = title or f"changes vs {base} (live)"

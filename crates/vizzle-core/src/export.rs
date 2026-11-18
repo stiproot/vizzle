@@ -37,12 +37,18 @@ pub(crate) fn relation_json(relation: &crate::resolve::ResolvedRelation) -> Valu
         Target::Internal(qualified) => (qualified.clone(), false),
         Target::External(name) => (name.clone(), true),
     };
-    json!({
+    let mut value = json!({
         "from": relation.from,
         "to": to,
         "external": external,
         "kind": relation.kind.name(),
-    })
+    });
+    // Only a Go implementation says whether it holds through the pointer
+    // (docs/languages/go.md §5.2); other relations carry no such fact.
+    if let Some(via) = relation.via {
+        value["via"] = json!(via);
+    }
+    value
 }
 
 /// One class as JSON. Shared by the class diagram's export and the component

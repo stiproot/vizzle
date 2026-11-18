@@ -200,6 +200,7 @@ pub fn apply(
             changed_files,
             change: ChangeKind::Added,
             is_boundary: false,
+            main: false,
             path: planned.path,
         });
     }
@@ -394,6 +395,7 @@ pub fn apply(
             from: planned.from,
             to: target,
             kind,
+            via: None,
         });
     }
 

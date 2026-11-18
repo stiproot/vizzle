@@ -75,7 +75,7 @@ pub type Files = Vec<(String, String)>;
 /// caller's excludes unless tests are opted in, and `--stats` counts changed
 /// files against the same globs. The core owns the rule so that the trailer can
 /// describe it in one phrase rather than echoing every glob.
-const DEFAULT_TEST_GLOBS: [&str; 11] = [
+const DEFAULT_TEST_GLOBS: [&str; 12] = [
     "**/test_*.py",
     "**/*_test.py",
     "**/tests/**",
@@ -87,6 +87,7 @@ const DEFAULT_TEST_GLOBS: [&str; 11] = [
     "**/*.spec.tsx",
     "**/__tests__/**",
     "**/__snapshots__/**",
+    "**/*_test.go",
 ];
 
 /// [`DEFAULT_TEST_GLOBS`] for consumers outside the crate.
@@ -148,6 +149,7 @@ impl SelectOptions {
                 "python" | "py" => Ok(model::Language::Python),
                 "typescript" | "ts" | "tsx" => Ok(model::Language::TypeScript),
                 "rust" | "rs" => Ok(model::Language::Rust),
+                "go" => Ok(model::Language::Go),
                 other => anyhow::bail!("unsupported language: {other}"),
             })
             .collect()

@@ -228,7 +228,8 @@ detection drops any module with no `.py`/`.ts` in it (component.md §3.1 rule
 manifests that were found perfectly well. Without that warning up front an
 agent burns a call and, worse, may report the emptiness as a finding about the
 architecture. (Since superseded: vizzle parses Rust too, and `diff` sees Rust
-changes from 0.16.0; the skill's precondition now names all three.)
+changes from 0.16.0, and Go from 0.17.0 (`docs/languages/go.md`); the skill's
+precondition names all four.)
 
 **Extended 2026-11-18** (`docs/plans/impl/skill-set.md`): the plugin became the
 single home of diagramming and code comprehension, replacing code-comprehension

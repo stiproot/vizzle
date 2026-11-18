@@ -26,6 +26,6 @@ brief is the same failure as drawing a picture that compresses nothing.
 
 ## When vizzle cannot see the code
 
-vizzle parses Python, TypeScript and Rust. For anything else, draw the
+vizzle parses Python, TypeScript, Rust and Go. For anything else, draw the
 structural view as a `flowchart` by hand, ground each box in a path, and say
 the diagram was drawn rather than derived.
