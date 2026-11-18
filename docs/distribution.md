@@ -387,8 +387,9 @@ acceptable for a long tail.
 
 ### 5.1 What the release attempts taught us
 
-The first three were found by tagging `v0.1.0` for real, the fourth by `v0.14.0`. None would have been caught
-by building wheels alone, which is the argument for the smoke job.
+The first three were found by tagging `v0.1.0` for real, the fourth by `v0.14.0`. None of the first three would
+have been caught by building wheels alone, which is the argument for the smoke job. The fourth failed at the build
+stage itself; what it taught is to keep runner labels off retirement dates.
 
 **glibc 2.17 produces a wheel that builds and cannot import.** `manylinux: auto`
 selects manylinux2014 (glibc 2.17). tree-sitter's portable endian shim asks for
@@ -413,6 +414,14 @@ cross-compiled on Apple Silicon, which the macOS toolchain handles natively, at
 the cost of being the one wheel nothing can execute. Every build job now carries
 `timeout-minutes` so the next runner retirement fails loudly instead of hanging.
 
+**Writing a diagram used the platform's default encoding.** `_emit` called
+`Path.write_text` with no encoding, and diagrams carry `«guillemets»` and the
+`✚ ✖ ✱` glyphs. On Windows that is cp1252 and every write raised
+`UnicodeEncodeError`; on Linux under a non-UTF-8 locale it would do the same.
+Fixed at both ends — writing output, and `file_in_worktree` reading source,
+which had to match how `git show` already decoded the other revision or the two
+sides of a diff would be read inconsistently.
+
 **A retired Apple Silicon image fails, but still ships nothing** (`v0.14.0`,
 2026-11-18). When GitHub retired `macos-14`, both macOS wheel jobs failed in 0s
 with `The configuration 'macos-14-arm64-us-default' is not supported`, and the
@@ -423,14 +432,6 @@ matrix is proved by dispatching `release.yml` on the branch: the publish job is
 gated on a `v*` tag, so the dispatch builds every wheel, smoke-tests every one
 a runner can execute (all but the cross-compiled macOS x86_64), and publishes
 nothing.
-
-**Writing a diagram used the platform's default encoding.** `_emit` called
-`Path.write_text` with no encoding, and diagrams carry `«guillemets»` and the
-`✚ ✖ ✱` glyphs. On Windows that is cp1252 and every write raised
-`UnicodeEncodeError`; on Linux under a non-UTF-8 locale it would do the same.
-Fixed at both ends — writing output, and `file_in_worktree` reading source,
-which had to match how `git show` already decoded the other revision or the two
-sides of a diff would be read inconsistently.
 
 **Windows is out of the matrix for now**, by decision rather than by defect —
 the encoding bug it exposed is fixed. Adding it back means a `windows-latest`
@@ -446,8 +447,9 @@ failure this layout actually invites:
   directory, so the sdist must carry `crates/` and the workspace manifest or it
   cannot build. The `sdist` job asserts all three files are present — a
   regression here would surface as a stranger's failed `pip install`.
-- **A smoke test per platform.** Each wheel is installed on a clean runner and
-  used to render this repo. A wheel that imports but cannot render is still a
+- **A smoke test per platform.** Each wheel a runner can execute is installed
+  on a clean runner and used to render this repo; the cross-compiled macOS
+  x86_64 wheel is the one exception, since no Intel macOS runner exists. A wheel that imports but cannot render is still a
   broken release, and only running it catches that.
 
 `ci.yml` covers the same checks CLAUDE.md calls "verifying" on every push and

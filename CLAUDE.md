@@ -162,8 +162,9 @@ the version of the CLI its skill documents). So a release is:
 `scripts/bump-version.sh check` runs in CI and in the release gate, so a copy
 edited by hand fails before it ships.
 
-`release.yml` builds four wheels and an sdist, smoke-tests each on a clean
-runner, and publishes to PyPI by Trusted Publishing.
+`release.yml` builds four wheels and an sdist, smoke-tests each wheel a runner
+can execute on a clean runner (all but the cross-compiled macOS x86_64), and
+publishes to PyPI by Trusted Publishing.
 
 Two ways to break it silently, both learned the hard way (`docs/distribution.md`
 §5.1): renaming `release.yml` voids the PyPI publisher registration, which
