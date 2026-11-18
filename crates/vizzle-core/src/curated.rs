@@ -72,6 +72,10 @@ fn rust_file(file: &str) -> bool {
 fn module_box_for(file: &str, manifests: &[(String, String)]) -> String {
     if rust_file(file) {
         rust_qualified_prefix(file, manifests).replace("::", ".")
+    } else if Language::from_path(file) == Some(Language::Go) {
+        // A Go type belongs to its package, keyed by import path, so an entry
+        // finds methods declared in any file of it (docs/languages/go.md §8).
+        crate::parse::go::import_path(file, manifests, "main")
     } else {
         module_path(file)
     }
@@ -98,7 +102,7 @@ fn qualified_for(entry: &Entry, manifests: &[(String, String)]) -> Result<String
     Ok(if rust_file(file) {
         format!("{}::{symbol}", rust_qualified_prefix(file, manifests))
     } else {
-        format!("{}.{symbol}", module_path(file))
+        format!("{}.{symbol}", module_box_for(file, manifests))
     })
 }
 
@@ -141,7 +145,13 @@ fn members_for<'a>(
     if consts.clone().chain(functions.clone()).next().is_none() {
         return Ok(drawn);
     }
-    let by_name: HashMap<&str, &Member> = drawn.iter().map(|m| (m.name.as_str(), *m)).collect();
+    // A name the manifest lists explicitly reaches any member of the box, an
+    // unexported one included: the module box hides an unchanged private
+    // helper from an exhaustive diagram, but listing it is the author choosing
+    // it (docs/languages/go.md §8, the same principle as `consts` and D9).
+    let by_name: HashMap<&str, &Member> = class
+        .map(|c| c.members.iter().map(|m| (m.name.as_str(), m)).collect())
+        .unwrap_or_default();
     let value_by_name: HashMap<&str, &Member> =
         values.iter().map(|m| (m.name.as_str(), m)).collect();
     let missing = |name: &String| {
@@ -437,6 +447,31 @@ mod tests {
         );
         let rendered = render(&manifest, &graph, &[]).unwrap();
         assert!(rendered.contains("claude ..|> Strategy"), "{rendered}");
+    }
+
+    #[test]
+    fn a_go_entry_resolves_in_its_package_across_files() {
+        let files = vec![
+            ("store/store.go".to_owned(), "package store\ntype Store struct{ Name string }\nvar registry = map[string]int{}\nfunc Open() {}\n".to_owned()),
+            ("store/get.go".to_owned(), "package store\nfunc (s *Store) Get(key string) string { return \"\" }\n".to_owned()),
+        ];
+        let manifests = vec![("go.mod".to_owned(), "module example.com/demo\n".to_owned())];
+        let graph = crate::parse::parse_files_with_manifests(&files, &manifests).unwrap();
+        let manifest = manifest(
+            r#"{"classes":[
+                {"id":"Store","kind":"class","file":"store/store.go","symbol":"Store"},
+                {"id":"Pkg","kind":"module","file":"store/store.go","functions":["Open"],"consts":["registry"]}
+            ]}"#,
+        );
+        let rendered = render(&manifest, &graph, &manifests).unwrap();
+        assert!(
+            rendered.contains("+Get(key)"),
+            "the method from get.go: {rendered}"
+        );
+        assert!(
+            rendered.contains("+Open()") && rendered.contains("registry"),
+            "{rendered}"
+        );
     }
 
     #[test]

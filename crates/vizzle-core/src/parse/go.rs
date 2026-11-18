@@ -16,7 +16,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use anyhow::{Context, Result};
 use tree_sitter::{Node, Parser};
 
-use super::{clean_type, text, text_hash};
+use super::{clean_type, text};
 use crate::model::*;
 
 /// A stub carrying methods (or an explicit `var _ I = …` implementation) for a
@@ -54,8 +54,21 @@ const PREDECLARED: &[&str] = &[
     "uintptr",
 ];
 
+/// Hash of a node's text with whitespace runs collapsed. In Go, spacing inside
+/// a declaration is gofmt's, not the author's: adding one long field realigns
+/// the type column of every field in the struct, and hashing as written would
+/// mark them all modified (§9).
+fn layout_free_hash(node: Node, src: &str) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    for word in src[node.byte_range()].split_whitespace() {
+        word.hash(&mut hasher);
+    }
+    hasher.finish()
+}
+
 /// A file the Go tool never builds into its package (§1).
-fn build_ignored(source: &str) -> bool {
+pub(crate) fn build_ignored(source: &str) -> bool {
     for line in source.lines() {
         let line = line.trim();
         if line.starts_with("package ") {
@@ -115,6 +128,27 @@ pub(crate) fn import_path(rel_path: &str, manifests: &[(String, String)], packag
         None if dir.is_empty() => package.to_owned(),
         None => dir.to_owned(),
     }
+}
+
+/// The module paths a `go.mod` requires, for naming external nodes (§6 rule 3).
+pub(crate) fn requires(contents: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut in_block = false;
+    for line in contents.lines() {
+        let line = line.split("//").next().unwrap_or("").trim();
+        if in_block {
+            if line == ")" {
+                in_block = false;
+            } else if let Some(path) = line.split_whitespace().next() {
+                out.push(path.to_owned());
+            }
+        } else if line == "require (" {
+            in_block = true;
+        } else if let Some(rest) = line.strip_prefix("require ") {
+            out.extend(rest.split_whitespace().next().map(str::to_owned));
+        }
+    }
+    out
 }
 
 /// The name a package is referred to by when imported without an alias. Go
@@ -313,6 +347,53 @@ impl<'s> File<'s> {
         Some(format!("{path}.{name}"))
     }
 
+    /// A type for display in a field or type row. A function type is shown
+    /// with its parameter types only, in mermaid's generic brackets: a row with
+    /// `(` is read as a method, and stripping the parentheses alone runs
+    /// `func` into its first parameter (`funcs *Settings`).
+    fn shown(&self, node: Node) -> String {
+        if node.kind() != "function_type" {
+            return clean_type(&self.text(node));
+        }
+        let mut params = Vec::new();
+        if let Some(list) = node.child_by_field_name("parameters") {
+            let mut cursor = list.walk();
+            for param in list.named_children(&mut cursor) {
+                let Some(ty) = param.child_by_field_name("type") else {
+                    continue;
+                };
+                let prefix = if param.kind() == "variadic_parameter_declaration" {
+                    "..."
+                } else {
+                    ""
+                };
+                let mut c = param.walk();
+                let count = param.children_by_field_name("name", &mut c).count().max(1);
+                for _ in 0..count {
+                    params.push(format!(
+                        "{prefix}{}",
+                        self.text(ty)
+                            .split_whitespace()
+                            .collect::<Vec<_>>()
+                            .join(" ")
+                    ));
+                }
+            }
+        }
+        let result = node
+            .child_by_field_name("result")
+            .map(|r| {
+                let written = self.text(r);
+                let inner = written.trim().trim_start_matches('(').trim_end_matches(')');
+                format!(
+                    " {}",
+                    inner.split_whitespace().collect::<Vec<_>>().join(" ")
+                )
+            })
+            .unwrap_or_default();
+        clean_type(&format!("func~{}~{result}", params.join(", ")))
+    }
+
     /// Every type a type expression names, qualified (§5.1).
     fn refs(&self, node: Node, out: &mut Vec<String>) {
         match node.kind() {
@@ -424,9 +505,9 @@ impl<'s> File<'s> {
             _ => {
                 let row = Member {
                     name: "type".to_owned(),
-                    detail: clean_type(&self.text(ty)),
+                    detail: self.shown(ty),
                     type_refs: self.refs_of(ty),
-                    body_hash: text_hash(spec, self.src),
+                    body_hash: layout_free_hash(spec, self.src),
                     ..Default::default()
                 };
                 (Some(DEFINED), vec![row], Vec::new())
@@ -450,7 +531,7 @@ impl<'s> File<'s> {
             name: "type".to_owned(),
             detail: format!("= {}", clean_type(&self.text(ty))),
             type_refs: self.refs_of(ty),
-            body_hash: text_hash(spec, self.src),
+            body_hash: layout_free_hash(spec, self.src),
             ..Default::default()
         };
         let ip = self.ip.clone();
@@ -491,7 +572,7 @@ impl<'s> File<'s> {
                 }
                 continue;
             }
-            let detail = clean_type(&self.text(field_type));
+            let detail = self.shown(field_type);
             let type_refs = self.refs_of(field_type);
             for name in names {
                 members.push(Member {
@@ -499,7 +580,7 @@ impl<'s> File<'s> {
                     name,
                     detail: detail.clone(),
                     type_refs: type_refs.clone(),
-                    body_hash: text_hash(field, self.src),
+                    body_hash: layout_free_hash(field, self.src),
                     ..Default::default()
                 });
             }
@@ -604,7 +685,7 @@ impl<'s> File<'s> {
             param_names: names,
             type_refs,
             is_method: true,
-            body_hash: text_hash(node, self.src),
+            body_hash: layout_free_hash(node, self.src),
             ..Default::default()
         })
     }
@@ -719,7 +800,7 @@ impl<'s> File<'s> {
                 let member = Member {
                     visibility: visibility(&name),
                     detail: current.clone().unwrap_or_default(),
-                    body_hash: text_hash(spec, self.src),
+                    body_hash: layout_free_hash(spec, self.src),
                     name,
                     ..Default::default()
                 };
@@ -761,9 +842,9 @@ impl<'s> File<'s> {
             for name in names.into_iter().filter(|n| n != "_") {
                 self.module_members.push(Member {
                     visibility: visibility(&name),
-                    detail: ty.map(|t| clean_type(&self.text(t))).unwrap_or_default(),
+                    detail: ty.map(|t| self.shown(t)).unwrap_or_default(),
                     type_refs: ty.map(|t| self.refs_of(t)).unwrap_or_default(),
-                    body_hash: text_hash(spec, self.src),
+                    body_hash: layout_free_hash(spec, self.src),
                     name,
                     ..Default::default()
                 });
@@ -1278,6 +1359,38 @@ mod tests {
             (edge.to.as_str(), edge.via),
             ("example.com/demo/s.I", Some("pointer"))
         );
+    }
+
+    #[test]
+    fn a_function_typed_field_reads_as_a_function() {
+        let g = graph(&[("w/w.go", "package w\ntype W struct{ Probe func(s *Settings, f Fabric) Answer; Get func(url string) (int, error) }\n")]);
+        let w = get(&g, "example.com/demo/w.W");
+        let details: Vec<&str> = w.members.iter().map(|m| m.detail.as_str()).collect();
+        assert_eq!(
+            details,
+            ["func~*Settings, Fabric~ Answer", "func~string~ int, error"]
+        );
+    }
+
+    #[test]
+    fn gofmt_realignment_is_not_a_change() {
+        let base = graph(&[(
+            "w/w.go",
+            "package w\ntype World struct {\n\tPid  int\n\tName string\n}\n",
+        )]);
+        let head = graph(&[(
+            "w/w.go",
+            "package w\ntype World struct {\n\tPid         int\n\tName        string\n\tLongerField bool\n}\n",
+        )]);
+        let diff = crate::diff::diff_graphs(&base, &head);
+        let world = get(&diff, "example.com/demo/w.World");
+        let changed: Vec<&str> = world
+            .members
+            .iter()
+            .filter(|m| m.change != ChangeKind::Unchanged)
+            .map(|m| m.name.as_str())
+            .collect();
+        assert_eq!(changed, ["LongerField"], "only the added field changed");
     }
 
     #[test]

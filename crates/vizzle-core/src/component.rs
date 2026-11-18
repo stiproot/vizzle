@@ -7,7 +7,7 @@
 //! under no manifest fall back to their top-level directory. Imports become
 //! edges only when they resolve to another detected component.
 
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt::Write;
 use std::hash::{Hash, Hasher};
 
@@ -51,6 +51,9 @@ pub struct Component {
     pub change: ChangeKind,
     /// True if this component is outside the scope but shares an edge with an in-scope component.
     pub is_boundary: bool,
+    /// A Go `package main`: drawn `«main»`, since entry points are what a reader
+    /// of a Go repository looks for first (docs/languages/go.md §7).
+    pub main: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -368,7 +371,14 @@ fn build_from_graph(
 
     // Assign files; create split and fallback components on demand.
     let mut owned: Vec<Vec<usize>> = vec![Vec::new(); components.len()]; // file indices per component
-    for (i, (path, _)) in files.iter().enumerate() {
+    let mut go = GoPackages::default();
+    for (i, (path, contents)) in files.iter().enumerate() {
+        if Language::from_path(path) == Some(Language::Go) {
+            if let Some(idx) = go.assign(path, contents, manifests, &mut components, &mut owned) {
+                owned[idx].push(i);
+            }
+            continue;
+        }
         if let Some(component_path) = detector.split_component_path(path) {
             let idx = match detector.split_components.get(&component_path) {
                 Some(idx) => *idx,
@@ -429,6 +439,8 @@ fn build_from_graph(
     for idx in detector.split_components.values_mut() {
         *idx = remap[idx]; // split components are created only for a file
     }
+    go.remap(&remap);
+    go.unclash_names(&mut components);
 
     disambiguate_names(&mut components);
 
@@ -458,12 +470,15 @@ fn build_from_graph(
                 .unwrap_or(path)
                 .to_owned();
             file_hashes.insert(rel, file_hasher.finish());
-            let mod_key = if Language::from_path(path) == Some(Language::Rust) {
-                parse::rust_qualified_prefix(path, manifests).replace("::", ".")
-            } else {
-                parse::module_path(path)
-            };
-            module_owner.insert(mod_key, idx);
+            // A Go class is placed by its package directory, below.
+            if Language::from_path(path) != Some(Language::Go) {
+                let mod_key = if Language::from_path(path) == Some(Language::Rust) {
+                    parse::rust_qualified_prefix(path, manifests).replace("::", ".")
+                } else {
+                    parse::module_path(path)
+                };
+                module_owner.insert(mod_key, idx);
+            }
             if Language::from_path(path) == Some(Language::Python) {
                 let root = detector.import_root(path, &components[idx].path);
                 for name in importable_py_prefixes(path, &root) {
@@ -487,7 +502,12 @@ fn build_from_graph(
     }
     let mut placed: Vec<PlacedClass> = Vec::new();
     for class in &code.classes {
-        if let Some(&idx) = module_owner.get(&class.module) {
+        let owner = if class.lang == Language::Go {
+            go.by_dir.get(dir_of(&class.file))
+        } else {
+            module_owner.get(&class.module)
+        };
+        if let Some(&idx) = owner {
             components[idx].classes += 1;
             placed.push(PlacedClass {
                 component: components[idx].path.clone(),
@@ -496,7 +516,14 @@ fn build_from_graph(
         }
     }
 
-    let mut edges = build_edges(&code.imports, &components, &detector, &py_names);
+    let mut edges = build_edges(
+        &code.imports,
+        &components,
+        &detector,
+        &py_names,
+        &go,
+        manifests,
+    );
     // Add manifest path-dep edges at weight 0 for deps with no observed import (spec §7).
     for edge in build_cargo_path_dep_edges(manifests, &components) {
         if !edges.iter().any(|e| e.from == edge.from && e.to == edge.to) {
@@ -530,6 +557,7 @@ fn new_component(name: String, path: String) -> Component {
         changed_files: Vec::new(),
         change: ChangeKind::Unchanged,
         is_boundary: false,
+        main: false,
     }
 }
 
@@ -599,6 +627,8 @@ fn build_edges(
     components: &[Component],
     detector: &Detector,
     py_names: &HashMap<String, Option<usize>>,
+    go: &GoPackages,
+    manifests: &[(String, String)],
 ) -> Vec<ComponentEdge> {
     // Bare TS specifiers match manifest names; Python absolute imports match
     // the longest registered dotted prefix of the specifier.
@@ -610,15 +640,19 @@ fn build_edges(
 
     let mut buckets: BTreeMap<(usize, EdgeTarget), BTreeSet<&str>> = BTreeMap::new();
     for import in imports {
-        let Some(from) = detector.owner(&import.file) else {
+        let owner = if import.lang == Language::Go {
+            go.by_dir.get(dir_of(&import.file)).copied()
+        } else {
+            detector.owner(&import.file)
+        };
+        let Some(from) = owner else {
             continue;
         };
         let resolved = match import.lang {
             Language::TypeScript => resolve_ts(import, &ts_names, detector),
             Language::Python => resolve_py(import, py_names, detector),
             Language::Rust => resolve_rust(import, &ts_names, detector),
-            // Packages as components arrive with the component pass (go.md §7).
-            Language::Go => Resolved::Unknown,
+            Language::Go => go.resolve(import, manifests),
         };
         let target = match resolved {
             Resolved::Component(to) if to == from => continue,
@@ -799,6 +833,152 @@ fn resolve_rust(import: &Import, crate_names: &[(&str, usize)], _detector: &Dete
 
     // If not found as internal, treat as external
     Resolved::External(first_segment.to_owned())
+}
+
+/// Go packages as components (docs/languages/go.md §7): a `.go` file belongs to
+/// its package's directory, not to the `go.mod` above it, because Go's unit of
+/// import is the package and its import paths are exact.
+#[derive(Default)]
+struct GoPackages {
+    /// Package directory → component index.
+    by_dir: HashMap<String, usize>,
+    /// Import path → component index.
+    by_import_path: HashMap<String, usize>,
+}
+
+impl GoPackages {
+    /// The component a Go file belongs to, created on its package's first file.
+    /// A `//go:build ignore` file belongs to no package.
+    fn assign(
+        &mut self,
+        path: &str,
+        contents: &str,
+        manifests: &[(String, String)],
+        components: &mut Vec<Component>,
+        owned: &mut Vec<Vec<usize>>,
+    ) -> Option<usize> {
+        if parse::go::build_ignored(contents) {
+            return None;
+        }
+        let dir = dir_of(path).to_owned();
+        let is_main = contents.lines().any(|l| l.trim() == "package main");
+        if let Some(&idx) = self.by_dir.get(&dir) {
+            components[idx].main |= is_main;
+            return Some(idx);
+        }
+        let import_path = parse::go::import_path(path, manifests, "main");
+        let module = parse::go::go_module_of(path, manifests);
+        let (name, group) = match &module {
+            Some((module_dir, module_path)) => {
+                let below =
+                    under(&dir, module_dir).unwrap_or(if dir == *module_dir { "" } else { &dir });
+                let name = if below.is_empty() {
+                    last_segment(module_path).to_owned()
+                } else {
+                    below.to_owned()
+                };
+                (name, (*module_dir).to_owned())
+            }
+            None => (last_segment(&dir).to_owned(), dir_of(&dir).to_owned()),
+        };
+        let idx = components.len();
+        // The repository root's own package needs a path the root fallback
+        // component (`""`) does not already use.
+        let component_path = if dir.is_empty() {
+            ".".to_owned()
+        } else {
+            dir.clone()
+        };
+        let mut component = new_component(name, component_path);
+        component.group = group;
+        component.main = is_main;
+        components.push(component);
+        owned.push(Vec::new());
+        self.by_dir.insert(dir, idx);
+        self.by_import_path.insert(import_path, idx);
+        Some(idx)
+    }
+
+    fn remap(&mut self, remap: &HashMap<usize, usize>) {
+        // Go components are only ever created for a file, so all survive.
+        for idx in self
+            .by_dir
+            .values_mut()
+            .chain(self.by_import_path.values_mut())
+        {
+            *idx = remap[idx];
+        }
+    }
+
+    /// A Go package whose name another component already has is prefixed with
+    /// its module's last path element (`kernel/cli` beside a Python `cli`),
+    /// then with its full directory. `disambiguate_names` prefixes by last path
+    /// segment, which would mangle a name that already holds a `/`.
+    fn unclash_names(&self, components: &mut [Component]) {
+        let go: HashSet<usize> = self.by_dir.values().copied().collect();
+        for &idx in &go {
+            let taken = |name: &str, components: &[Component]| {
+                components
+                    .iter()
+                    .enumerate()
+                    .any(|(i, c)| i != idx && c.name == name)
+            };
+            if !taken(&components[idx].name, components) {
+                continue;
+            }
+            let module = last_segment(&components[idx].group).to_owned();
+            let prefixed = if module.is_empty() {
+                components[idx].path.clone()
+            } else {
+                format!("{module}/{}", components[idx].name)
+            };
+            components[idx].name = if taken(&prefixed, components) {
+                components[idx].path.clone()
+            } else {
+                prefixed
+            };
+        }
+    }
+
+    /// An import: a package in the tree, nothing for the standard library, or
+    /// the external module the importing module requires (§6).
+    fn resolve(&self, import: &Import, manifests: &[(String, String)]) -> Resolved {
+        let path = import.target.as_str();
+        if let Some(&idx) = self.by_import_path.get(path) {
+            return Resolved::Component(idx);
+        }
+        let first = path.split('/').next().unwrap_or(path);
+        if !first.contains('.') {
+            return Resolved::Unknown;
+        }
+        let module_of_import = parse::go::go_module_of(&import.file, manifests);
+        // An import under one of the tree's own modules names a directory with
+        // no selected Go files (all tests, say): nothing to point at.
+        let in_tree = manifests
+            .iter()
+            .filter(|(p, _)| last_segment(p) == "go.mod")
+            .filter_map(|(p, _)| parse::go::go_module_of(p, manifests).map(|(_, m)| m))
+            .any(|m| path == m || path.starts_with(&format!("{m}/")));
+        if in_tree {
+            return Resolved::Unknown;
+        }
+        let required = module_of_import.and_then(|(dir, _)| {
+            let go_mod = if dir.is_empty() {
+                "go.mod".to_owned()
+            } else {
+                format!("{dir}/go.mod")
+            };
+            let contents = manifests
+                .iter()
+                .find(|(p, _)| *p == go_mod)
+                .map(|(_, c)| c)?;
+            parse::go::requires(contents)
+                .into_iter()
+                .filter(|r| path == r || path.starts_with(&format!("{r}/")))
+                .max_by_key(String::len)
+        });
+        Resolved::External(required.unwrap_or_else(|| path.to_owned()))
+    }
 }
 
 // --------------------------------------------------------------------- diff
@@ -1174,6 +1354,8 @@ pub fn render_mermaid(graph: &ComponentGraph, opts: &ComponentRenderOptions) -> 
             };
             let stereotype = if component.is_boundary {
                 "«boundary»"
+            } else if component.main {
+                "«main»"
             } else {
                 "«component»"
             };
@@ -1399,6 +1581,7 @@ pub(crate) fn json_with_relations(
                 "changedFiles": c.changed_files,
                 "highlight": highlight.map(|lit| lit.contains(&c.path)),
                 "boundary": c.is_boundary,
+                "main": c.main,
             })
         })
         .collect();
@@ -2247,5 +2430,119 @@ mod tests {
             BTreeSet::from([("apps/svc", "pkgs/core"), ("apps/bridge", "pkgs/core")]),
             "both in-boundary→in-scope edges kept; boundary→boundary edge dropped"
         );
+    }
+
+    fn go_repo() -> (Pairs, Pairs) {
+        let manifests = pairs(&[
+            ("kernel/go.mod", "module github.com/x/kernel\n\nrequire (\n\tgithub.com/spf13/cobra v1.8.0\n\tgopkg.in/yaml.v3 v3.0.1\n)\n"),
+            ("cli/pyproject.toml", "[project]\nname = \"cli\"\n"),
+        ]);
+        let files = pairs(&[
+            ("kernel/kernel.go", "package kernel\nimport \"github.com/x/kernel/lease\"\nvar _ = lease.New\n"),
+            ("kernel/lease/lease.go", "package lease\nimport (\n\t\"context\"\n\t\"gopkg.in/yaml.v3\"\n)\ntype Lease struct{}\nfunc New() {}\n"),
+            ("kernel/lease/extra.go", "package lease\nfunc (l *Lease) Renew() {}\n"),
+            ("kernel/lease/lease_test.go", "package lease\nimport \"testing\"\n"),
+            ("kernel/cli/root.go", "package cli\nimport (\n\t\"github.com/spf13/cobra/doc\"\n\t\"github.com/x/kernel/lease\"\n)\n"),
+            ("kernel/cmd/h/main.go", "package main\nimport \"github.com/x/kernel/cli\"\nfunc main() {}\n"),
+            ("kernel/lease/gen.go", "//go:build ignore\n\npackage main\nfunc main() {}\n"),
+            ("cli/h/app.py", "class App: ...\n"),
+        ]);
+        (files, manifests)
+    }
+
+    #[test]
+    fn a_go_package_is_a_component_in_its_module_block() {
+        let (files, manifests) = go_repo();
+        let files: Pairs = files
+            .into_iter()
+            .filter(|(p, _)| !p.ends_with("_test.go"))
+            .collect();
+        let graph = build(&files, &manifests, &[]).unwrap();
+        let by_path = |p: &str| {
+            graph
+                .components
+                .iter()
+                .find(|c| c.path == p)
+                .unwrap_or_else(|| panic!("{p}"))
+        };
+        assert_eq!(
+            by_path("kernel").name,
+            "kernel",
+            "the module root package is named by the module"
+        );
+        assert_eq!(
+            by_path("kernel/lease").files,
+            2,
+            "the ignore file is in no package"
+        );
+        assert!(!by_path("kernel/lease").main);
+        assert!(by_path("kernel/cmd/h").main);
+        for go in ["kernel", "kernel/lease", "kernel/cli", "kernel/cmd/h"] {
+            assert_eq!(
+                by_path(go).group,
+                "kernel",
+                "{go} sits in its module's block"
+            );
+        }
+        assert_eq!(
+            by_path("kernel/lease").classes,
+            2,
+            "Lease (its methods from two files merged into one box) and the package's module box"
+        );
+        // The Go `cli` package clashes with the Python `cli` component.
+        assert_eq!(by_path("kernel/cli").name, "kernel/cli");
+        assert_eq!(by_path("cli").name, "cli");
+        let out = render_mermaid(&graph, &ComponentRenderOptions::default());
+        assert!(out.contains("«main»<br/><b>cmd/h</b>"), "{out}");
+    }
+
+    #[test]
+    fn go_edges_follow_import_paths_and_skip_the_standard_library() {
+        let (files, manifests) = go_repo();
+        let graph = build(&files, &manifests, &[]).unwrap();
+        let edges: BTreeSet<(String, String)> = graph
+            .edges
+            .iter()
+            .map(|e| {
+                let to = match &e.to {
+                    EdgeTarget::Component(p) => p.clone(),
+                    EdgeTarget::External(x) => format!("ext:{x}"),
+                };
+                (e.from.clone(), to)
+            })
+            .collect();
+        let expected: BTreeSet<(String, String)> = [
+            ("kernel", "kernel/lease"),
+            ("kernel/cli", "kernel/lease"),
+            ("kernel/cli", "ext:github.com/spf13/cobra"),
+            ("kernel/cmd/h", "kernel/cli"),
+            ("kernel/lease", "ext:gopkg.in/yaml.v3"),
+        ]
+        .iter()
+        .map(|(a, b)| (a.to_string(), b.to_string()))
+        .collect();
+        assert_eq!(
+            edges, expected,
+            "no context, no testing, one node per required module"
+        );
+    }
+
+    #[test]
+    fn a_root_go_mod_is_a_module_not_hidden() {
+        let manifests = pairs(&[("go.mod", "module example.com/chi\n")]);
+        let files = pairs(&[
+            ("chi.go", "package chi\ntype Router interface{ Use() }\n"),
+            (
+                "middleware/logger.go",
+                "package middleware\nimport \"example.com/chi\"\nvar _ chi.Router\n",
+            ),
+        ]);
+        let graph = build(&files, &manifests, &[]).unwrap();
+        let names: BTreeSet<&str> = graph.components.iter().map(|c| c.name.as_str()).collect();
+        assert_eq!(names, BTreeSet::from(["chi", "middleware"]));
+        assert!(graph
+            .edges
+            .iter()
+            .any(|e| e.from == "middleware" && e.to == EdgeTarget::Component(".".to_owned())));
     }
 }

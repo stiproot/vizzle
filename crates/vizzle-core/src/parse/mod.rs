@@ -1,6 +1,6 @@
 //! Source parsing via tree-sitter, one extractor per language.
 
-mod go;
+pub(crate) mod go;
 mod python;
 mod rust;
 mod typescript;

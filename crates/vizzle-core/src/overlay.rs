@@ -200,6 +200,7 @@ pub fn apply(
             changed_files,
             change: ChangeKind::Added,
             is_boundary: false,
+            main: false,
             path: planned.path,
         });
     }
