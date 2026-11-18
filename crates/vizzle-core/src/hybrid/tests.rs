@@ -485,3 +485,61 @@ fn h_family_names_are_accepted_as_aliases_and_draw_the_same() {
     let aliased = build_of(&spec, &graphs(&["pkg/a"]), &|_| true);
     assert_eq!(generic.svg, aliased.svg);
 }
+
+// ─── a real pass: the component graph JSON the CLI hands over ────────────────
+
+/// Two workspace packages, `apps/svc` importing `@x/core`, read the way the
+/// CLI reads a pass: built in-process, exported with `component::to_json`.
+fn real_pass() -> BTreeMap<String, ModuleGraph> {
+    let pairs = |items: &[(&str, &str)]| -> Vec<(String, String)> {
+        items
+            .iter()
+            .map(|(p, c)| ((*p).to_owned(), (*c).to_owned()))
+            .collect()
+    };
+    let manifests = pairs(&[
+        ("pkgs/core/package.json", r#"{"name": "@x/core"}"#),
+        ("apps/svc/package.json", r#"{"name": "svc"}"#),
+    ]);
+    let files = pairs(&[
+        ("pkgs/core/src/index.ts", "export class Core {}\n"),
+        (
+            "apps/svc/src/main.ts",
+            "import { Core } from \"@x/core\";\nclass Svc {}\n",
+        ),
+    ]);
+    let graph = crate::component::build(&files, &manifests, &[]).unwrap();
+    let json = crate::component::to_json(&graph, false);
+    BTreeMap::from([("p".to_owned(), super::module_graph(&json).unwrap())])
+}
+
+#[test]
+fn a_real_pass_reports_module_ids_as_spec_refs_name_them() {
+    let g = real_pass();
+    assert_eq!(g["p"].modules, vec!["apps/svc", "pkgs/core"]);
+    assert_eq!(
+        g["p"].edges,
+        vec![("apps/svc".to_owned(), "pkgs/core".to_owned())]
+    );
+}
+
+#[test]
+fn a_real_pass_reconciles_and_its_imports_fill_the_links_band() {
+    let mut spec = runtime_spec(&["p:apps/svc"]);
+    spec["shared"] = json!(["p:pkgs/core"]);
+    spec["nodes"][0]["links"] = json!("auto");
+    let built = build_of(&spec, &real_pass(), &|_| true);
+    assert_eq!(built.findings, Vec::<String>::new());
+    assert!(built
+        .svg
+        .unwrap()
+        .contains("links</tspan><tspan class=\"small\"> — core</tspan>"));
+    // the same spec without the shared core placed: the pass's other package is unplaced
+    let built = build_of(&runtime_spec(&["p:apps/svc"]), &real_pass(), &|_| true);
+    assert_eq!(built.findings.len(), 1);
+    assert!(
+        built.findings[0].contains("p:pkgs/core in scope"),
+        "{:?}",
+        built.findings
+    );
+}
