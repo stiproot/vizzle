@@ -176,7 +176,8 @@ pub struct Module {
     pub sub: Option<String>,
 }
 
-/// A component's links band: computed from the imports, or claimed.
+/// A component's links band: `"auto"` (computed from the imports), `"none"`,
+/// or the refs it claims.
 #[derive(Debug, Deserialize)]
 #[serde(untagged)]
 pub enum Links {
@@ -398,8 +399,11 @@ fn validate(spec: &Spec) -> Result<()> {
     };
     for n in &spec.nodes {
         if let Some(Links::Word(w)) = &n.links {
-            if w != "auto" {
-                bail!("{}: links is \"auto\" or a list of refs, not {w:?}", n.id);
+            if w != "auto" && w != "none" {
+                bail!(
+                    "{}: links is \"auto\", \"none\" or a list of refs, not {w:?}",
+                    n.id
+                );
             }
         }
         if let Some(t) = &n.inside {

@@ -512,6 +512,28 @@ fn component_diff_graph(
     })
 }
 
+/// Build one hybrid picture (`docs/diagram-types/hybrid.md`). `passes` maps
+/// each pass name to its component graph JSON (`component_json_from_dir`
+/// output); `exists` answers whether a repo-relative path is in the tree.
+/// An error means the spec could not be read; drift and lint come back as
+/// findings, with no SVG.
+pub fn hybrid_svg(
+    spec_json: &str,
+    passes: &std::collections::BTreeMap<String, String>,
+    exists: &dyn Fn(&str) -> bool,
+    spec_path: &str,
+) -> Result<hybrid::Built> {
+    let graphs = passes
+        .iter()
+        .map(|(name, json)| {
+            hybrid::module_graph(json)
+                .map(|g| (name.clone(), g))
+                .map_err(|e| e.context(format!("pass {name:?}")))
+        })
+        .collect::<Result<_>>()?;
+    hybrid::build(spec_json, &graphs, exists, spec_path)
+}
+
 /// A merged graph and what the overlay named that the code does not have.
 #[derive(Debug, Clone)]
 pub struct OverlayOutcome {

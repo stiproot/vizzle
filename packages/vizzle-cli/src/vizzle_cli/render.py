@@ -187,3 +187,58 @@ def render(
             renamed.append(path.replace(out_dir / f"{src.stem}{fence}{suffix}.{fmt}"))
         numbered = renamed
     return numbered or ([target] if target.exists() else [])
+
+
+# Where a Chrome usually lives when it is not on PATH (`vizzle hybrid --png`).
+_CHROME_INSTALLS = (
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+    "/Applications/Chromium.app/Contents/MacOS/Chromium",
+)
+
+
+def find_chrome() -> str | None:
+    """A Chrome to screenshot with: $CHROME, else a standard install, else one on PATH.
+
+    The order h's generator used (docs/plans/impl/hybrid.md §9 D4), so a machine that
+    rendered its PNGs before renders the same pixels now.
+    """
+    if os.environ.get("CHROME"):
+        return os.environ["CHROME"]
+    for path in _CHROME_INSTALLS:
+        if Path(path).exists():
+            return path
+    for browser in _BROWSERS:
+        found = shutil.which(browser)
+        if found:
+            return found
+    return None
+
+
+def svg_to_png(chrome: str, svg: str, width: float, height: float, png: Path) -> None:
+    """Screenshot one SVG at 2x through a throwaway HTML page (Chrome cannot
+    screenshot an SVG directly)."""
+    png.parent.mkdir(parents=True, exist_ok=True)
+    png.unlink(missing_ok=True)
+    with tempfile.TemporaryDirectory(prefix="vizzle-hybrid-png-") as tmp:
+        page = Path(tmp) / "page.html"
+        page.write_text(
+            '<!doctype html><html><head><meta charset="utf-8">'
+            f"<style>body{{margin:0;background:#fff}}</style></head><body>{svg}</body></html>",
+            encoding="utf-8",
+        )
+        result = subprocess.run(
+            [
+                chrome,
+                "--headless",
+                "--hide-scrollbars",
+                f"--window-size={int(width)},{int(height)}",
+                "--force-device-scale-factor=2",
+                f"--screenshot={png.resolve()}",
+                page.as_uri(),
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    if result.returncode != 0 or not png.exists():
+        raise RenderError(f"{chrome} could not screenshot {png.name}: {result.stderr.strip()[-400:]}")

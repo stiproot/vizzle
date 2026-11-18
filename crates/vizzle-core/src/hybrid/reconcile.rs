@@ -156,7 +156,7 @@ fn resolve_links(
 ) -> Vec<String> {
     let reach = view.reach(own);
     let claimed = match &n.links {
-        Some(Links::Word(_)) => {
+        Some(Links::Word(w)) if w == "auto" => {
             return shared
                 .iter()
                 .filter(|s| reach.contains(*s))
@@ -164,7 +164,8 @@ fn resolve_links(
                 .collect()
         }
         Some(Links::List(list)) => list,
-        None => return Vec::new(),
+        // "none", or no links at all: no band
+        _ => return Vec::new(),
     };
     for r in claimed {
         if !reach.contains(r) {
