@@ -604,6 +604,17 @@ mod tests {
             err.contains("member `run`: a planned member takes no `change`"),
             "{err}"
         );
+        // a new member planned through `modify` on a real class takes the same rule
+        let overlay = parse(
+            r#"{"modify": [{"class": "pkgs.core.src.index.Core",
+                "members": [{"name": "plannedMethod", "change": "added"}]}]}"#,
+        )
+        .unwrap();
+        let err = format!("{:#}", apply(real(), overlay).unwrap_err());
+        assert!(
+            err.contains("member `plannedMethod`: a planned member takes no `change`"),
+            "{err}"
+        );
         // without the field, the same class is planned and marked added
         assert!(apply(real(), class("")).is_ok());
     }

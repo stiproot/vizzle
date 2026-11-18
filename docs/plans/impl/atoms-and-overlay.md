@@ -110,7 +110,8 @@ raw JSON. The CLI's `_draw` is one function behind both `vizzle draw` and `compo
    `from→to`, or relation `from→to`). Every finding is listed, not only the first.
 6. **What counts as "could not run" (exit 2):** an unreadable file, input that is not JSON, a class
    graph given as GRAPH, an unknown field anywhere in the overlay (so a misspelt `ad` is not
-   silently empty), and an unknown relation kind, `lang` or visibility.
+   silently empty), an unknown relation kind, `lang` or visibility, and (decision 13) a `change`
+   written on a planned class or member.
 7. **A stale overlay draws nothing.** `overlay` without `--check`, and `component --overlay`, exit 1
    with the same findings and write nothing. A planned part naming what the code lacks would draw a
    picture that lies. `--check` differs only in that, when clean, it writes nothing.
@@ -139,6 +140,9 @@ raw JSON. The CLI's `_draw` is one function behind both `vizzle draw` and `compo
     field on a planned class is refused (exit 2), as decision 6 refuses any other input it would have to ignore.
     Silently overriding input is the same failure as silently dropping an unknown field. Implemented
     2026-11-18 for planned classes and planned members alike (`WireClass::into_placed`, `WireMember::into_member`).
+    Two edges, accepted: the check runs when an entry is applied, so an entry that is also stale (its class
+    or component missing, or colliding with a real one) reports as stale, exit 1, before its `change` is
+    seen; and `"change": null` reads as absent.
 14. **`-f json` on `class`, `component` and `diff`** (both types), and an `-o *.json` suffix picks
     it. `component --overlay` implies `--classes`, because class targets must be in the graph to be
     checked.

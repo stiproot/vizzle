@@ -176,8 +176,8 @@ fn change_of(value: Option<&str>) -> Result<ChangeKind> {
 }
 
 impl WireMember {
-    /// `forced` overrides the member's own change (an overlay addition is
-    /// `added` whatever it says); `None` reads it from the JSON.
+    /// `forced` is the change an overlay assigns; a `change` written in the
+    /// JSON beside it is refused. `None` reads the change from the JSON.
     pub(crate) fn into_member(self, forced: Option<ChangeKind>) -> Result<Member> {
         let visibility = match self.visibility.as_deref() {
             None => Visibility::default(),
