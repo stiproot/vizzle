@@ -1,7 +1,7 @@
 # One skill set: vizzle's plugin becomes the home of code comprehension
 
-**Status:** draft for review, 2026-11-18; revised after an independent review the same day (§2, §4–§9). §9 holds the
-open decisions, each with a recommendation.
+**Status:** built, 2026-11-18. The operator merged this spec with its recommendations, so D1–D10 stand as written in
+§9; §10 records how each acceptance item was met.
 **Established:** 2026-11-18
 **Follows:** `docs/plans/impl/hybrid.md` (§7 named this as separate work).
 
@@ -120,7 +120,7 @@ test in `packages/vizzle-cli/tests`, run by CI), the rewritten eval set and its 
 (D8) and the Python constants change (D9) if accepted. An independent reviewer checks the branch against §6; the
 operator reviews and merges. Then a release (minor) and the h PR of §7.
 
-## 9. Decisions (open; each with a recommendation)
+## 9. Decisions (accepted as recommended, 2026-11-18)
 
 | | Question | Recommendation | Why |
 |---|---|---|---|
@@ -134,3 +134,21 @@ operator reviews and merges. Then a release (minor) and the h PR of §7.
 | D8 | Must the skills work under Codex too? | **Yes: add a Codex manifest** (`plugins/vizzle/.codex-plugin/plugin.json`, skills at `./skills/`, moved by `bump-version.sh`) and keep skill frontmatter to the two keys both agents read. The commands stay Claude-only | h's production agent is Codex, and h's own plugin check already requires both manifests. Neither plugin has one today, so Codex runs get no comprehension skill at all |
 | D9 | Python `consts`: vizzle resolves only UPPER_SNAKE names; the toolkit resolved any listed name and printed string values | **Resolve any module-level name a manifest lists explicitly**; keep UPPER_SNAKE for what a `scope.path` manifest discovers on its own. Printing values: not now | An explicit list is the author saying "this one"; refusing it is a regression for anyone moving a manifest over. Auto-discovery keeps its filter so ordinary assignments stay out |
 | D10 | Does h keep `c4-mermaid-plugin`? | **The h PR of §7 decides.** Recommendation there: keep it for now (h's policy uses it for hand-drawn C4 structure), and revisit once `design-diagrams` has carried a C4 picture | This spec drops vizzle's dependency on it; whether h still wants it is a separate, smaller question with its own users |
+
+## 10. How acceptance was met (2026-11-18)
+
+| # | Met by |
+|---|---|
+| 1 | `plugins/vizzle/skills/{vizzle-diagrams,explain-code,design-diagrams}/` and `commands/{explain,map}.md`. Each description names its own questions and points at the other two for theirs |
+| 2 | `packages/vizzle-cli/tests/test_plugin.py`, in CI's existing pytest step: every `vizzle <command>` and flag in a skill or command file is checked against the Click command tree, and a flag named on its own must exist on some command. It also checks `click.Choice` values and reads indented and `~~~` fences, `\` continuations and `==` pins; a regression test feeds it nine lies, each of which must fail |
+| 3 | The same test fails on any line in the plugin naming code-comprehension, comprehend-code, generated-diagrams or c4-mermaid |
+| 4 | The same test: every colour in the prose must be `vizzle palette -f json`'s, except the one counter-example `design-diagrams` shows on purpose (listed, with its reason). `design-diagrams` maps the old delta convention onto it (D3) |
+| 5 | `evals/explain-code/` (D5): baseline 86% with the skill against 60% without, 24 runs. The gap is the answer's form (a mermaid diagram of the right kind, from vizzle, the four-part brief); the content checks pass equally in both, so whether the form helps a reader is still to be judged. Two skill defects found and fixed on the way; open items in its README |
+| 6 | `bump-version.sh` moves both manifests; `check` fails when either drifts (shown by hand) |
+| 7 | `plugins/vizzle/.codex-plugin/plugin.json` + `.agents/plugins/marketplace.json` (D8), held by the same test; skill frontmatter is exactly `name` + `description` |
+
+D9 shipped as its own commit: a lowercase public Python module assignment is kept in `CodeGraph.module_values`,
+reached only by a manifest's `consts`, never drawn or diffed (`docs/curated-diagrams.md` §4).
+
+Found while building, outside this spec: `vizzle diff` ignores Rust files entirely (`git.py`'s source suffixes predate
+Rust support), so a Rust-only change reads as "no changed Python/TypeScript files". A separate fix.

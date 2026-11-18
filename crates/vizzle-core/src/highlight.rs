@@ -132,6 +132,7 @@ pub fn around_classes(graph: &CodeGraph, centres: &BTreeSet<String>, depth: usiz
             .cloned()
             .collect(),
         imports: graph.imports.clone(),
+        module_values: graph.module_values.clone(),
     }
 }
 

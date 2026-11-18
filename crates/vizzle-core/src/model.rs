@@ -1,5 +1,7 @@
 //! Language-neutral code graph extracted from source files.
 
+use std::collections::BTreeMap;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Language {
     Python,
@@ -306,6 +308,11 @@ pub struct Import {
 pub struct CodeGraph {
     pub classes: Vec<Class>,
     pub imports: Vec<Import>,
+    /// Public module-level assignments whose names do not say "constant"
+    /// (a lowercase Python name), keyed by module. Never drawn and never
+    /// diffed, so ordinary assignment stays out of every diagram; a curated
+    /// manifest that names one in `consts` gets it (curated-diagrams.md §4).
+    pub module_values: BTreeMap<String, Vec<Member>>,
 }
 
 impl CodeGraph {
@@ -319,6 +326,9 @@ impl CodeGraph {
     pub fn merge(&mut self, other: CodeGraph) {
         self.classes.extend(other.classes);
         self.imports.extend(other.imports);
+        for (module, values) in other.module_values {
+            self.module_values.entry(module).or_default().extend(values);
+        }
     }
 
     /// Sort classes and imports for deterministic output.

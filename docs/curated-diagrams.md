@@ -103,6 +103,23 @@ function, and a curated entry lists the three that matter. The manifest
 selects; vizzle supplies signatures for the selection. A named function that
 vizzle cannot find is the §3 error.
 
+**`consts` reaches any public module-level name a manifest lists, not only
+UPPER_SNAKE ones.** Decided 2026-11-18 (`docs/plans/impl/skill-set.md` D9): the
+manifest format came from code-comprehension's toolkit, whose Python extractor
+resolved any listed name, so a manifest moved over that named `registry` would
+otherwise fail. vizzle's module box still holds only UPPER_SNAKE names, which is
+what keeps ordinary assignment out of every class diagram, every `scope.path`
+diagram and every diff. A lowercase public assignment (to a plain name, never a
+tuple or an attribute) is kept aside in the graph's `module_values`, which
+nothing draws or compares; a `consts` entry is the one way to reach it,
+because listing a name is the author choosing it. A `const` entry's realization
+edge reads the declared type from the same place. A module whose public surface
+is only such assignments has no box, and its entry still resolves through
+`consts`. A value set in an `else`, `elif`, `except` or `finally` branch (the
+`except ImportError: tomllib = None` idiom) is kept aside the same way, whatever
+its case, since those branches have never fed the box. The toolkit also printed a
+string constant's value; vizzle does not.
+
 ### 4.1 Decision: curated mode ignores the density heuristics
 
 **Decided 2026-08-17, from a real miss.** Resolving h's

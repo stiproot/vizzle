@@ -5,7 +5,7 @@
     {
       "name": "vizzle",
       "source": "./plugins/vizzle",
-      "description": "Read an unfamiliar codebase as a diagram instead of file by file, and see what a change did to its shape."
+      "description": "Read a codebase as a diagram, explain code with one diagram at the right level, design changes over the real code, and publish diagrams for people."
     }
   ]
 }

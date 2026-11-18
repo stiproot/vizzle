@@ -486,6 +486,25 @@ def test_doc_lists_consts_before_functions_and_omits_param_types(tmp_path):
     assert "_PRIVATE" not in body, "a private module-level name is not module surface"
 
 
+def test_doc_consts_reaches_a_lowercase_name_the_manifest_lists(tmp_path):
+    # A manifest moved over from code-comprehension's toolkit may name a lowercase
+    # module-level value; listing it is the author choosing it.
+    (tmp_path / "app.py").write_text("registry: dict[str, int] = {}\nother = 1\ndef run() -> None: ...\n")
+    doc = tmp_path / "d.md"
+    doc.write_text(MODULE_DOC.replace('"consts": ["WELL_KNOWN"]', '"consts": ["registry"]'))
+
+    result = CliRunner().invoke(main, ["doc", str(doc), "--root", str(tmp_path)])
+    assert result.exit_code == 0, result.output
+    body = doc.read_text()
+    assert "registry" in body, body
+    assert "other" not in body, "only what the manifest lists"
+
+    # The class diagram itself never draws a lowercase assignment.
+    result = CliRunner().invoke(main, ["class", str(tmp_path), "--modules"])
+    assert result.exit_code == 0, result.output
+    assert "registry" not in result.output, result.output
+
+
 def test_render_selects_diagram_sources_not_the_readme(tmp_path):
     from vizzle_cli import render as render_mod
 

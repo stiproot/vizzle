@@ -17,16 +17,31 @@ pub fn parse(module: &str, source: &str) -> Result<CodeGraph> {
 
     let mut graph = CodeGraph::default();
     let mut module_fns = Vec::new();
+    let mut values = Vec::new();
     collect(
         tree.root_node(),
         source,
         module,
         None,
         &mut graph,
-        &mut module_fns,
+        &mut ModuleSurface {
+            members: &mut module_fns,
+            values: &mut values,
+        },
     );
     super::push_module_box(module, module_fns, Language::Python, &mut graph);
+    if !values.is_empty() {
+        values.sort_by(|a, b| a.name.cmp(&b.name));
+        graph.module_values.insert(module.to_owned(), values);
+    }
     Ok(graph)
+}
+
+/// What a module declares at its top level besides classes: the members of
+/// its `<<module>>` box, and the assignments only a manifest may ask for.
+struct ModuleSurface<'a> {
+    members: &'a mut Vec<Member>,
+    values: &'a mut Vec<Member>,
 }
 
 /// Walk top-level (and nested) statements, collecting class definitions.
@@ -36,7 +51,7 @@ fn collect(
     module: &str,
     outer: Option<&str>,
     graph: &mut CodeGraph,
-    module_fns: &mut Vec<Member>,
+    surface: &mut ModuleSurface,
 ) {
     let mut cursor = node.walk();
     for child in node.named_children(&mut cursor) {
@@ -45,7 +60,7 @@ fn collect(
             // Only reached at module level: the walk never descends into a
             // class body (extract_class owns that) or a function body, so any
             // definition seen here is module surface (class.md §2.4).
-            "function_definition" => extract_module_function(child, src, &[], module_fns),
+            "function_definition" => extract_module_function(child, src, &[], surface.members),
             "decorated_definition" => {
                 let decorators = decorator_names(child, src);
                 if let Some(def) = child.child_by_field_name("definition") {
@@ -54,29 +69,61 @@ fn collect(
                             extract_class(def, src, module, outer, &decorators, graph)
                         }
                         "function_definition" => {
-                            extract_module_function(def, src, &decorators, module_fns)
+                            extract_module_function(def, src, &decorators, surface.members)
                         }
                         _ => {}
                     }
                 }
             }
             // A module-level UPPER_SNAKE assignment is a constant by Python's
-            // own convention, and the manifest's `consts` list selects from
-            // these (curated-diagrams.md §4).
-            "expression_statement" => extract_module_const(child, src, module_fns),
+            // own convention and joins the module box; any other public name
+            // is kept aside for a manifest's `consts` to name (curated-diagrams.md §4).
+            "expression_statement" => extract_module_const(child, src, surface),
             "import_statement" | "import_from_statement" => extract_imports(child, src, graph),
             // Classes (and imports) can hide inside `if TYPE_CHECKING:` etc.
             "if_statement" | "try_statement" | "block" => {
-                collect(child, src, module, outer, graph, module_fns)
+                collect(child, src, module, outer, graph, surface)
+            }
+            // The other branches have never fed the box or the class list, and
+            // changing that would change every diagram that has one. A value set
+            // there (`except ImportError: tomllib = None`) is still one a manifest
+            // may name, so these branches feed `values`, whatever the name's case.
+            "else_clause" | "elif_clause" | "except_clause" | "finally_clause" => {
+                collect_branch_values(child, src, surface.values)
             }
             _ => {}
         }
     }
 }
 
-/// A module-level constant: public, and UPPER_SNAKE, which is how Python says
-/// "constant" and what keeps ordinary module-level assignment out of the box.
-fn extract_module_const(stmt: Node, src: &str, members: &mut Vec<Member>) {
+/// Every public plain-name assignment in a branch `collect` does not walk for
+/// the box, nested branches included, as values a manifest's `consts` may name.
+fn collect_branch_values(node: Node, src: &str, values: &mut Vec<Member>) {
+    let mut cursor = node.walk();
+    for child in node.named_children(&mut cursor) {
+        match child.kind() {
+            "expression_statement" => {
+                let mut members = Vec::new();
+                let mut surface = ModuleSurface {
+                    members: &mut members,
+                    values,
+                };
+                extract_module_const(child, src, &mut surface);
+                values.append(&mut members);
+            }
+            "block" | "if_statement" | "try_statement" | "else_clause" | "elif_clause"
+            | "except_clause" | "finally_clause" => collect_branch_values(child, src, values),
+            _ => {}
+        }
+    }
+}
+
+/// A public module-level assignment to a plain name. UPPER_SNAKE is how
+/// Python says "constant", and only those join the module box: that is what
+/// keeps ordinary module-level assignment out of every diagram. The rest go to
+/// `values`, which nothing draws; a manifest that lists one by name is the
+/// author saying "this one" (curated-diagrams.md §4).
+fn extract_module_const(stmt: Node, src: &str, surface: &mut ModuleSurface) {
     let Some(assign) = ({
         let mut cursor = stmt.walk();
         let found = stmt
@@ -89,25 +136,32 @@ fn extract_module_const(stmt: Node, src: &str, members: &mut Vec<Member>) {
     let Some(left) = assign.child_by_field_name("left") else {
         return;
     };
-    let name = text(left, src);
-    let is_const = !name.starts_with('_')
-        && name
-            .chars()
-            .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_')
-        && name.chars().any(|c| c.is_ascii_uppercase());
-    if !is_const {
+    if left.kind() != "identifier" {
         return;
     }
+    let name = text(left, src);
+    if name.starts_with('_') {
+        return;
+    }
+    let is_const = name
+        .chars()
+        .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_')
+        && name.chars().any(|c| c.is_ascii_uppercase());
     let detail = assign
         .child_by_field_name("type")
         .map(|ty| clean_type(&text(ty, src)))
         .unwrap_or_default();
-    members.push(Member {
+    let member = Member {
         name,
         detail,
         body_hash: text_hash(assign, src),
         ..Default::default()
-    });
+    };
+    if is_const {
+        surface.members.push(member);
+    } else {
+        surface.values.push(member);
+    }
 }
 
 /// A module-level `def`; the shape is a method's. Private helpers (leading
@@ -233,10 +287,14 @@ fn extract_class(
     let mut members = Vec::new();
     if let Some(body) = node.child_by_field_name("body") {
         extract_body(body, src, &mut members);
-        // Nested classes only. The discard buffer is deliberate: this body's
-        // `def`s are methods, already taken by extract_body above, and must not
-        // also land in the module box.
-        collect(body, src, module, Some(&local_name), graph, &mut Vec::new());
+        // Nested classes only. The discard buffers are deliberate: this body's
+        // `def`s are methods and its assignments fields, already taken by
+        // extract_body above, and must not also land in the module's surface.
+        let discard = &mut ModuleSurface {
+            members: &mut Vec::new(),
+            values: &mut Vec::new(),
+        };
+        collect(body, src, module, Some(&local_name), graph, discard);
     }
 
     let is_abstract = members.iter().any(|m: &Member| m.is_abstract);
@@ -607,6 +665,59 @@ class Point:
         assert_ne!(
             hash_of(with_string_later),
             hash_of(with_string_later_changed)
+        );
+    }
+
+    #[test]
+    fn a_lowercase_module_assignment_is_kept_aside_not_drawn() {
+        let graph = parse(
+            "pkg.app",
+            "LIMIT = 3\nregistry: dict[str, int] = {}\n_hidden = 1\na, b = 1, 2\nobj.attr = 4\ndef run() -> None: ...\n",
+        )
+        .unwrap();
+        let module = graph.classes.iter().find(|c| c.is_module_box()).unwrap();
+        let boxed: Vec<&str> = module.members.iter().map(|m| m.name.as_str()).collect();
+        assert_eq!(
+            boxed,
+            ["LIMIT", "run"],
+            "only constants by name join the box"
+        );
+        let values: Vec<&str> = graph.module_values["pkg.app"]
+            .iter()
+            .map(|m| m.name.as_str())
+            .collect();
+        assert_eq!(values, ["registry"], "public plain names only");
+        assert_eq!(graph.module_values["pkg.app"][0].detail, "dict~str, int~");
+    }
+
+    #[test]
+    fn a_changed_lowercase_value_is_not_a_change() {
+        let base = parse("pkg.app", "registry = {}\ndef run() -> None: ...\n").unwrap();
+        let head = parse("pkg.app", "registry = {'a': 1}\ndef run() -> None: ...\n").unwrap();
+        let diff = crate::diff::diff_graphs(&base, &head);
+        assert!(
+            !diff.diff_mode(),
+            "a value nothing draws cannot change a diagram"
+        );
+    }
+
+    #[test]
+    fn a_value_set_in_another_branch_is_kept_aside_for_a_manifest() {
+        let src = "try:\n    import tomllib\nexcept ImportError:\n    tomllib = None\n    FALLBACK = 1\nelse:\n    in_else = 1\nfinally:\n    fin = 2\nif X:\n    a = 1\nelif Y:\n    b = 2\nelse:\n    if Z:\n        nested = 3\n";
+        let graph = parse("pkg.app", src).unwrap();
+        let mut values: Vec<&str> = graph.module_values["pkg.app"]
+            .iter()
+            .map(|m| m.name.as_str())
+            .collect();
+        values.sort();
+        assert_eq!(
+            values,
+            ["FALLBACK", "a", "b", "fin", "in_else", "nested", "tomllib"]
+        );
+        assert!(
+            graph.classes.iter().all(|c| !c.is_module_box()),
+            "no branch value joins the box: {:?}",
+            graph.classes
         );
     }
 }

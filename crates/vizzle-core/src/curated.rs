@@ -123,34 +123,52 @@ fn stereotype(entry: &Entry) -> Option<String> {
 }
 
 /// The members to draw for an entry, taken from the parsed class and narrowed
-/// by the manifest where it asks for a subset.
-fn members_for<'a>(entry: &Entry, class: &'a Class) -> Result<Vec<&'a Member>> {
-    // An entry may name both, and the managed documents list constants first.
-    // `.or()` here would silently drop every const on any entry that also names
-    // functions — which is most of them.
-    let wanted: Vec<&String> = entry
-        .consts
-        .iter()
-        .chain(entry.functions.iter())
-        .flatten()
-        .collect();
-    if wanted.is_empty() {
-        return Ok(class.drawn_members().collect());
+/// by the manifest where it asks for a subset. `values` are the module's
+/// assignments that are not constants by name: only a `consts` entry reaches
+/// them, because listing one is the author choosing it (curated-diagrams.md §4).
+/// `class` is absent for a module whose only surface is such assignments.
+fn members_for<'a>(
+    entry: &Entry,
+    qualified: &str,
+    class: Option<&'a Class>,
+    values: &'a [Member],
+) -> Result<Vec<&'a Member>> {
+    let drawn: Vec<&Member> = class
+        .map(|c| c.drawn_members().collect())
+        .unwrap_or_default();
+    let consts = entry.consts.iter().flatten();
+    let functions = entry.functions.iter().flatten();
+    if consts.clone().chain(functions.clone()).next().is_none() {
+        return Ok(drawn);
     }
-    let by_name: HashMap<&str, &Member> = class
-        .drawn_members()
-        .map(|m| (m.name.as_str(), m))
-        .collect();
-    wanted
-        .iter()
+    let by_name: HashMap<&str, &Member> = drawn.iter().map(|m| (m.name.as_str(), *m)).collect();
+    let value_by_name: HashMap<&str, &Member> =
+        values.iter().map(|m| (m.name.as_str(), m)).collect();
+    let missing = |name: &String| {
+        anyhow::anyhow!(
+            "entry `{}`: `{}` is not a public member of {}",
+            entry.id,
+            name,
+            qualified
+        )
+    };
+    // An entry may name both, and the managed documents list constants first.
+    // Chaining the two lists, never `.or()`, keeps every const on an entry that
+    // also names functions — which is most of them.
+    consts
         .map(|name| {
-            by_name.get(name.as_str()).copied().with_context(|| {
-                format!(
-                    "entry `{}`: `{}` is not a public member of {}",
-                    entry.id, name, class.qualified
-                )
-            })
+            by_name
+                .get(name.as_str())
+                .or_else(|| value_by_name.get(name.as_str()))
+                .copied()
+                .ok_or_else(|| missing(name))
         })
+        .chain(functions.map(|name| {
+            by_name
+                .get(name.as_str())
+                .copied()
+                .ok_or_else(|| missing(name))
+        }))
         .collect()
 }
 
@@ -188,22 +206,29 @@ pub fn render(
             }
         } else {
             let qualified = qualified_for(entry, manifests)?;
-            let class = by_qualified.get(qualified.as_str()).with_context(|| {
-                let how = if rust_file(entry.file.as_deref().unwrap_or("")) {
-                    " (a Rust entry resolves by `crate::module::Type`)"
-                } else {
-                    ""
-                };
-                format!(
-                    "entry `{}` resolves to `{}`, which is not in the parsed graph \
+            let values = module_values_for(entry, graph, manifests);
+            let found = by_qualified.get(qualified.as_str()).copied();
+            // A module whose public surface is only lowercase assignments has no
+            // box; its values still answer a `consts` list.
+            let class = match found {
+                None if entry.kind == "module" && !values.is_empty() => None,
+                _ => Some(found.with_context(|| {
+                    let how = if rust_file(entry.file.as_deref().unwrap_or("")) {
+                        " (a Rust entry resolves by `crate::module::Type`)"
+                    } else {
+                        ""
+                    };
+                    format!(
+                        "entry `{}` resolves to `{}`, which is not in the parsed graph \
                      — was it renamed, or is `{}` outside the scanned tree?{}",
-                    entry.id,
-                    qualified,
-                    entry.file.as_deref().unwrap_or("?"),
-                    how
-                )
-            })?;
-            for member in members_for(entry, class)? {
+                        entry.id,
+                        qualified,
+                        entry.file.as_deref().unwrap_or("?"),
+                        how
+                    )
+                })?),
+            };
+            for member in members_for(entry, &qualified, class, values)? {
                 let _ = writeln!(out, "    {}", member_row(member, false, Params::NamesOnly));
             }
             if let Some(note) = &entry.note {
@@ -217,7 +242,7 @@ pub fn render(
     // `const claudeStrategy: AgentStrategy` realizes AgentStrategy, and the edge
     // is only drawn if that type is also in the diagram (curated-diagrams.md §4).
     for entry in &manifest.classes {
-        let Some(realizes) = realized_type(entry, &by_qualified, manifests) else {
+        let Some(realizes) = realized_type(entry, &by_qualified, graph, manifests) else {
             continue;
         };
         if let Some(target) = entry_id_for(&realizes, &manifest.classes) {
@@ -248,6 +273,7 @@ pub fn render(
 fn realized_type(
     entry: &Entry,
     by_qualified: &HashMap<&str, &Class>,
+    graph: &CodeGraph,
     manifests: &[(String, String)],
 ) -> Option<String> {
     if entry.kind != "const" {
@@ -255,12 +281,31 @@ fn realized_type(
     }
     let module = module_box_for(entry.file.as_deref()?, manifests);
     let symbol = entry.symbol.as_deref()?;
-    let member = by_qualified
-        .get(module.as_str())?
-        .members
-        .iter()
+    let boxed = by_qualified
+        .get(module.as_str())
+        .into_iter()
+        .flat_map(|c| c.members.iter());
+    let member = boxed
+        .chain(graph.module_values.get(&module).into_iter().flatten())
         .find(|m| m.name == symbol)?;
     (!member.detail.is_empty()).then(|| member.detail.clone())
+}
+
+/// The module's assignments that are not constants by name (a lowercase Python
+/// name), for a `module` entry's `consts` list. Empty for every other kind.
+fn module_values_for<'a>(
+    entry: &Entry,
+    graph: &'a CodeGraph,
+    manifests: &[(String, String)],
+) -> &'a [Member] {
+    match (entry.kind.as_str(), entry.file.as_deref()) {
+        ("module", Some(file)) => graph
+            .module_values
+            .get(&module_box_for(file, manifests))
+            .map(Vec::as_slice)
+            .unwrap_or_default(),
+        _ => &[],
+    }
 }
 
 /// The diagram id for a type name, if the diagram contains it. An edge to a
@@ -310,6 +355,88 @@ mod tests {
 
     fn manifest(json: &str) -> Manifest {
         parse_manifest(json).unwrap()
+    }
+
+    fn python_graph(source: &str) -> CodeGraph {
+        let files = vec![("app.py".to_owned(), source.to_owned())];
+        crate::parse::parse_files_with_manifests(&files, &[]).unwrap()
+    }
+
+    #[test]
+    fn consts_names_a_lowercase_module_value_explicitly() {
+        let graph = python_graph(
+            "registry: dict[str, int] = {}\nWELL_KNOWN = 1\nhelper_value = 2\ndef run() -> None: ...\n",
+        );
+        let manifest = manifest(
+            r#"{"classes":[{"id":"App","kind":"module","file":"app.py","consts":["registry","WELL_KNOWN"],"functions":["run"]}]}"#,
+        );
+        let rendered = render(&manifest, &graph, &[]).unwrap();
+        assert!(rendered.contains("registry"), "{rendered}");
+        assert!(rendered.contains("WELL_KNOWN"), "{rendered}");
+        assert!(
+            rendered.find("registry") < rendered.find("+run("),
+            "consts first, in the order listed: {rendered}"
+        );
+        assert!(
+            !rendered.contains("helper_value"),
+            "only what is listed: {rendered}"
+        );
+    }
+
+    #[test]
+    fn a_module_with_only_lowercase_values_still_answers_consts() {
+        let graph = python_graph("settings = {}\n");
+        let manifest = manifest(
+            r#"{"classes":[{"id":"Cfg","kind":"module","file":"app.py","consts":["settings"]}]}"#,
+        );
+        let rendered = render(&manifest, &graph, &[]).unwrap();
+        assert!(rendered.contains("settings"), "{rendered}");
+    }
+
+    #[test]
+    fn a_value_is_reached_only_through_consts() {
+        let graph = python_graph("settings = {}\ndef run() -> None: ...\n");
+        // `functions` is a list of functions; a value named there is a typo.
+        let typo = manifest(
+            r#"{"classes":[{"id":"App","kind":"module","file":"app.py","functions":["settings"]}]}"#,
+        );
+        let err = render(&typo, &graph, &[]).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("`settings` is not a public member"),
+            "{err}"
+        );
+        // And an entry that lists nothing draws the box, which never holds values.
+        let unlisted = manifest(r#"{"classes":[{"id":"App","kind":"module","file":"app.py"}]}"#);
+        let rendered = render(&unlisted, &graph, &[]).unwrap();
+        assert!(!rendered.contains("settings"), "{rendered}");
+    }
+
+    #[test]
+    fn a_missing_const_still_fails() {
+        let graph = python_graph("settings = {}\n");
+        let manifest = manifest(
+            r#"{"classes":[{"id":"Cfg","kind":"module","file":"app.py","consts":["gone"]}]}"#,
+        );
+        let err = render(&manifest, &graph, &[]).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("`gone` is not a public member of app"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn a_lowercase_const_entry_realizes_its_declared_type() {
+        let graph = python_graph("class Strategy: ...\nclaude_strategy: Strategy = Strategy()\n");
+        let manifest = manifest(
+            r#"{"classes":[
+                {"id":"Strategy","kind":"class","file":"app.py","symbol":"Strategy"},
+                {"id":"claude","kind":"const","file":"app.py","symbol":"claude_strategy","note":"claude"}
+            ]}"#,
+        );
+        let rendered = render(&manifest, &graph, &[]).unwrap();
+        assert!(rendered.contains("claude ..|> Strategy"), "{rendered}");
     }
 
     #[test]

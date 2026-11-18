@@ -891,6 +891,7 @@ fn diff_classes(base: &[PlacedClass], head: &[PlacedClass]) -> Vec<PlacedClass> 
     let as_graph = |placed: &[PlacedClass]| CodeGraph {
         classes: placed.iter().map(|p| p.class.clone()).collect(),
         imports: Vec::new(),
+        ..Default::default()
     };
     // Base first so a surviving class is attributed to its head component
     // (a moved class follows the move); removed classes keep their base home.
@@ -1087,6 +1088,7 @@ pub fn zoom(graph: &ComponentGraph) -> (CodeGraph, HashMap<String, String>) {
         CodeGraph {
             classes,
             imports: Vec::new(),
+            ..Default::default()
         },
         component_of,
     )
@@ -1363,6 +1365,7 @@ fn class_relations(graph: &ComponentGraph) -> Vec<crate::resolve::ResolvedRelati
     let code = CodeGraph {
         classes: graph.classes.iter().map(|p| p.class.clone()).collect(),
         imports: Vec::new(),
+        ..Default::default()
     };
     crate::resolve::resolve_all_relations(&code)
         .into_iter()

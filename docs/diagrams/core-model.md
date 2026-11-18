@@ -48,6 +48,7 @@ classDiagram
     +diff_mode(self) bool
     +imports : Vec~Import~
     +merge(self, other)
+    +module_values : BTreeMap~String, Vec~Member~~
     +normalize(self)
     +without_module_boxes(self) CodeGraph
   }

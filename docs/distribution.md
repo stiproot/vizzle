@@ -229,6 +229,17 @@ manifests that were found perfectly well. Without that warning up front an
 agent burns a call and, worse, may report the emptiness as a finding about the
 architecture.
 
+**Extended 2026-11-18** (`docs/plans/impl/skill-set.md`): the plugin became the
+single home of diagramming and code comprehension, replacing code-comprehension
+in h's use. It carries three skills (`vizzle-diagrams` for reading code,
+`explain-code` for answering a question with one diagram, `design-diagrams` for
+overlays, hybrid pictures, hand-drawn diagrams and publishing), two commands
+(`/vizzle:explain`, `/vizzle:map`), and a Codex manifest beside Claude's, both at
+the CLI's version. The lying-spec guard became a test:
+`packages/vizzle-cli/tests/test_plugin.py` reads every skill and command file
+and fails on a `vizzle` command or flag the CLI does not have. `explain-code`
+has an eval set at `evals/explain-code/`.
+
 ### 2.6.1 What the evaluation showed
 
 Tested by installing the plugin and prompting a real agent, which is the only

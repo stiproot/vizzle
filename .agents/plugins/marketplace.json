@@ -1,0 +1,20 @@
+{
+  "name": "vizzle-marketplace",
+  "interface": {
+    "displayName": "vizzle"
+  },
+  "plugins": [
+    {
+      "name": "vizzle",
+      "source": {
+        "source": "local",
+        "path": "./plugins/vizzle"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_USE"
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}

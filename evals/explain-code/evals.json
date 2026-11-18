@@ -1,0 +1,55 @@
+{
+  "skill_name": "explain-code",
+  "target": "this repository, checked out at target_ref into a throwaway worktree",
+  "target_ref": "233ee82",
+  "notes": "Natural questions a person asks about a repository they do not know. They deliberately do not all ask for a diagram, and each targets a different level, so the set discriminates on level selection: the skill's central judgement. Structural answers must take their diagram from vizzle (the `%% vizzle:` trailer is the evidence); behavioural answers are drawn by hand; the trivial question gets no diagram. Rewritten from code-comprehension's comprehend-code evals, whose assertions required hand-drawn C4 (docs/plans/impl/skill-set.md D5).",
+  "evals": [
+    {
+      "id": 0,
+      "name": "repo-shape",
+      "prompt": "I've just been handed this repository and I have no idea how the pieces fit together. What are the moving parts, and how do they depend on each other?",
+      "expected_level": "the repo's components, from vizzle component",
+      "expected_output": "A component diagram taken from `vizzle component` (the Rust core, the PyO3 bindings, the Python CLI, the site and web packages), then a walkthrough anchored to real paths, then where to look next.",
+      "needles": {
+        "vizzle-core": "the Rust core",
+        "vizzle-py": "the PyO3 bindings",
+        "vizzle-cli": "the Python CLI package"
+      }
+    },
+    {
+      "id": 1,
+      "name": "doc-check-sequence",
+      "prompt": "When CI runs `vizzle doc --dir docs/diagrams --check`, what actually happens, in order? I want to know where it decides a document is stale and what makes it exit non-zero.",
+      "expected_level": "behaviour: a sequence diagram, drawn by hand",
+      "expected_output": "A sequenceDiagram from the CLI's doc command through managed.py (discover, read, scope_of) into the Rust core (curated_diagram_from_dir or class_diagram_from_dir) and back, with the stale comparison and the non-zero exit anchored to cli.py. A component diagram here is a level-selection failure.",
+      "needles": {
+        "managed": "managed.py, which finds and reads the documents",
+        "curated": "the curated render in the core",
+        "stale": "the stale decision"
+      }
+    },
+    {
+      "id": 2,
+      "name": "curated-zoom",
+      "prompt": "I want to add a new manifest `kind` to the curated diagrams that `vizzle doc` renders. Before I touch anything, explain how that part of vizzle-core is put together and where a new kind would have to be handled.",
+      "expected_level": "one module's structure and flow: a class diagram from vizzle, or a hand-drawn flowchart labelled as such",
+      "expected_output": "A diagram of how curated diagrams are produced (manifest → CLI → bindings → curated::render), either from `vizzle class` or drawn by hand and said to be, with the walkthrough naming where kinds are handled: is_curated_only, stereotype and members_for, anchored to curated.rs. curated.rs holds only two types (Entry, Manifest), so a derived class diagram alone cannot carry the answer; the grader does not require derivation here.",
+      "needles": {
+        "Entry": "the manifest entry type",
+        "is_curated_only": "where the curated-only kinds are listed",
+        "stereotype": "where each kind gets its stereotype line"
+      }
+    },
+    {
+      "id": 3,
+      "name": "restraint-one-function",
+      "prompt": "quick one: in crates/vizzle-core/src/curated.rs, what does is_curated_only return true for, and why does it matter?",
+      "expected_level": "none: prose",
+      "expected_output": "A short prose answer naming the two kinds (const and external) and the consequence (no source is read, so a missing symbol is not an error), with a path:line anchor. A diagram, or padding into the four-part brief, is the failure.",
+      "needles": {
+        "const": "the const kind",
+        "external": "the external kind"
+      }
+    }
+  ]
+}

@@ -1,6 +1,6 @@
 ---
 name: vizzle-diagrams
-description: Orient in an unfamiliar codebase, or check what a change did to its shape, by generating a diagram with vizzle instead of reading files. Use when you need to understand a repository or subsystem you have not seen, when asked what a codebase contains or how its parts depend on each other, when asked for an architecture or dependency overview, when asked to produce a diagram of code, and after making changes to see how they reshaped the module graph.
+description: Orient yourself in code with vizzle instead of reading files: a component diagram of a whole repository costs about 1.5k tokens. Use before you start work in a repository or subsystem you have not seen, when you need its module graph or a scoped class diagram for your own reasoning, after you change code to see whether your change rewired anything, and when keeping a committed diagram current with vizzle doc. When a person asks how code works, use explain-code; to design a change or produce a diagram for people, use design-diagrams.
 ---
 
 # Reading a codebase with vizzle
@@ -25,7 +25,7 @@ would `ls` — not as a last resort.
 
 **Prefer Mermaid over any JSON export.** Mermaid is 3–6× cheaper for the same
 graph and needs no parsing step. This is the opposite of the usual instinct.
-(`-f json` is for designing a change; see *Designing a change* below.)
+(`-f json` is for designing a change; see the `design-diagrams` skill.)
 
 ## First: can vizzle see this repo?
 
@@ -218,159 +218,21 @@ inventory — an absent edge is weak evidence, a present one is strong.
 
 - **Do not use `--format html` or `-o page.html` for yourself.** The HTML view
   is ~500 KB and its entire value — zoom, drag, expand a component into its
-  classes, filter — needs a human with a browser. It is inert to you.
+  classes, filter — needs a human with a browser. It is inert to you. (For the
+  human, it is the right output: see publishing in `design-diagrams`.)
 - **Do not write a file when you only want to read.** Omit `-o` and read stdout.
   If you do write one, put it somewhere disposable, not in the user's repo.
 - **Do not run an unscoped `class` diagram on a large repo** without deciding
   the tokens are worth it. Start with `component`, then scope.
 
-## When the human wants the diagram, not you
+## The other two skills in this plugin
 
-That is exactly when `--format html` earns its size: the page is fully
-self-contained — d3 is inlined, no network needed — so it opens from `file://`
-and can be attached or shared as-is.
-
-```sh
-uvx vizzle component <path> -o architecture.html
-uvx vizzle serve <path> --diff --open     # live, re-renders as they edit
-uvx vizzle render architecture.mmd out/   # PNG (or -f svg) for chat or a slide
-```
-
-`render` drives mermaid-cli (`mmdc` from PATH, else a pinned version through
-bunx or npx) and needs a browser on the machine; it uses one already in
-puppeteer's cache. It raises Mermaid's 50,000-character cap so a whole-repo
-diagram draws instead of failing silently.
-
-For a diagram to paste into a PR comment, issue, or Markdown file, use the
-Mermaid output instead — GitHub renders ` ```mermaid ` blocks natively, so it
-needs no image hosting. **GitHub draws it in the reader's theme**, so before
-you post one that sets its own colours, look at it both ways:
-
-```sh
-uvx vizzle render diagram.mmd out/ --theme both   # out/diagram.png + out/diagram.dark.png
-```
-
-## Designing a change: planned parts over real code
-
-A design needs a picture of code that does not exist yet, drawn beside the real
-code it touches. Don't hand-draw the whole thing, because the real parts rot.
-Write only the planned parts as an **overlay**, and let vizzle merge them into
-the real graph. Planned parts draw as a diff would draw them: added parts green
-`✚`, touched parts amber `✱`, removed parts struck.
-
-```sh
-uvx vizzle component <path> -f json -o graph.json             # extract: the real graph
-jq -r '.classes[].qualified' graph.json                       # the names an overlay may target
-uvx vizzle overlay graph.json proposal.json -o merged.json    # merge the planned parts
-uvx vizzle draw merged.json -o design.html                    # the page (for the human)
-uvx vizzle draw merged.json -f mermaid                        # for a doc or PR
-uvx vizzle component <path> --overlay proposal.json -f mermaid   # all three in one go, same output
-uvx vizzle overlay graph.json proposal.json --check           # CI: 0 current, 1 stale, 2 cannot run
-```
-
-```json
-{
-  "add": {
-    "components": [{ "path": "cache", "files": ["cache/src/cache/store.py"] }],
-    "classes": [{ "qualified": "cache.src.cache.store.Store", "component": "cache",
-                  "file": "cache/src/cache/store.py", "annotation": "interface",
-                  "members": [{ "name": "fetch", "detail": "key: str", "returns": "str", "isMethod": true }] }],
-    "edges": [{ "from": "api", "to": "cache" }],
-    "classRelations": [{ "from": "api.src.api.handlers.Handler", "to": "cache.src.cache.store.Store", "kind": "dependency" }]
-  },
-  "modify": [{ "class": "api.src.api.handlers.Handler",
-               "members": ["get", { "name": "invalidate", "detail": "key: str", "isMethod": true }] }],
-  "remove": []
-}
-```
-
-- Components are named by path and classes by qualified name, exactly as they
-  appear in `graph.json`. Anything you leave out of an `add` entry is derived:
-  `name` and `module` from the qualified name, `lang` from the file suffix,
-  visibility `+`, and the counts.
-- In `modify`, a member given as a **string** is an existing member, which is
-  marked `✱`. A member given as an **object** is a new one, marked `✚`. The
-  class and its component turn amber.
-- Never write `change` on a planned class or member: the overlay decides it, and
-  a `change` field there exits 2, naming the class or member.
-- Relation kinds are `inherits`, `implements`, `association` and `dependency`.
-  `realization` and `generalization` are accepted as the UML words for the
-  first two.
-- **A stale overlay draws nothing.** `overlay` exits 1 and names every entry
-  that is stale: a `modify`, `remove` or relation end the code no longer has,
-  or an `add` the code already has. If something was renamed, update the
-  overlay. If something was built, change its `add` to a `modify` or drop it.
-- `--overlay` implies `--classes`, because the overlay's class targets have to
-  be in the graph to be checked.
-- `draw` also accepts a class graph (`vizzle class -f json`), as HTML only.
-
-## Architecture pictures: hybrid
-
-`component` shows what the code IS. When the human needs what RUNS (processes,
-containers, stores, the spawn/POST/publish edges between them) opened up to the
-modules each one runs, and wants a layout they chose (a deck slide, an
-onboarding page), use **`vizzle hybrid`**. A person writes the runtime layer
-and a coarse layout as JSON; vizzle supplies the modules fresh on every build
-and refuses to write a picture that disagrees with the code or fails its own
-layout lint. Do not hand-write SVG for this: nothing holds it to the code.
-
-```sh
-uvx vizzle hybrid --dir examples/hybrid --png     # build every spec, + 2x PNGs (needs Chrome)
-uvx vizzle hybrid vizzle-runtime --dir examples/hybrid   # one picture
-uvx vizzle hybrid --check --dir examples/hybrid   # CI: 0 current, 1 drift/lint/stale, 2 cannot run
-```
-
-- Specs live in `--dir` (default `docs/diagrams/hybrid` under `--root`); each
-  `<name>.json` writes `<name>.svg` to the directory's **parent**, PNGs to
-  `<parent>/rendered/`. `vizzle-passes.json` there names the passes:
-  `{"passes": {"self": {"args": ["-I", "crates/**"]}}}` — `component`'s own
-  selection flags, run in-process over `--root`.
-- A module box carries `refs` like `self:crates/vizzle-core`: the pass name,
-  then the module id `<group>/<leaf of its name>`. To see the ids a pass
-  reports, run the same flags as `uvx vizzle component . <args> -f json` and
-  read `components[].group` / `.name`.
-- **The add-a-picture loop:** copy the nearest spec, run with `--png`, fix
-  what each `✗ [<name>] drift: …` / `layout: …` line names, then LOOK at the
-  PNG — passing the lint does not make it readable. Commit the spec and the
-  SVG; never commit the PNG.
-- A new package in a pass scope fails the build until the spec places it in a
-  component or lists it under `omit` with a reason. A concept picture
-  (`"vizzle": []`) is held by the `path` each box cites.
-- Families: `primary`, `secondary`, `shared`, `external`, `entry`. The full
-  format is `docs/diagram-types/hybrid.md` in the vizzle repository; an unknown
-  field is refused (exit 2), so a misspelling cannot pass silently.
-
-## Drawing a diagram yourself: use vizzle's colours
-
-vizzle does not generate sequence diagrams, but a before/after
-`sequenceDiagram` is often the right picture next to its class diagram. Take
-the colours from `vizzle palette` rather than inventing them, so red and green
-mean the same thing in both:
-
-```sh
-uvx vizzle palette            # the rect tints + the diff classDefs; -f json for scripts
-```
-
-```text
-sequenceDiagram
-    participant A as poller
-    participant B as lease store
-    rect rgba(207, 34, 46, 0.15)
-        Note over A,B: BEFORE (main @ abc1234) — where it breaks
-        A->>B: renew the lease
-        B--xA: rejected
-    end
-    rect rgba(26, 127, 55, 0.15)
-        Note over A,B: AFTER (PR @ def5678) — what the fix does
-        A->>B: ✓ reclaim the timed-out ownership first
-    end
-```
-
-The tints are translucent on purpose. A sequence diagram's message text sits
-directly on the `rect` fill and `rect` cannot set a text colour, so an opaque
-pale fill such as `rect rgb(255, 235, 233)` turns white dark-mode text
-unreadable. Never use an opaque `rgb(...)` there. The class-diagram
-`classDef`s set their own text colour, which is why they can be opaque.
+- **`explain-code`**: someone asked how a piece of code works. It picks the
+  level, gets the diagram from the commands above, and writes the answer around it.
+- **`design-diagrams`**: a picture of code that does not exist yet (`overlay`),
+  an architecture picture a person lays out (`hybrid`), a sequence or state
+  diagram you draw yourself in vizzle's colours, and publishing any diagram as an
+  image or a page for people.
 
 ## Requirements
 
