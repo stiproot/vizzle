@@ -144,6 +144,8 @@ the code.
 They are modelled as **one `<<module>>` box per module**, its public
 module-level functions, exported typed consts (TypeScript), UPPER_SNAKE module
 constants (Python), and free functions, constants, and statics (Rust) as members
+(a lowercase Python assignment never joins the box: only a curated manifest that
+names it reaches it, curated-diagrams.md §4)
 — not one box per function, which would add
 295 boxes rather than 177, and would say nothing about which file a function
 lives in.
