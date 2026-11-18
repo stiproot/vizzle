@@ -1,6 +1,7 @@
 # `vizzle hybrid` — architecture pictures laid out by a person, held to the code by vizzle
 
-**Status:** agreed 2026-11-18 (the operator accepted every recommendation in §9); ready to build.
+**Status:** implemented 2026-11-18 on `feat/hybrid` (acceptance §5 met; see §10 for what the build decided). The
+diagram-type spec is `docs/diagram-types/hybrid.md`; this plan is kept for its decisions and h's follow-up (§6).
 **Established:** 2026-11-18
 **Follows:** `docs/plans/impl/atoms-and-overlay.md` §7.
 
@@ -141,3 +142,20 @@ approval merges it. Then a release (minor), then the h PR of §6.
 | D7 | Overlay in hybrid now or later? | **Later, own spec** | Keeps this a pure move with a byte-identical proof. It is the reason to do the move, though: the first design doc that wants planned modules in a runtime picture triggers it |
 | D8 | Default `--dir` = `docs/diagrams/hybrid`? | **Yes** | h's layout; any repo can pass `--dir`. Avoids a config file |
 | D9 | Where does the GENERATED comment point? | **`vizzle hybrid` + version + spec path** | Tells a reader what to run; the version makes a stale pin visible in a diff |
+
+## 10. Decided while building (the spec left these open)
+
+| | Question | Decision | Why |
+|---|---|---|---|
+| B1 | How is a module's id derived from graph JSON? | `<group>/<leaf of name>` (`hybrid::passes::module_id`) | Exactly what the mermaid parse produced, so every existing ref resolves (proved: the sn pass gives identical modules and edges both ways). Consequence: renaming a manifest renames the module; renaming the directory under one does not |
+| B2 | Which `component` flags may a pass carry? | Parsed by `component`'s own parser; graph-shaping flags only; drawing flags (`--group`, `--weights`, `-o`, `-f`, `--overlay`, …) are exit 2 | A drawing flag would be silently ignored. `--group` included: ids are `<group>/<leaf>` regardless |
+| B3 | What is `--dir` relative to? | A given `--dir` is a shell path; the default is `ROOT/docs/diagrams/hybrid` | Explicit paths behave as every other CLI path; the default follows `--root` so `--root ../h` works alone |
+| B4 | How does the GENERATED comment name the spec? | Root-relative when the spec is under `--root`, else as given | Stable across machines, so `--check` is not path-dependent |
+| B5 | `links` values | `"auto"`, `"none"` or a list; any other word exit 2 | h's specs use `"none"` (the old code treated any non-`auto` word as no band) |
+| B6 | Validation beyond unknown fields | Exit 2 for: a duplicate node id, an id named by `in`/`contains`/`below`/an edge that names no node, a non-boundary node with no `x`/`y`, a tile with no `height`, a bad coordinate expression, an out-of-range `labelSeg`, the default legend with no spec `family` | The JS crashed or drew `NaN` on each; none occurs in h's specs |
+| B7 | `$comment` | Allowed on the spec, nodes, modules and edges; ignored | Where authors record the facts a picture rests on |
+| B8 | Legend kinds, label sides, edge kinds | Closed enums (`swatch`/`edge`/`weak`; `right`/`left`/`above`/`below`; `runtime`/`weak`) | The JS drew any unknown value as the last branch; refusing it is the "unknown fields refused" rule applied to values |
+| B9 | The default legend's wording | Kept as h's ("single-node runtime component…", "infrastructure h does not build") | Byte-identical (§5.1). A spec outside h should give its own `rows`; a generic default is a later-minor clean-up |
+| B10 | The version in the example's GENERATED line vs releases | `scripts/bump-version.sh` moves `examples/*.svg`'s `vizzle hybrid X.Y.Z` on `bump` and fails `check` on skew | Otherwise every bump commit fails CI's `hybrid --check` |
+| B11 | Nine pictures? | h's `feat/h-lab` has **eight** specs (plus the pass table); all eight are byte-identical | The ninth in §1 is not on that branch |
+| B12 | Number printing | `hybrid::metrics::num` prints as JavaScript does (no `.0`, `-0` → `0`), `r` rounds halves up like `Math.round` | Byte-identical output; differs from JS only below 1e-6 / from 1e21, which no coordinate reaches |
