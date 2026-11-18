@@ -1,8 +1,7 @@
-# Fire-time identity defaults (these bake the defaults into every
-# composed template). The local substrate maps run-claude → the operator's authenticated claude CLI.
+# Fire-time identity defaults, baked into every composed template. On single-node,
+# run-claude runs the operator's authenticated claude CLI.
 agentId: claude-agent
 runActivity: run-claude
-
 
 # ─── Values layered over h's STOCK chart ────────────────────────────────────────
 # These are this repo's own facts, read by h's stock templates (implement, verify,
