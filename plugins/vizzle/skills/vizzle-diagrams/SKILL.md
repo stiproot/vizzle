@@ -291,6 +291,8 @@ uvx vizzle overlay graph.json proposal.json --check           # CI: 0 current, 1
 - In `modify`, a member given as a **string** is an existing member, which is
   marked `✱`. A member given as an **object** is a new one, marked `✚`. The
   class and its component turn amber.
+- Never write `change` on a planned class or member: the overlay decides it, and
+  a `change` field there exits 2, naming the class or member.
 - Relation kinds are `inherits`, `implements`, `association` and `dependency`.
   `realization` and `generalization` are accepted as the UML words for the
   first two.

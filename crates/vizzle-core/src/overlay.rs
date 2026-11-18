@@ -575,4 +575,47 @@ mod tests {
         let err = format!("{:#}", apply(real(), overlay).unwrap_err());
         assert!(err.contains("unknown relation kind `friendship`"), "{err}");
     }
+
+    #[test]
+    fn a_change_written_on_a_planned_class_or_member_is_refused_not_overridden() {
+        // Decision 13: the overlay decides what a planned part's change is; a `change` the author wrote is
+        // refused like an unknown field, never silently replaced by `added`.
+        let class = |extra: &str| {
+            parse(&format!(
+                r#"{{"add": {{"classes": [{{"qualified": "pkgs.core.src.plan.Plan", "component": "pkgs/core",
+                    "file": "pkgs/core/src/plan.ts"{extra}}}]}}}}"#
+            ))
+            .unwrap()
+        };
+        let err = format!(
+            "{:#}",
+            apply(real(), class(r#", "change": "modified""#)).unwrap_err()
+        );
+        assert!(err.contains("a planned class takes no `change`"), "{err}");
+        let err = format!(
+            "{:#}",
+            apply(
+                real(),
+                class(r#", "members": [{"name": "run", "change": "removed"}]"#)
+            )
+            .unwrap_err()
+        );
+        assert!(
+            err.contains("member `run`: a planned member takes no `change`"),
+            "{err}"
+        );
+        // a new member planned through `modify` on a real class takes the same rule
+        let overlay = parse(
+            r#"{"modify": [{"class": "pkgs.core.src.index.Core",
+                "members": [{"name": "plannedMethod", "change": "added"}]}]}"#,
+        )
+        .unwrap();
+        let err = format!("{:#}", apply(real(), overlay).unwrap_err());
+        assert!(
+            err.contains("member `plannedMethod`: a planned member takes no `change`"),
+            "{err}"
+        );
+        // without the field, the same class is planned and marked added
+        assert!(apply(real(), class("")).is_ok());
+    }
 }
