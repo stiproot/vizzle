@@ -77,8 +77,8 @@ jobs:
           # repo; --zoom writes the changed classes to their own diagram. No -E
           # test globs here: vizzle excludes tests by default, and a
           # hand-written copy would only drift from it.
-          uvx 'vizzle==0.15.0' diff . --base "$BASE" --type component --focus --modules --zoom zoom.mmd -o diagram.mmd --stats stats.json
-          uvx 'vizzle==0.15.0' diff . --base "$BASE" --type component -o diagram.html
+          uvx 'vizzle==0.17.0' diff . --base "$BASE" --type component --focus --modules --zoom zoom.mmd -o diagram.mmd --stats stats.json
+          uvx 'vizzle==0.17.0' diff . --base "$BASE" --type component -o diagram.html
 
           # The verdict comes from --stats, never from the diagram text. The
           # class names in the mermaid (diffAdded, ...) are a rendering choice
