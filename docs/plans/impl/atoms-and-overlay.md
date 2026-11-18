@@ -81,6 +81,8 @@ its first home, as `vizzle hybrid`; the code-comprehension diagram skills fold i
 
 What §1–§6 left open, what was chosen, and what would change it.
 
+**Reviewed by the operator 2026-11-18:** all sixteen confirmed as built except **13**, changed (see there).
+
 **Shape of the code.** `crates/vizzle-core/src/import.rs` reads a component graph back from JSON;
 `overlay.rs` merges an overlay into it; `lib.rs` exposes `overlay_json` and
 `component_diagram_from_json`. The merge works on the typed graph and writes through the same
@@ -133,7 +135,9 @@ raw JSON. The CLI's `_draw` is one function behind both `vizzle draw` and `compo
     component or an edge is out of scope until a design needs it.
 13. **`add.classes` share the extract's class wire shape** (`import::WireClass`), so the defaults
     (`name` and `module` from `qualified`, `lang` from the file suffix, visibility `+`) are worked
-    out in one place. A `change` given on a planned class is overridden to `added`.
+    out in one place. ~~A `change` given on a planned class is overridden to `added`.~~ **Changed 2026-11-18:** a `change`
+    field on a planned class is refused (exit 2), as decision 6 refuses any other input it would have to ignore.
+    Silently overriding input is the same failure as silently dropping an unknown field. Not yet implemented.
 14. **`-f json` on `class`, `component` and `diff`** (both types), and an `-o *.json` suffix picks
     it. `component --overlay` implies `--classes`, because class targets must be in the graph to be
     checked.
