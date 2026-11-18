@@ -15,7 +15,8 @@ site/                  Astro + Tailwind v4, Firebase Hosting. See site/CLAUDE.md
 docs/diagram-types/    One spec per diagram type. Written before the code.
 docs/distribution.md   How vizzle reaches other repos, and why.
 docs/curated-diagrams.md  Manifest-scoped diagrams that stay true to the code.
-plugins/vizzle/        Claude Code plugin: one skill teaching agents to use it.
+plugins/vizzle/        Agent plugin (Claude Code + Codex): three skills, two commands.
+evals/explain-code/    The explain-code skill's eval set (runner + grader).
 .github/workflows/     ci, codeql, pr-diagram, site, and the tag-driven release.
 ```
 
@@ -46,11 +47,14 @@ requirement is **`git` on PATH**. See `docs/distribution.md` §7 and §9.
 3. Bindings, then CLI command, then a template.
 4. A new diagram type means **a new template, never a copied page**. If you are
    about to copy from an existing template, that code belongs in `viz-core.js`.
-5. **Teach the agent skill about it** —
-   `plugins/vizzle/skills/vizzle-diagrams/SKILL.md`. It documents the CLI
-   surface, so a new command it does not mention is a command no agent will
-   ever reach for, and a flag it describes wrongly is the lying spec again.
-   Run every command you add to it before you commit it.
+5. **Teach the agent skills about it** — `plugins/vizzle/skills/`:
+   `vizzle-diagrams` (reading code), `explain-code` (answering a question with a
+   diagram), `design-diagrams` (overlay, hybrid, hand-drawn diagrams, publishing).
+   They document the CLI surface, so a new command they do not mention is a
+   command no agent will ever reach for, and a flag they describe wrongly is the
+   lying spec again. `packages/vizzle-cli/tests/test_plugin.py` checks every
+   `vizzle <command>` and flag they name against the CLI; it cannot check that
+   the prose is right, so run every command you add before you commit it.
 
 ## DRY, concretely
 
@@ -147,9 +151,9 @@ scripts/bump-version.sh check             # every copy of the version agrees
 ## Releasing
 
 The version is stated **once**, in the root `Cargo.toml`; maturin derives the
-Python one from it, and `scripts/bump-version.sh` copies it to the two places
-that must follow (`Cargo.lock`, and the agent plugin's manifest, which carries
-the version of the CLI its skill documents). So a release is:
+Python one from it, and `scripts/bump-version.sh` copies it to the places
+that must follow (`Cargo.lock`, and the agent plugin's two manifests, Claude's
+and Codex's, which carry the version of the CLI its skills document). So a release is:
 
 1. `scripts/bump-version.sh bump patch|minor|major`, commit.
 2. Tag `vX.Y.Z`, push the tag.

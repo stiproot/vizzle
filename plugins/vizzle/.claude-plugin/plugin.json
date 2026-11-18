@@ -1,6 +1,6 @@
 {
   "name": "vizzle",
-  "description": "Teaches an agent to orient in a codebase with vizzle: a component diagram of a 358-file repository costs about 1.5k tokens and replaces reading it. Carries the token economics, the component-before-class ladder, and the repos vizzle cannot see.",
+  "description": "Read a codebase as a diagram instead of file by file, answer questions about code with one diagram at the right level, design changes over the real code, and publish diagrams for people. Diagrams that the code can supply come from vizzle, so they stay true when the code moves.",
   "version": "0.15.0",
   "author": { "name": "stiproot" }
 }
