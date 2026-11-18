@@ -52,3 +52,6 @@ site/src/generated/
 .env
 .env.*
 !.env.example
+
+# PNGs made on demand by `vizzle hybrid --png`; the SVG is the committed picture.
+**/rendered/*.png

@@ -1,0 +1,54 @@
+{
+  "$comment": "vizzle drawn in its own hybrid style: what runs when you type `vizzle …`. Module boxes are held to the `self` pass (crates/ + packages/); git and the source tree are held by cited paths. Checked 2026-11-18.",
+  "title": "vizzle at runtime",
+  "subtitle": "One process: a Python CLI that loads the Rust core as an extension, shells out to git, and reads your tree.",
+  "subtitleW": 1400,
+  "footnote": "The CLI never parses source and the core never runs git: each layer has one job, and the only thing vizzle needs besides itself is git on PATH.",
+  "family": "primary",
+  "canvas": { "width": 1600 },
+  "vizzle": ["self"],
+  "nodes": [
+    { "id": "you", "type": "box", "family": "entry", "name": "you, or CI", "sub": "vizzle <command> …", "x": [80, 400], "y": 150 },
+    {
+      "id": "cli", "type": "component", "name": "CLI (Python)",
+      "stack": "Click · packages/vizzle-cli · git orchestration, file I/O, page assembly",
+      "x": [80, 720], "y": { "below": "you", "gap": 90 },
+      "modules": [
+        { "name": "vizzle_cli", "sub": "commands, git.py, html.py, render.py", "refs": ["self:packages/vizzle"] }
+      ]
+    },
+    {
+      "id": "core", "type": "component", "name": "_core extension (same process)",
+      "stack": "Rust · compiled into vizzle_cli._core by maturin",
+      "x": [80, 720], "y": { "below": "cli", "gap": 110 }, "cols": 2,
+      "modules": [
+        { "name": "vizzle-py", "sub": "bindings: argument translation only", "refs": ["self:crates/vizzle-py"] },
+        { "name": "vizzle-core", "sub": "parse → graph → diff → render", "refs": ["self:crates/vizzle-core"] }
+      ]
+    },
+    {
+      "id": "git", "type": "box", "family": "external", "name": "git", "sub": "show, ls-files: revisions to compare",
+      "x": [920, 1240], "y": { "top": "cli", "dy": 100 }, "path": "packages/vizzle-cli/src/vizzle_cli/git.py"
+    },
+    {
+      "id": "tree", "type": "store", "family": "external", "name": "your source tree", "sub": "walked with .gitignore honoured",
+      "x": [920, 1240], "y": { "top": "core", "dy": 10 }, "path": "crates/vizzle-core/src/walk.rs"
+    }
+  ],
+  "edges": [
+    { "from": "you", "to": "cli", "label": "runs" },
+    { "from": "cli", "to": "core", "label": "_core.* calls (PyO3)" },
+    { "from": "cli", "to": "git", "label": "subprocess", "fy": "git.cy", "ty": "git.cy" },
+    { "from": "core", "to": "tree", "label": "reads files", "fy": "tree.cy", "ty": "tree.cy" }
+  ],
+  "legend": {
+    "x": 920, "y": 150, "w": 600,
+    "rows": [
+      ["swatch", "primary", "runtime component · the module boxes inside it"],
+      ["swatch", "external", "outside vizzle: git, your files"],
+      ["swatch", "entry", "who runs it"],
+      ["edge", null, "runtime edge, labelled with what flows"]
+    ],
+    "note": "Module boxes come from a vizzle component pass over crates/ and packages/, rebuilt on every build."
+  }
+}
