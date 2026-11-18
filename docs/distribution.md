@@ -449,8 +449,9 @@ failure this layout actually invites:
   regression here would surface as a stranger's failed `pip install`.
 - **A smoke test per platform.** Each wheel a runner can execute is installed
   on a clean runner and used to render this repo; the cross-compiled macOS
-  x86_64 wheel is the one exception, since no Intel macOS runner exists. A wheel that imports but cannot render is still a
-  broken release, and only running it catches that.
+  x86_64 wheel is the one exception, since no Intel macOS runner exists. A
+  wheel that imports but cannot render is still a broken release, and only
+  running it catches that.
 
 `ci.yml` covers the same checks CLAUDE.md calls "verifying" on every push and
 pull request, across Python 3.10 (the floor abi3 promises) and 3.13.

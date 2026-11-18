@@ -75,9 +75,8 @@ jobs:
           #
           # --focus --modules keep the comment readable on an application-scale
           # repo; --zoom writes the changed classes to their own diagram. No -E
-          # test globs here: the default test exclusion ships with the next
-          # release, and a hand-written copy would go stale the day the pin
-          # moves. Until then tests are drawn.
+          # test globs here: vizzle excludes tests by default, and a
+          # hand-written copy would only drift from it.
           uvx 'vizzle==0.15.0' diff . --base "$BASE" --type component --focus --modules --zoom zoom.mmd -o diagram.mmd --stats stats.json
           uvx 'vizzle==0.15.0' diff . --base "$BASE" --type component -o diagram.html
 
@@ -91,8 +90,8 @@ jobs:
           print(f"changed={'true' if stats['changed'] else 'false'}")
           print(f"oversized={'true' if stats.get('oversized') else 'false'}")
           print(f"chars={stats['chars']}")
-          # `zoom` and `tests` are absent from the stats of releases before
-          # the pin catches up; .get() keeps those a 0, not a KeyError.
+          # .get() keeps an absent `zoom` or `tests` a 0, not a KeyError, so
+          # the step survives a stats shape it does not expect.
           zoom = stats.get("zoom") or {}
           print(f"zoom_oversized={'true' if zoom.get('oversized') else 'false'}")
           print(f"zoom_chars={zoom.get('chars', 0)}")
