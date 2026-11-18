@@ -385,9 +385,9 @@ Five artifacts including the sdist. The sdist is the fallback for anything
 unlisted and requires a Rust toolchain on the consumer's machine, which is
 acceptable for a long tail.
 
-### 5.1 Three things the first release attempt taught us
+### 5.1 What the release attempts taught us
 
-All three were found by tagging `v0.1.0` for real. None would have been caught
+The first three were found by tagging `v0.1.0` for real, the fourth by `v0.14.0`. None would have been caught
 by building wheels alone, which is the argument for the smoke job.
 
 **glibc 2.17 produces a wheel that builds and cannot import.** `manylinux: auto`
@@ -420,8 +420,9 @@ publish job, which needs every wheel, was skipped: a tag with nothing on PyPI.
 The macOS legs now run on `macos-latest`, which follows GitHub's current Apple
 Silicon image instead of a label with a retirement date. A change to the release
 matrix is proved by dispatching `release.yml` on the branch: the publish job is
-gated on a `v*` tag, so the dispatch builds and smoke-tests every wheel and
-publishes nothing.
+gated on a `v*` tag, so the dispatch builds every wheel, smoke-tests every one
+a runner can execute (all but the cross-compiled macOS x86_64), and publishes
+nothing.
 
 **Writing a diagram used the platform's default encoding.** `_emit` called
 `Path.write_text` with no encoding, and diagrams carry `«guillemets»` and the
