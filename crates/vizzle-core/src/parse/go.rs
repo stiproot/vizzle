@@ -60,11 +60,59 @@ const PREDECLARED: &[&str] = &[
 /// mark them all modified (§9).
 fn layout_free_hash(node: Node, src: &str) -> u64 {
     use std::hash::{Hash, Hasher};
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    for word in src[node.byte_range()].split_whitespace() {
-        word.hash(&mut hasher);
+    // Token by token: the spacing between tokens is gofmt's, but a token's own
+    // text, a string literal's inner spacing included, is the author's.
+    fn tokens(node: Node, src: &str, hasher: &mut impl Hasher) {
+        if node.child_count() == 0 {
+            src[node.byte_range()].hash(hasher);
+            return;
+        }
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            tokens(child, src, hasher);
+        }
     }
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    tokens(node, src, &mut hasher);
     hasher.finish()
+}
+
+/// The package clause's name: the first token after comments, so `package
+/// main` inside a string or a comment is not mistaken for it (§7).
+pub(crate) fn package_clause(source: &str) -> Option<String> {
+    let mut in_block = false;
+    for line in source.lines() {
+        let mut rest = line.trim();
+        loop {
+            if in_block {
+                match rest.find("*/") {
+                    Some(end) => {
+                        rest = rest[end + 2..].trim_start();
+                        in_block = false;
+                    }
+                    None => break,
+                }
+            }
+            if let Some(after) = rest.strip_prefix("/*") {
+                rest = after;
+                in_block = true;
+                continue;
+            }
+            break;
+        }
+        if in_block || rest.is_empty() || rest.starts_with("//") {
+            continue;
+        }
+        let name = rest.strip_prefix("package")?;
+        if !name.starts_with(char::is_whitespace) {
+            return None;
+        }
+        return name
+            .split(|c: char| c.is_whitespace() || c == ';' || c == '/')
+            .find(|w| !w.is_empty())
+            .map(str::to_owned);
+    }
+    None
 }
 
 /// A file the Go tool never builds into its package (§1).
@@ -226,9 +274,15 @@ pub fn parse(rel_path: &str, source: &str, manifests: &[(String, String)]) -> Re
         .context("tree-sitter failed to parse go source")?;
     let root = tree.root_node();
     let package = package_name(root, source);
+    // An external test package (`package store_test`) is a package of its own
+    // beside `store`, as Go builds it (§2).
+    let mut ip = import_path(rel_path, manifests, &package);
+    if package.ends_with("_test") {
+        ip.push_str("_test");
+    }
     let mut file = File {
         src: source,
-        ip: import_path(rel_path, manifests, &package),
+        ip,
         imports: HashMap::new(),
         type_params: HashSet::new(),
         graph: CodeGraph::default(),
@@ -319,6 +373,12 @@ impl<'s> File<'s> {
             }
             collect_kind(decl, "import_spec", &mut specs);
         }
+        // A guessed name (an import without an alias) is trusted only when
+        // nothing else in the file claims it: two imports guessing `foo`, or a
+        // guess colliding with an explicit alias, leave `foo` unresolved rather
+        // than pointed at the wrong package (§5.1).
+        let mut guessed: HashMap<String, usize> = HashMap::new();
+        let mut defaults = Vec::new();
         for spec in specs {
             let Some(path) = spec.child_by_field_name("path") else {
                 continue;
@@ -341,9 +401,18 @@ impl<'s> File<'s> {
                     self.imports.insert(alias, Some(path));
                 }
                 None => {
-                    self.imports.insert(default_alias(&path), Some(path));
+                    let name = default_alias(&path);
+                    *guessed.entry(name.clone()).or_default() += 1;
+                    defaults.push((name, path));
                 }
             }
+        }
+        for (name, path) in defaults {
+            if self.imports.contains_key(&name) {
+                continue;
+            }
+            let unique = guessed.get(&name) == Some(&1);
+            self.imports.insert(name, unique.then_some(path));
         }
     }
 
@@ -382,7 +451,11 @@ impl<'s> File<'s> {
                     ""
                 };
                 let mut c = param.walk();
-                let count = param.children_by_field_name("name", &mut c).count().max(1);
+                let count = param
+                    .children_by_field_name("name", &mut c)
+                    .filter(|n| n.is_named())
+                    .count()
+                    .max(1);
                 for _ in 0..count {
                     params.push(format!(
                         "{prefix}{}",
@@ -442,6 +515,24 @@ impl<'s> File<'s> {
             "qualified_type" => self
                 .qualify_selector(node)
                 .unwrap_or_else(|| self.text(node)),
+            // Inside a function type too, parameter names are not the type.
+            "parameter_declaration" | "variadic_parameter_declaration" => {
+                let Some(ty) = node.child_by_field_name("type") else {
+                    return self.text(node);
+                };
+                let prefix = if node.kind() == "variadic_parameter_declaration" {
+                    "... "
+                } else {
+                    ""
+                };
+                let mut c = node.walk();
+                let count = node
+                    .children_by_field_name("name", &mut c)
+                    .filter(|n| n.is_named())
+                    .count()
+                    .max(1);
+                vec![format!("{prefix}{}", self.normalized(ty)); count].join(" , ")
+            }
             _ if node.child_count() == 0 => self.text(node),
             _ => {
                 let mut cursor = node.walk();
@@ -477,7 +568,10 @@ impl<'s> File<'s> {
             collect_kind(params, "type_parameter_declaration", &mut names);
             for decl in names {
                 let mut cursor = decl.walk();
-                for name in decl.children_by_field_name("name", &mut cursor) {
+                for name in decl
+                    .children_by_field_name("name", &mut cursor)
+                    .filter(|n| n.is_named())
+                {
                     self.type_params.insert(text(name, self.src));
                 }
             }
@@ -562,17 +656,13 @@ impl<'s> File<'s> {
         let mut members = Vec::new();
         let mut bases = Vec::new();
         for field in fields {
-            // Only this struct's own fields: an anonymous struct type inside a
-            // field holds field declarations of its own.
-            if field.parent().and_then(|p| p.parent()).map(|s| s.id()) != Some(ty.id()) {
-                continue;
-            }
             let Some(field_type) = field.child_by_field_name("type") else {
                 continue;
             };
             let mut cursor = field.walk();
             let names: Vec<String> = field
                 .children_by_field_name("name", &mut cursor)
+                .filter(|n| n.is_named())
                 .map(|n| text(n, self.src))
                 .collect();
             if names.is_empty() {
@@ -728,6 +818,7 @@ impl<'s> File<'s> {
             let mut c = param.walk();
             let declared: Vec<String> = param
                 .children_by_field_name("name", &mut c)
+                .filter(|n| n.is_named())
                 .map(|n| text(n, self.src))
                 .collect();
             if declared.is_empty() {
@@ -806,7 +897,9 @@ impl<'s> File<'s> {
             }
             let mut cursor = spec.walk();
             let names: Vec<String> = spec
+                // The `name` field also yields the commas of `X, Y Color = 1, 2`.
                 .children_by_field_name("name", &mut cursor)
+                .filter(|n| n.is_named())
                 .map(|n| text(n, self.src))
                 .filter(|n| n != "_")
                 .collect();
@@ -846,6 +939,7 @@ impl<'s> File<'s> {
             let mut cursor = spec.walk();
             let names: Vec<String> = spec
                 .children_by_field_name("name", &mut cursor)
+                .filter(|n| n.is_named())
                 .map(|n| text(n, self.src))
                 .collect();
             if names == ["_"] {
@@ -1038,6 +1132,44 @@ pub(crate) fn merge_packages(graph: &mut CodeGraph) {
             .push(class);
     }
 
+    // A method on an alias belongs to the aliased type (`type A = B` makes `A`
+    // another name for `B`, §4): move its stubs before merging.
+    for qualified in &order {
+        let Some(target) = groups
+            .get(qualified)
+            .and_then(|items| items.iter().find(|c| is_alias(c)).and_then(alias_target))
+        else {
+            continue;
+        };
+        if target == *qualified || !groups.contains_key(&target) {
+            continue;
+        }
+        let moved: Vec<Class> = match groups.get_mut(qualified) {
+            Some(items) => {
+                let (moved, kept) = std::mem::take(items)
+                    .into_iter()
+                    .partition(|c| c.annotation.as_deref() == Some(METHODS));
+                *items = kept;
+                moved
+            }
+            None => Vec::new(),
+        };
+        // Their signatures were recorded under the alias's name.
+        for member in moved.iter().flat_map(|c| &c.members) {
+            if let Some(signature) = graph
+                .go_signatures
+                .remove(&format!("{qualified}::{}", member.name))
+            {
+                graph
+                    .go_signatures
+                    .insert(format!("{target}::{}", member.name), signature);
+            }
+        }
+        if let Some(items) = groups.get_mut(&target) {
+            items.extend(moved);
+        }
+    }
+
     let mut merged = Vec::new();
     for qualified in order {
         let items = groups.remove(&qualified).unwrap_or_default();
@@ -1063,7 +1195,8 @@ pub(crate) fn merge_packages(graph: &mut CodeGraph) {
                 merge_bases(&mut base.bases, stub.bases);
             }
         }
-        if base.annotation.as_deref() == Some(DEFINED) {
+        // An alias is another name for its type, never an enumeration (§3.1).
+        if base.annotation.as_deref() == Some(DEFINED) && !is_alias(&base) {
             if let Some(constants) = constants {
                 base.annotation = Some("enumeration".to_owned());
                 base.members.retain(|m| m.name != "type");
@@ -1079,20 +1212,88 @@ pub(crate) fn merge_packages(graph: &mut CodeGraph) {
         merge_members(&mut base.members, methods);
         merged.push(base);
     }
+    reclassify_constraints(&mut merged);
     infer_implementations(&mut merged, &graph.go_signatures);
     others.extend(merged);
     graph.classes = others;
 }
 
-/// An interface's methods with their signatures, its embedded interfaces'
-/// included; `None` when any of it is unknown (an embedded interface outside
-/// the tree, a method without a recorded signature).
+fn is_alias(class: &Class) -> bool {
+    class.annotation.as_deref() == Some(DEFINED)
+        && class
+            .members
+            .first()
+            .is_some_and(|m| m.name == "type" && m.detail.starts_with("= "))
+}
+
+/// The type an alias names, when it names exactly one.
+fn alias_target(class: &Class) -> Option<String> {
+    match class.members.first()?.type_refs.as_slice() {
+        [only] => Some(only.clone()),
+        _ => None,
+    }
+}
+
+/// An interface embedding a type that is in the tree and is not an interface
+/// (`interface{ S }` with `S` a struct) is a type set: a `<<constraint>>`, and
+/// the embedding is not inheritance (§3, §10). Only known after the merge,
+/// when every package's types are in hand.
+fn reclassify_constraints(classes: &mut [Class]) {
+    let kinds: HashMap<String, Option<String>> = classes
+        .iter()
+        .map(|c| (c.qualified.clone(), c.annotation.clone()))
+        .collect();
+    for class in classes.iter_mut() {
+        if class.annotation.as_deref() != Some(INTERFACE) {
+            continue;
+        }
+        let is_type_term = |to: &str| {
+            kinds
+                .get(to)
+                .is_some_and(|kind| !matches!(kind.as_deref(), Some(INTERFACE) | Some(CONSTRAINT)))
+        };
+        let terms: Vec<String> = class
+            .bases
+            .iter()
+            .filter(|b| b.kind == RelationKind::Inherits && is_type_term(&b.to))
+            .map(|b| b.to.rsplit('/').next().unwrap_or(&b.to).to_owned())
+            .collect();
+        if terms.is_empty() {
+            continue;
+        }
+        class
+            .bases
+            .retain(|b| !(b.kind == RelationKind::Inherits && is_type_term(&b.to)));
+        class.annotation = Some(CONSTRAINT.to_owned());
+        class.members.insert(
+            0,
+            Member {
+                name: "type".to_owned(),
+                detail: clean_type(&terms.join(" ; ")),
+                ..Default::default()
+            },
+        );
+    }
+}
+
+/// One method an interface requires.
+struct Required {
+    name: String,
+    signature: String,
+    /// The package that declares it: an unexported method matches only there.
+    declared_in: String,
+}
+
+/// An interface's methods with their signatures and the package that declares
+/// each, its embedded interfaces' included; `None` when any of it is unknown
+/// (an embedded interface outside the tree, a method without a recorded
+/// signature).
 fn interface_methods(
     qualified: &str,
     by_name: &HashMap<&str, &Class>,
     signatures: &BTreeMap<String, String>,
     seen: &mut HashSet<String>,
-) -> Option<Vec<(String, String)>> {
+) -> Option<Vec<Required>> {
     if !seen.insert(qualified.to_owned()) {
         return Some(Vec::new());
     }
@@ -1103,7 +1304,11 @@ fn interface_methods(
     let mut methods = Vec::new();
     for member in interface.members.iter().filter(|m| m.is_method) {
         let signature = signatures.get(&format!("{qualified}::{}", member.name))?;
-        methods.push((member.name.clone(), signature.clone()));
+        methods.push(Required {
+            name: member.name.clone(),
+            signature: signature.clone(),
+            declared_in: interface.module.clone(),
+        });
     }
     for base in interface
         .bases
@@ -1117,13 +1322,14 @@ fn interface_methods(
 
 /// `T ..|> I` for every type in the tree whose pointer method set has all of
 /// an in-tree interface's methods, matched by name and normalized signature
-/// (§5.2). An unexported method matches only within its own package.
+/// (§5.2). An unexported method matches only within the package that declares
+/// it, which for a method from an embedded interface is that interface's.
 fn infer_implementations(classes: &mut [Class], signatures: &BTreeMap<String, String>) {
     let mut found: Vec<(usize, Relation)> = Vec::new();
     {
         let by_name: HashMap<&str, &Class> =
             classes.iter().map(|c| (c.qualified.as_str(), c)).collect();
-        let interfaces: Vec<(&Class, Vec<(String, String)>)> = classes
+        let interfaces: Vec<(&Class, Vec<Required>)> = classes
             .iter()
             .filter(|c| c.annotation.as_deref() == Some(INTERFACE))
             .filter_map(|c| {
@@ -1137,7 +1343,8 @@ fn infer_implementations(classes: &mut [Class], signatures: &BTreeMap<String, St
                 ty.annotation.as_deref(),
                 None | Some(DEFINED) | Some("enumeration")
             );
-            if !concrete {
+            // An alias is another name for a type, not a type of its own.
+            if !concrete || is_alias(ty) {
                 continue;
             }
             for (interface, methods) in &interfaces {
@@ -1145,8 +1352,10 @@ fn infer_implementations(classes: &mut [Class], signatures: &BTreeMap<String, St
                     continue;
                 }
                 let mut pointer = false;
-                let satisfied = methods.iter().all(|(name, wanted)| {
-                    if visibility(name) == Visibility::Private && ty.module != interface.module {
+                let satisfied = methods.iter().all(|required| {
+                    let (name, wanted) = (&required.name, &required.signature);
+                    if visibility(name) == Visibility::Private && ty.module != required.declared_in
+                    {
                         return false;
                     }
                     match signatures.get(&format!("{}::{name}", ty.qualified)) {
@@ -1407,6 +1616,155 @@ mod tests {
             .map(|m| m.name.as_str())
             .collect();
         assert_eq!(changed, ["LongerField"], "only the added field changed");
+    }
+
+    fn implements(g: &CodeGraph, from: &str) -> Vec<String> {
+        get(g, from)
+            .bases
+            .iter()
+            .filter(|b| b.kind == RelationKind::Implements)
+            .map(|b| b.to.clone())
+            .collect()
+    }
+
+    #[test]
+    fn a_method_on_an_alias_belongs_to_the_aliased_type() {
+        let g = graph(&[(
+            "s/s.go",
+            "package s\ntype Closer interface{ Close() }\ntype B struct{}\ntype A = B\nfunc (x *A) Close() {}\n",
+        )]);
+        assert_eq!(names(get(&g, "example.com/demo/s.B")), ["Close"]);
+        assert_eq!(
+            implements(&g, "example.com/demo/s.B"),
+            ["example.com/demo/s.Closer"]
+        );
+        assert!(implements(&g, "example.com/demo/s.A").is_empty());
+        assert_ne!(
+            get(&g, "example.com/demo/s.A").annotation.as_deref(),
+            Some("enumeration")
+        );
+    }
+
+    #[test]
+    fn an_alias_is_never_an_enumeration() {
+        let g = graph(&[(
+            "s/s.go",
+            "package s\ntype Alias = int\nconst (\n X Alias = 1\n Y Alias = 2\n)\n",
+        )]);
+        assert_eq!(
+            get(&g, "example.com/demo/s.Alias").annotation.as_deref(),
+            Some(DEFINED)
+        );
+    }
+
+    #[test]
+    fn an_unexported_method_from_another_packages_interface_is_never_satisfied() {
+        // go vet: "*T does not implement Outer (unexported method m)".
+        let g = graph(&[
+            ("a/a.go", "package a\ntype Inner interface{ m() }\n"),
+            (
+                "b/b.go",
+                "package b\nimport \"example.com/demo/a\"\ntype Outer interface{ a.Inner; Foo() }\ntype T struct{}\nfunc (t *T) m() {}\nfunc (t *T) Foo() {}\n",
+            ),
+        ]);
+        assert!(implements(&g, "example.com/demo/b.T").is_empty());
+    }
+
+    #[test]
+    fn two_imports_guessing_one_name_resolve_neither() {
+        let g = graph(&[
+            ("x/foo/foo.go", "package foo\ntype T struct{}\n"),
+            ("y/foo/foo.go", "package yfoo\ntype T struct{}\n"),
+            (
+                "use/use.go",
+                "package use\nimport (\n \"example.com/demo/x/foo\"\n \"example.com/demo/y/foo\"\n)\ntype U struct{ F foo.T }\n",
+            ),
+        ]);
+        let edges = crate::resolve::resolve_all_relations(&g);
+        assert!(
+            !edges.iter().any(|r| r.from == "example.com/demo/use.U"
+                && matches!(&r.to, crate::resolve::Target::Internal(_))),
+            "an ambiguous guess points nowhere: {edges:?}"
+        );
+    }
+
+    #[test]
+    fn a_dot_import_leaves_foreign_names_unresolved() {
+        let g = graph(&[
+            ("x/x.go", "package x\ntype T struct{}\n"),
+            (
+                "u/u.go",
+                "package u\nimport . \"example.com/demo/x\"\ntype U struct{ F T }\n",
+            ),
+        ]);
+        let edges = crate::resolve::resolve_all_relations(&g);
+        assert!(!edges.iter().any(|r| r.from == "example.com/demo/u.U"
+            && matches!(&r.to, crate::resolve::Target::Internal(_))));
+    }
+
+    #[test]
+    fn a_multi_name_spec_yields_one_row_per_name_and_no_commas() {
+        let g = graph(&[(
+            "s/s.go",
+            "package s\ntype Color int\nconst (\n X, Y Color = 1, 2\n)\nvar A, B int\nfunc F(a, b int) {}\n",
+        )]);
+        assert_eq!(names(get(&g, "example.com/demo/s.Color")), ["X", "Y"]);
+        let module = get(&g, "example.com/demo/s");
+        assert!(
+            !module.members.iter().any(|m| m.name == ","),
+            "{:?}",
+            names(module)
+        );
+        let f = module.members.iter().find(|m| m.name == "F").unwrap();
+        assert_eq!(f.param_names, ["a", "b"]);
+    }
+
+    #[test]
+    fn spacing_inside_a_string_literal_is_a_change() {
+        let src = |s: &str| format!("package s\nfunc Get() string {{ return \"{s}\" }}\n");
+        let diff = crate::diff::diff_graphs(
+            &graph(&[("s/s.go", &src("a  b"))]),
+            &graph(&[("s/s.go", &src("a b"))]),
+        );
+        assert!(diff.diff_mode(), "a string's own spacing is the author's");
+    }
+
+    #[test]
+    fn an_interface_embedding_a_struct_is_a_constraint() {
+        let g = graph(&[(
+            "s/s.go",
+            "package s\ntype S struct{}\ntype C interface{ S }\n",
+        )]);
+        let c = get(&g, "example.com/demo/s.C");
+        assert_eq!(c.annotation.as_deref(), Some(CONSTRAINT));
+        assert!(
+            c.bases.is_empty(),
+            "a type term is not inheritance: {:?}",
+            c.bases
+        );
+    }
+
+    #[test]
+    fn an_external_test_package_is_its_own_package() {
+        let g = graph(&[
+            ("s/s.go", "package s\ntype T struct{ A int }\n"),
+            ("s/s_test.go", "package s_test\ntype T struct{ B int }\n"),
+        ]);
+        assert_eq!(names(get(&g, "example.com/demo/s.T")), ["A"]);
+        assert_eq!(names(get(&g, "example.com/demo/s_test.T")), ["B"]);
+    }
+
+    #[test]
+    fn the_package_clause_ignores_comments_and_strings() {
+        assert_eq!(
+            package_clause("// x\n/* package main */\npackage gen\nvar t = `\npackage main\n`\n")
+                .as_deref(),
+            Some("gen")
+        );
+        assert_eq!(
+            package_clause("package main // the entry\n").as_deref(),
+            Some("main")
+        );
     }
 
     #[test]

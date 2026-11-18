@@ -1171,8 +1171,21 @@ def _collect_diff_files(path: Path, base: str, head: str | None) -> tuple[list[t
             contents = git.file_at_ref(root, head, change.path) if head else git.file_in_worktree(root, change.path)
             if contents is not None:
                 head_files.append((change.path, contents))
-    _add_go_package_siblings(root, base, head, base_files, head_files)
     return base_files, head_files
+
+
+def _with_go_packages(
+    path: Path, base: str, head: str | None, base_files: list, head_files: list, tests: bool
+) -> tuple[list, list]:
+    """The selected changed files, plus the rest of each changed Go package.
+
+    Siblings are added after the test filter, so a change confined to test
+    files still reads as no change, and filtered again, so a sibling test file
+    stays out unless `--tests`.
+    """
+    base_files, head_files = _without_tests(base_files, tests), _without_tests(head_files, tests)
+    _add_go_package_siblings(_repo_root(path), base, head, base_files, head_files)
+    return _without_tests(base_files, tests), _without_tests(head_files, tests)
 
 
 def _add_go_package_siblings(
@@ -1434,7 +1447,7 @@ def diff_diagram(
         raise click.ClickException(
             f"no changed Python, TypeScript, Rust or Go files between {base} and {head or 'the working tree'}"
         )
-    base_files, head_files = _without_tests(base_files, tests), _without_tests(head_files, tests)
+    base_files, head_files = _with_go_packages(path, base, head, base_files, head_files, tests)
     manifests = _diff_manifests(path, base, head, base_files, head_files)
 
     grouping = _grouping(group_by, group)
@@ -1577,7 +1590,7 @@ def serve_command(
         if diff_mode:
             fork = _fork_point(path, base, head)
             base_files, head_files = _collect_diff_files(path, fork, head)
-            base_files, head_files = _without_tests(base_files, tests), _without_tests(head_files, tests)
+            base_files, head_files = _with_go_packages(path, fork, head, base_files, head_files, tests)
             manifests = _diff_manifests(path, fork, head, base_files, head_files)
             graph_json = _core.graph_json_diff(base_files, head_files, **manifests, **selection)
             page_title = title or f"changes vs {base} (live)"

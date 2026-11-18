@@ -70,10 +70,11 @@ package outside any `go.mod` uses its directory path as its import path.
   version: `github.com/go-chi/chi/v5` is package `chi`, as Go names it. The shared `push_module_box` names a box by the
   last dotted segment (`parse/mod.rs`), which would make
   `github.com/h/kernel/lease` read `com/h/kernel/lease`; Go gets its own rule.
-- If one directory's selected non-test files still declare two package names
-  (only possible with constraints vizzle does not evaluate), the package whose
-  name matches the directory wins, else the first in path order, and the files
-  of the other package are dropped with a note on stderr.
+- An external test package (`package store_test`, selected only with
+  `--tests`) is a package of its own, with import path `<import path>_test`, as
+  Go builds it; it never merges into `store`'s boxes. Two other package names in
+  one directory (only possible under build constraints vizzle does not evaluate)
+  are not reconciled: their types share the directory's import path.
 
 Go parsing needs the manifests, as Rust's crate names do: the parse entry
 points that take `manifests` (`parse_files_with_manifests`) are the ones Go
@@ -192,16 +193,22 @@ would resolve to the unique in-tree `api.Client`, and `fabric`'s
 `*server.Server` to `api.Server`. So the Go parser emits targets already
 qualified:
 
-- `pkg.Name`: `pkg` is looked up in the file's import map (alias, else the
-  import path's last element). An internal package (§6) gives
+- `pkg.Name`: `pkg` is looked up in the file's import map: an explicit alias,
+  else a name guessed from the import path (its last element, skipping a major
+  version). The real name is the imported package's clause, which a per-file
+  parse cannot see, so a guess is trusted only when nothing else in the file
+  claims the same name: two imports guessing `foo`, or a guess colliding with an
+  explicit alias, leave `foo` unresolved rather than pointed at the wrong
+  package. An internal package (§6) gives
   `<import path>.Name`; a standard-library or external package gives an
   external target that never resolves to a box.
 - An unqualified `Name`: a type declared in the same package, else a
   predeclared type (`string`, `error`), else nothing. In a file with a dot
   import (`import . "x"`), an unqualified name not declared in its own package
   resolves to nothing.
-- The global-unique fallback is off for Go (a Go branch in `resolve.rs`, or the
-  parser marking its targets as already resolved).
+- The global-unique fallback is off for Go (a Go branch in `resolve.rs`), and for
+  every language a name never resolves to a type in another language: a Python
+  annotation `"Lease"` is not a Go `lease.Lease`.
 
 | Go source | Edge |
 |---|---|
@@ -232,8 +239,12 @@ unconnected.
 - `T` is a struct or defined type in the tree, and the method set of `*T` (its
   pointer- and value-receiver methods) has every method of `I` with the same
   name and the same normalized parameter and result types (§9).
-- A method of `I` with an unexported name matches only within `I`'s own
-  package, as Go's rules say.
+- A method with an unexported name matches only within the package that
+  declares it, which for a method `I` gains by embedding is the embedded
+  interface's package, not `I`'s (go vet: "does not implement Outer (unexported
+  method m)").
+- An alias is not a type of its own: it never implements anything, and the
+  methods declared on it (`func (x *A) Close()` with `type A = B`) are `B`'s.
 
 **What the edge means.** Measured with `go/types` on h's kernel: of 57 true
 implementations, **54 hold only for `*T`**. A `T` value never has
@@ -294,8 +305,10 @@ This amends component.md §3.1 for Go only:
   module root (`lease`, `cli/render`; the module root package by the module
   path's last element). When that collides with another component (h has a
   root `cli/` Python package and kernel packages `cli` and `api`), the Go name
-  is prefixed with its module path's last element (`kernel/cli`), then with the
-  full import path as a last resort. The existing `disambiguate_names` prefixes
+  is prefixed with its module directory's last element (`kernel/cli`), then
+  replaced by its full directory as a last resort. Every clashing Go package is
+  renamed, in path order, so two modules' `util` packages read `a/util` and
+  `b/util` on every run. The existing `disambiguate_names` prefixes
   by last path segment, which would mangle a name that already contains `/`;
   Go names take this rule instead.
 - **Classes to components:** a Go class belongs to the component of its import
@@ -306,7 +319,9 @@ This amends component.md §3.1 for Go only:
   Groups render one level deep, so packages are not nested further by parent
   directory; their names (`cli/render`) carry the path. A module at the
   repository root has no block, as any root-level component has none.
-- **`package main`** gets the stereotype `«main»` in place of `«component»`.
+- **`package main`** gets the stereotype `«main»` in place of `«component»`,
+  read from the package clause (the first token after comments), never from a
+  line that merely says `package main` inside a string.
 - **Edges:** `A → B` when a selected file of package `A` imports package `B`
   (§6 rule 1); weight is the number of distinct importing files.
 - **`--split`** does nothing for Go packages: it exists to recover the package
@@ -337,9 +352,10 @@ Python constants). `scope.lang` accepts `go`.
 A type is keyed by its qualified name (§2). A method is keyed by its name
 within its receiver's box (Go has no overloading); fields by name.
 Fingerprints include the normalized signature and the body hash, so a
-body-only change marks a method modified. **Go hashes a member's text with
-whitespace runs collapsed**: spacing inside a declaration is gofmt's, and adding
-one long field realigns the type column of every field in its struct. Hashed as
+body-only change marks a method modified. **Go hashes a member token by
+token**, ignoring the spacing between tokens: that spacing is gofmt's, and
+adding one long field realigns the type column of every field in its struct. A
+token's own text counts, so the spacing inside a string literal is a change. Hashed as
 written, h's `cli.World` diff marked four untouched fields modified; Python
 keeps hashing as written, where whitespace is meaningful. Moving a method between files of a
 package, or switching its receiver between `T` and `*T`, changes neither key
@@ -347,8 +363,8 @@ nor fingerprint. A package rename or move is remove plus add. Twins merge as
 §4.1 says.
 
 Normalization, for §5.2 and fingerprints alike: types qualified through the
-file's imports, parameter names dropped, whitespace collapsed, a variadic
-`...T` kept distinct from `[]T`.
+file's imports, parameter names dropped (inside function types too), whitespace
+collapsed, a variadic `...T` kept distinct from `[]T`.
 
 ## 10. Grammar and parser binding
 
@@ -467,3 +483,27 @@ components, `chi` and `middleware`, one edge; no standard-library node with
 `--externals`; 13 implements edges, of which the edges to `http.Flusher`,
 `http.Hijacker`, `http.Pusher` and `io.ReaderFrom` are chi's own explicit
 `var _ I = &T{}` assertions, drawn as §5.1 says.
+
+### 13.1 After the implementation review (2026-11-18)
+
+An independent review of the build found nine defects, most of them wrong edges
+or nondeterminism, each reproduced in a scratch tree and now covered by a test:
+component names that changed from run to run when two Go packages clashed
+(§7); an inferred edge through an unexported method of an interface embedded
+from another package (§5.2); a wrong association when two imports guessed the
+same name (§5.1); a Python annotation resolving to a Go type (§5.1); `«main»`
+read from a string literal (§7); methods on an alias left on the alias (§5.2,
+§4); an interface embedding a struct drawn as an interface (§3); a comma read
+as a member name in `X, Y Color = 1, 2`; and a string literal's inner spacing
+ignored by the layout-free hash (§9). Also fixed: an alias never becomes an
+enumeration (§3.1), an external `_test` package is its own package (§2), a
+test-only change no longer draws its whole package as context (§4.1), and an
+explicit curated name reaching a private member is documented for every
+language (`curated-diagrams.md` §4). After the fixes, h's kernel measures as
+in §13, unchanged: 57 of 57 implementations with `via` 57 of 57, 26 components,
+36 edges, and identical output across repeated runs.
+
+**Known limit.** A curated entry for a root-level Go file outside any module is
+keyed with the package name `main`, where the parser uses the file's real
+package clause; such files are rare (GOPATH-era layouts) and the entry then
+reports itself unresolved rather than drawing the wrong box.

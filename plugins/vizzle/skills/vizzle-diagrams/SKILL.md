@@ -200,9 +200,9 @@ dependencies pointing from importer to imported.
 
 **Go** reads a little differently. Each package (directory) is a box, named by its
 path below its module (`lease`, `cli/render`), inside one block per `go.mod`;
-`«main»` marks a `package main`, the entry points. Edges come from exact import
-paths, so a Go edge is never a guess, and the standard library is never drawn,
-even with `--externals`. `--split` is not needed. In a class diagram, a Go type
+`«main»` marks a `package main`, the entry points. Component edges come from
+exact import paths, so they are never a guess, and the standard library is never
+drawn, even with `--externals`. `--split` is not needed. In a class diagram, a Go type
 carries the methods from every file of its package, embedding is drawn as
 inheritance, and `..|>` to an interface is **inferred** from method sets (Go never
 declares it); `-f json` says whether it holds for the value or only the pointer

@@ -7,7 +7,7 @@
 //! under no manifest fall back to their top-level directory. Imports become
 //! edges only when they resolve to another detected component.
 
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt::Write;
 use std::hash::{Hash, Hasher};
 
@@ -861,7 +861,7 @@ impl GoPackages {
             return None;
         }
         let dir = dir_of(path).to_owned();
-        let is_main = contents.lines().any(|l| l.trim() == "package main");
+        let is_main = parse::go::package_clause(contents).as_deref() == Some("main");
         if let Some(&idx) = self.by_dir.get(&dir) {
             components[idx].main |= is_main;
             return Some(idx);
@@ -910,33 +910,35 @@ impl GoPackages {
         }
     }
 
-    /// A Go package whose name another component already has is prefixed with
-    /// its module's last path element (`kernel/cli` beside a Python `cli`),
-    /// then with its full directory. `disambiguate_names` prefixes by last path
-    /// segment, which would mangle a name that already holds a `/`.
+    /// Every Go package whose name another component also has is prefixed with
+    /// its module's last path element (`kernel/cli` beside a Python `cli`), then
+    /// given its full directory if that still clashes. All clashing names are
+    /// found before any is changed, and packages are renamed in path order, so
+    /// the result never depends on iteration order. `disambiguate_names`
+    /// prefixes by last path segment, which would mangle a name holding a `/`.
     fn unclash_names(&self, components: &mut [Component]) {
-        let go: HashSet<usize> = self.by_dir.values().copied().collect();
-        for &idx in &go {
-            let taken = |name: &str, components: &[Component]| {
-                components
-                    .iter()
-                    .enumerate()
-                    .any(|(i, c)| i != idx && c.name == name)
-            };
-            if !taken(&components[idx].name, components) {
-                continue;
-            }
+        let mut go: Vec<usize> = self.by_dir.values().copied().collect();
+        go.sort_by(|a, b| components[*a].path.cmp(&components[*b].path));
+        let count = |components: &[Component], name: &str| {
+            components.iter().filter(|c| c.name == name).count()
+        };
+        let clashing: Vec<usize> = go
+            .iter()
+            .copied()
+            .filter(|&idx| count(components, &components[idx].name) > 1)
+            .collect();
+        for &idx in &clashing {
             let module = last_segment(&components[idx].group).to_owned();
-            let prefixed = if module.is_empty() {
+            components[idx].name = if module.is_empty() {
                 components[idx].path.clone()
             } else {
                 format!("{module}/{}", components[idx].name)
             };
-            components[idx].name = if taken(&prefixed, components) {
-                components[idx].path.clone()
-            } else {
-                prefixed
-            };
+        }
+        for &idx in &clashing {
+            if count(components, &components[idx].name) > 1 {
+                components[idx].name = components[idx].path.clone();
+            }
         }
     }
 
@@ -2544,5 +2546,38 @@ mod tests {
             .edges
             .iter()
             .any(|e| e.from == "middleware" && e.to == EdgeTarget::Component(".".to_owned())));
+    }
+
+    #[test]
+    fn clashing_go_package_names_are_all_prefixed_the_same_way_every_time() {
+        let manifests = pairs(&[
+            ("a/go.mod", "module example.com/a\n"),
+            ("b/go.mod", "module example.com/b\n"),
+        ]);
+        let files = pairs(&[
+            ("a/util/u.go", "package util\ntype U struct{}\n"),
+            ("b/util/u.go", "package util\ntype U struct{}\n"),
+            ("a/gen/g.go", "package gen\nvar tmpl = `\npackage main\n`\n"),
+        ]);
+        let names = |g: &ComponentGraph| -> Vec<(String, String)> {
+            g.components
+                .iter()
+                .map(|c| (c.path.clone(), c.name.clone()))
+                .collect()
+        };
+        let first = build(&files, &manifests, &[]).unwrap();
+        for _ in 0..8 {
+            assert_eq!(
+                names(&build(&files, &manifests, &[]).unwrap()),
+                names(&first)
+            );
+        }
+        let by_path = |p: &str| first.components.iter().find(|c| c.path == p).unwrap();
+        assert_eq!(by_path("a/util").name, "a/util");
+        assert_eq!(by_path("b/util").name, "b/util");
+        assert!(
+            !by_path("a/gen").main,
+            "`package main` inside a string is not the clause"
+        );
     }
 }

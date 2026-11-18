@@ -156,7 +156,7 @@ fn members_for<'a>(
         values.iter().map(|m| (m.name.as_str(), m)).collect();
     let missing = |name: &String| {
         anyhow::anyhow!(
-            "entry `{}`: `{}` is not a public member of {}",
+            "entry `{}`: `{}` is not a member of {}",
             entry.id,
             name,
             qualified
@@ -412,8 +412,7 @@ mod tests {
         );
         let err = render(&typo, &graph, &[]).unwrap_err();
         assert!(
-            err.to_string()
-                .contains("`settings` is not a public member"),
+            err.to_string().contains("`settings` is not a member"),
             "{err}"
         );
         // And an entry that lists nothing draws the box, which never holds values.
@@ -430,8 +429,7 @@ mod tests {
         );
         let err = render(&manifest, &graph, &[]).unwrap_err();
         assert!(
-            err.to_string()
-                .contains("`gone` is not a public member of app"),
+            err.to_string().contains("`gone` is not a member of app"),
             "{err}"
         );
     }
@@ -472,6 +470,21 @@ mod tests {
             rendered.contains("+Open()") && rendered.contains("registry"),
             "{rendered}"
         );
+    }
+
+    #[test]
+    fn a_listed_private_function_is_drawn_and_an_unlisted_one_is_not() {
+        // Listing a name is the author choosing it, for every language: the
+        // module box hides an unchanged private helper from an exhaustive
+        // diagram, but a manifest that names it gets it.
+        let graph = python_graph("def run() -> None: ...\ndef _helper() -> int: ...\n");
+        let listed = manifest(
+            r#"{"classes":[{"id":"App","kind":"module","file":"app.py","functions":["run","_helper"]}]}"#,
+        );
+        let rendered = render(&listed, &graph, &[]).unwrap();
+        assert!(rendered.contains("_helper"), "{rendered}");
+        let unlisted = manifest(r#"{"classes":[{"id":"App","kind":"module","file":"app.py"}]}"#);
+        assert!(!render(&unlisted, &graph, &[]).unwrap().contains("_helper"));
     }
 
     #[test]

@@ -1600,3 +1600,19 @@ def test_go_class_diff_names_types_by_import_path(go_repo: Path, tmp_path: Path)
     assert result.exit_code == 0, result.output
     changed = {c["qualified"]: c["change"] for c in json.loads(out.read_text())["classes"]}
     assert changed == {"example.com/demo/store.Store": "modified"}, changed
+
+
+def test_a_go_test_only_change_is_no_change(go_repo: Path, tmp_path: Path) -> None:
+    # Package siblings are added after the test filter: a change confined to a
+    # _test.go file must not drag its whole unchanged package into the diff.
+    (go_repo / "store" / "store_test.go").write_text("package store\n\ntype fixture struct{ n int }\n")
+    stats = tmp_path / "s.json"
+    result = CliRunner().invoke(main, ["diff", str(go_repo), "--stats", str(stats), "-o", str(tmp_path / "d.mmd")])
+    assert result.exit_code == 0, result.output
+    verdict = json.loads(stats.read_text())
+    assert verdict["changed"] is False, verdict
+    assert verdict["tests"]["modified"] == 1, verdict
+    out = tmp_path / "d.json"
+    result = CliRunner().invoke(main, ["diff", str(go_repo), "-f", "json", "-o", str(out)])
+    assert result.exit_code == 0, result.output
+    assert json.loads(out.read_text())["classes"] == [], "no unchanged package drawn as context"

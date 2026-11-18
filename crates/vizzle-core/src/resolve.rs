@@ -178,7 +178,13 @@ fn resolve_base<'g>(
     from: &Class,
     by_name: &HashMap<&str, Vec<&'g Class>>,
 ) -> Option<&'g Class> {
-    let candidates = by_name.get(to)?;
+    // A name in one language never resolves to a type in another: a Python
+    // annotation `"Lease"` is not a Go `lease.Lease`.
+    let candidates: Vec<&&'g Class> = by_name
+        .get(to)?
+        .iter()
+        .filter(|c| c.lang == from.lang)
+        .collect();
     if let Some(same_module) = candidates
         .iter()
         .find(|c| c.module == from.module && c.qualified != from.qualified)
@@ -301,5 +307,28 @@ export class Service {
         let member = &graph.classes[0].members[0];
         assert_eq!(member.detail, "n: int, flag");
         assert_eq!(member.returns.as_deref(), Some("str"));
+    }
+
+    #[test]
+    fn a_name_never_resolves_across_languages() {
+        let files = vec![
+            ("go.mod".to_owned(), "module example.com/k\n".to_owned()),
+            (
+                "lease/lease.go".to_owned(),
+                "package lease\ntype Lease struct{}\n".to_owned(),
+            ),
+            (
+                "app.py".to_owned(),
+                "class Holder:\n    lease: \"Lease\"\n".to_owned(),
+            ),
+        ];
+        let (manifests, sources): (Vec<_>, Vec<_>) =
+            files.into_iter().partition(|(p, _)| p.ends_with("go.mod"));
+        let graph = crate::parse::parse_files_with_manifests(&sources, &manifests).unwrap();
+        assert!(
+            kinds(&graph).iter().all(|(from, _, _)| from != "Holder"),
+            "{:?}",
+            kinds(&graph)
+        );
     }
 }
