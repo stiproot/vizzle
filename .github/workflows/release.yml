@@ -67,12 +67,16 @@ jobs:
           # a macro glibc did not gain until 2.19. glibc 2.28 is a 2018 floor.
           - { name: linux-x86_64, runner: ubuntu-latest, target: x86_64, manylinux: "2_28" }
           - { name: linux-aarch64, runner: ubuntu-latest, target: aarch64, manylinux: "2_28" }
-          - { name: macos-arm64, runner: macos-14, target: aarch64-apple-darwin }
+          # macos-latest, not a pinned image: GitHub retires macOS images on a
+          # schedule, and a retired label fails the job in 0s ("The configuration
+          # 'macos-14-arm64-us-default' is not supported" cancelled the v0.14.0
+          # release). Every current macos-latest image is Apple Silicon.
+          - { name: macos-arm64, runner: macos-latest, target: aarch64-apple-darwin }
           # Cross-compiled on Apple Silicon: GitHub has retired the Intel macOS
           # runners, and a macos-13 job queues forever rather than failing. The
           # macOS toolchain targets both architectures, so this costs nothing —
           # but it is the one wheel the smoke job below cannot run.
-          - { name: macos-x86_64, runner: macos-14, target: x86_64-apple-darwin }
+          - { name: macos-x86_64, runner: macos-latest, target: x86_64-apple-darwin }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
@@ -181,7 +185,7 @@ jobs:
         include:
           - { name: linux-x86_64, runner: ubuntu-latest }
           - { name: linux-aarch64, runner: ubuntu-24.04-arm }
-          - { name: macos-arm64, runner: macos-14 }
+          - { name: macos-arm64, runner: macos-latest }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
