@@ -438,7 +438,8 @@ component spec §6 has the shape.
 - Generic parameters as first-class model elements (they are rendered as part
   of the type string, and tokenised for resolution).
 - Languages beyond Python and TypeScript — see §5.4 for why Rust and C++ are
-  the most interesting next ones.
+  the most interesting next ones. (Rust has since shipped, in `class`,
+  `component` and, since 0.16.0, `diff`; C++ is still out.)
 - **A JSON input path.** Accepting a graph built elsewhere — by the TypeScript
   compiler API, which resolves everything §2.3 case 3 skips — is the obvious
   way past the ceiling above, and is deliberately not built. A format you

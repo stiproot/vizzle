@@ -227,7 +227,8 @@ detection drops any module with no `.py`/`.ts` in it (component.md §3.1 rule
 4). A Rust or Go repository therefore yields a near-empty diagram from
 manifests that were found perfectly well. Without that warning up front an
 agent burns a call and, worse, may report the emptiness as a finding about the
-architecture.
+architecture. (Since superseded: vizzle parses Rust too, and `diff` sees Rust
+changes from 0.16.0; the skill's precondition now names all three.)
 
 **Extended 2026-11-18** (`docs/plans/impl/skill-set.md`): the plugin became the
 single home of diagramming and code comprehension, replacing code-comprehension

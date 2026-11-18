@@ -282,18 +282,27 @@ pub fn diagram_from_files(files: &[(String, String)], render: &RenderOptions) ->
     Ok(mermaid::render(&graph, render))
 }
 
+/// One revision of a file set: its source files and the package manifests
+/// beside them. A Rust type is keyed `crate::module::Type`, and the crate name
+/// is in `Cargo.toml`; without the manifests a diff would key it by file path
+/// and name nothing the way `vizzle class` does.
+pub struct Revision<'a> {
+    pub files: &'a [(String, String)],
+    pub manifests: &'a [(String, String)],
+}
+
 /// Render a change-highlighted class diagram from two revisions of a file set.
 /// `select` applies to both sides, so the same globs mean the same thing here
 /// as on `diagram_from_dir`.
 pub fn diff_diagram(
-    base_files: &[(String, String)],
-    head_files: &[(String, String)],
+    base: Revision,
+    head: Revision,
     select: &SelectOptions,
     render: &RenderOptions,
 ) -> Result<DiffDiagram> {
-    let (base_files, head_files) = select_both(base_files, head_files, select)?;
-    let base = parse::parse_files(&base_files)?;
-    let head = parse::parse_files(&head_files)?;
+    let (base_files, head_files) = select_both(base.files, head.files, select)?;
+    let base = parse::parse_files_with_manifests(&base_files, base.manifests)?;
+    let head = parse::parse_files_with_manifests(&head_files, head.manifests)?;
     let merged = diff::diff_graphs(&base, &head);
     Ok(DiffDiagram {
         mermaid: mermaid::render(&merged, render),
@@ -574,14 +583,10 @@ pub fn component_diagram_from_json(
 }
 
 /// Export a change-annotated class graph from two revisions of a file set as JSON.
-pub fn json_diff(
-    base_files: &[(String, String)],
-    head_files: &[(String, String)],
-    select: &SelectOptions,
-) -> Result<String> {
-    let (base_files, head_files) = select_both(base_files, head_files, select)?;
-    let base = parse::parse_files(&base_files)?;
-    let head = parse::parse_files(&head_files)?;
+pub fn json_diff(base: Revision, head: Revision, select: &SelectOptions) -> Result<String> {
+    let (base_files, head_files) = select_both(base.files, head.files, select)?;
+    let base = parse::parse_files_with_manifests(&base_files, base.manifests)?;
+    let head = parse::parse_files_with_manifests(&head_files, head.manifests)?;
     let merged = diff::diff_graphs(&base, &head);
     Ok(export::to_json(&merged))
 }
@@ -847,9 +852,28 @@ mod tests {
     fn class_diff_selection_that_filters_everything_is_an_error() {
         let base = pairs(&[("app.py", "class A: ...\n")]);
         let head = pairs(&[("app.py", "class B: ...\n")]);
-        let err = json_diff(&base, &head, &select(&["app.py"])).unwrap_err();
+        let err = json_diff(
+            Revision {
+                files: &base,
+                manifests: &[],
+            },
+            Revision {
+                files: &head,
+                manifests: &[],
+            },
+            &select(&["app.py"]),
+        )
+        .unwrap_err();
         assert!(err.to_string().contains("selection"), "{err}");
         // Two genuinely empty sides are the caller's case to report, not ours.
-        assert!(json_diff(&[], &[], &select(&["app.py"])).is_ok());
+        let none = Revision {
+            files: &[],
+            manifests: &[],
+        };
+        let also_none = Revision {
+            files: &[],
+            manifests: &[],
+        };
+        assert!(json_diff(none, also_none, &select(&["app.py"])).is_ok());
     }
 }
