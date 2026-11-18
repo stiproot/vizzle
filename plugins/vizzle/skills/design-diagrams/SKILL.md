@@ -1,6 +1,6 @@
 ---
 name: design-diagrams
-description: Draw diagrams of code that does not exist yet or that the code cannot show, and publish diagrams for people. Use when designing a change and you need planned parts drawn over the real code (vizzle overlay), when a person wants an architecture picture of what runs that they lay out themselves (vizzle hybrid), when drawing a sequence, state, context, deployment or UML component diagram by hand, when choosing colours for any diagram, and when a diagram must become a PNG, SVG or HTML page for a document, a chat message, a slide or a pull request.
+description: Produce diagrams for people, and draw what the code cannot show. Use when asked to produce or draw a diagram of code to keep or share (a class, component or dependency diagram for a document, a pull request, a slide or a chat message), when designing a change and the planned parts must be drawn over the real code (vizzle overlay), when a person wants an architecture picture of what runs that they lay out themselves (vizzle hybrid), when drawing a sequence, state, context, deployment or UML component diagram by hand, when choosing colours for any diagram, and when a diagram must become a PNG, SVG or HTML page.
 ---
 
 # Designing and publishing diagrams

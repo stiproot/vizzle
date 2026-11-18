@@ -181,7 +181,7 @@ cmd_check() {
   fi
 
   if [ "$status" -eq 0 ]; then
-    [ "${1:-}" = "--after-bump" ] || echo "versions agree: $version (pr-diagram pin: $pin)"
+    [ "${1:-}" = "--after-bump" ] || echo "versions agree: $version (Cargo.lock, both plugin manifests, hybrid examples; pr-diagram pin: $pin)"
   fi
   return "$status"
 }

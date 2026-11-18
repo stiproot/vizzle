@@ -1,6 +1,6 @@
 ---
 name: vizzle-diagrams
-description: Orient in an unfamiliar codebase, or check what a change did to its shape, by generating a diagram with vizzle instead of reading files. Use when you need to understand a repository or subsystem you have not seen, when you want to know what a codebase contains or how its parts depend on each other, when keeping a committed diagram current with vizzle doc, and after making changes to see how they reshaped the module graph. To answer a person's question about how code works, use explain-code; to design a change or publish a diagram for people, use design-diagrams.
+description: Orient yourself in code with vizzle instead of reading files: a component diagram of a whole repository costs about 1.5k tokens. Use before you start work in a repository or subsystem you have not seen, when you need its module graph or a scoped class diagram for your own reasoning, after you change code to see whether your change rewired anything, and when keeping a committed diagram current with vizzle doc. When a person asks how code works, use explain-code; to design a change or produce a diagram for people, use design-diagrams.
 ---
 
 # Reading a codebase with vizzle

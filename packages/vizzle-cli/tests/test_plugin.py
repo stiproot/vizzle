@@ -20,13 +20,16 @@ ROOT = Path(__file__).resolve().parents[3]
 PLUGIN = ROOT / "plugins" / "vizzle"
 PROSE = sorted([*PLUGIN.glob("skills/**/*.md"), *PLUGIN.glob("commands/*.md")])
 
-FENCE = re.compile(r"^```[^\n]*\n(.*?)^```", re.M | re.S)
+# A fenced block, indented (inside a list item) or not, with ``` or ~~~.
+FENCE = re.compile(r"^[ \t]*(```|~~~)[^\n]*\n(.*?)^[ \t]*\1", re.M | re.S)
 INLINE = re.compile(r"`([^`\n]+)`")
-# `vizzle <command>`, with an optional pinned version (`vizzle@0.15.0`).
-INVOCATION = re.compile(r"\bvizzle(?:@\S+)?\s+([a-z][a-z-]*)(.*)")
+# `vizzle <command>`, with an optional pinned version (`vizzle@0.15.0`, `vizzle==0.15.0`).
+INVOCATION = re.compile(r"\bvizzle(?:(?:@|==)\S+)?\s+([a-z][a-z-]*)(.*)")
 # Where one invocation ends on its line: a pipe, a chain, a comment.
 INVOCATION_END = re.compile(r"\s(?:\||&&|;|#)\s|\s#")
 FLAG = re.compile(r"(?<![\w-])(--?[A-Za-z][\w-]*)")
+# A value that stands for one the reader supplies: `<path>`, `$ARGUMENTS`, `X.Y.Z`.
+PLACEHOLDER = re.compile(r"^[<$]|^[A-Z][A-Z.]*$")
 
 # Colours a skill names on purpose although they are not the palette's.
 OFF_PALETTE_ON_PURPOSE = {
@@ -34,35 +37,69 @@ OFF_PALETTE_ON_PURPOSE = {
 }
 
 
-def options(command: click.Command) -> set[str]:
-    names = {"--help"}
+def option_table(command: click.Command) -> dict[str, click.Option]:
+    table = {"--help": None}
     for param in command.params:
         if isinstance(param, click.Option):
-            names.update(param.opts)
-            names.update(param.secondary_opts)
-    return names
+            for name in [*param.opts, *param.secondary_opts]:
+                table[name] = param
+    return table
 
 
-COMMANDS = {name: options(cmd) for name, cmd in main.commands.items()}
-EVERY_FLAG = set().union(*COMMANDS.values())
+COMMANDS = {name: option_table(cmd) for name, cmd in main.commands.items()}
+EVERY_FLAG = {flag for table in COMMANDS.values() for flag in table}
 
 
 def code_spans(text: str) -> tuple[list[str], list[str]]:
-    """Lines inside fenced blocks, and inline code spans outside them."""
-    fenced = [line for block in FENCE.findall(text) for line in block.splitlines()]
+    """Lines inside fenced blocks (shell continuations joined), and inline code spans outside them."""
+    fenced = [line for match in FENCE.finditer(text) for line in re.sub(r"\\\n\s*", " ", match.group(2)).splitlines()]
     inline = INLINE.findall(FENCE.sub("", text))
     return fenced, inline
 
 
 def invocations(text: str) -> list[tuple[str, list[str], str]]:
-    """Every `vizzle <command> ...` named in code: (command, flags, source line)."""
+    """Every `vizzle <command> ...` named in code: (command, its tokens, source line).
+
+    An inline span that starts with a command name and carries a flag
+    (`component --focus`) is read as that command too: prose that names a flag
+    against a command makes the same claim as a full invocation.
+    """
     fenced, inline = code_spans(text)
     found = []
     for line in fenced + inline:
-        for match in INVOCATION.finditer(line):
+        matches = list(INVOCATION.finditer(line))
+        for match in matches:
             rest = INVOCATION_END.split(match.group(2), maxsplit=1)[0]
-            found.append((match.group(1), FLAG.findall(rest), line.strip()))
+            found.append((match.group(1), rest.split(), line.strip()))
+        words = line.split()
+        if not matches and line in inline and len(words) > 1 and words[0] in COMMANDS and FLAG.match(words[1]):
+            found.append((words[0], words[1:], line.strip()))
     return found
+
+
+def problems_in(text: str) -> list[str]:
+    """What the prose claims about the CLI that the CLI does not do."""
+    problems = []
+    for command, tokens, line in invocations(text):
+        if command not in COMMANDS:
+            problems.append(f"`vizzle {command}` is not a command: {line}")
+            continue
+        table = COMMANDS[command]
+        for i, token in enumerate(tokens):
+            if not FLAG.fullmatch(token.split("=", 1)[0]):
+                continue
+            flag, _, inline_value = token.partition("=")
+            if flag not in table:
+                problems.append(f"`vizzle {command}` has no {flag}: {line}")
+                continue
+            option = table[flag]
+            if option is None or not isinstance(option.type, click.Choice):
+                continue
+            value = inline_value or (tokens[i + 1] if i + 1 < len(tokens) else "")
+            supplied = value and not value.startswith("-") and not PLACEHOLDER.search(value)
+            if supplied and value not in option.type.choices:
+                problems.append(f"`vizzle {command} {flag}` takes {list(option.type.choices)}, not {value}: {line}")
+    return problems
 
 
 def test_the_plugin_has_prose_to_check() -> None:
@@ -79,12 +116,7 @@ def test_the_plugin_has_prose_to_check() -> None:
 
 @pytest.mark.parametrize("path", PROSE, ids=lambda p: p.relative_to(PLUGIN).as_posix())
 def test_every_command_and_flag_named_exists(path: Path) -> None:
-    problems = []
-    for command, flags, line in invocations(path.read_text()):
-        if command not in COMMANDS:
-            problems.append(f"`vizzle {command}` is not a command: {line}")
-            continue
-        problems += [f"`vizzle {command}` has no {flag}: {line}" for flag in flags if flag not in COMMANDS[command]]
+    problems = problems_in(path.read_text())
     assert not problems, "\n".join(problems)
 
 
@@ -98,14 +130,29 @@ def test_every_flag_named_on_its_own_exists_somewhere(path: Path) -> None:
     assert not unknown, f"no vizzle command has {unknown}"
 
 
-def test_the_check_catches_a_flag_on_the_wrong_command() -> None:
-    # --focus exists only on `diff`; the first version of the skill-set spec
-    # put it on `component`.
-    found = invocations("```sh\nuvx vizzle component . --focus  # comment --nope\n```\n")
-    assert found == [("component", ["--focus"], "uvx vizzle component . --focus  # comment --nope")]
-    assert "--focus" not in COMMANDS["component"]
-    assert "--focus" in COMMANDS["diff"]
-    assert invocations("run `vizzle frobnicate -x`")[0][0] == "frobnicate"
+@pytest.mark.parametrize(
+    "prose",
+    [
+        # --focus exists only on `diff`; the first draft of the skill-set spec put it on `component`.
+        "```sh\nuvx vizzle component . --focus  # a comment --is-not-a-flag\n```\n",
+        "```sh\nuvx vizzle component . \\\n  --frobnicate\n```\n",
+        "1. Run it:\n\n   ```sh\n   uvx vizzle component . --frobnicate\n   ```\n",
+        "~~~sh\nuvx vizzle component . --frobnicate\n~~~\n",
+        "```sh\nuvx vizzle==0.15.0 component . --frobnicate\n```\n",
+        "```sh\nuvx vizzle palette -f yaml\n```\n",
+        "```sh\nuvx vizzle diff . --type=sequence\n```\n",
+        "Narrow it with `component --focus`.",
+        "run `vizzle frobnicate`",
+    ],
+)
+def test_the_check_catches_a_lie(prose: str) -> None:
+    assert problems_in(prose), f"passed: {prose!r}"
+
+
+def test_the_check_passes_placeholders_and_real_values() -> None:
+    assert not problems_in(
+        "```sh\nuvx vizzle diff <path> --type component -f mermaid\nuvx vizzle render a.md out/ --theme=both\n```\n"
+    )
 
 
 def frontmatter(path: Path) -> dict[str, str]:
@@ -152,7 +199,7 @@ def test_the_plugin_loads_under_both_agents() -> None:
 def test_the_plugin_needs_no_other_plugin() -> None:
     # vizzle's plugin is the single source of truth for diagramming; naming the
     # retired one as something to load would send an agent back to it.
-    retired = re.compile(r"code-comprehension|comprehend-code|generated-diagrams|c4-mermaid")
+    retired = re.compile(r"code-comprehension|comprehend-code|generated-diagrams|c4-mermaid", re.I)
     hits = [
         f"{path.relative_to(ROOT)}:{n}: {line.strip()}"
         for path in sorted(PLUGIN.rglob("*"))
@@ -168,7 +215,9 @@ def test_every_colour_a_skill_gives_is_the_palettes() -> None:
     assert result.exit_code == 0, result.output
     palette = json.loads(result.output)
     source = " ".join([*(s["rect"] for s in palette["sequence"]), *palette["classDefs"]])
-    colour = re.compile(r"#[0-9a-fA-F]{6}\b|rgba?\(\s*\d[^)]*\)")
+    colour = re.compile(
+        r"#[0-9a-fA-F]{3,8}\b|(?:rgba?|hsla?)\(\s*\d[^)]*\)|(?:fill|stroke|color|background):\s*[a-z]+\b"
+    )
     allowed = set(colour.findall(source))
     stray = sorted(
         f"{path.relative_to(PLUGIN)}: {c}"

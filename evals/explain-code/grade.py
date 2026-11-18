@@ -97,6 +97,25 @@ def renders(answer: Path, out: Path) -> tuple[bool, str]:
     return False, " | ".join(errors[:2] or lines[-3:])
 
 
+def skill_ran(run: Path) -> bool:
+    """Whether the agent invoked explain-code, which `skills_loaded` (available) does not say."""
+    transcript = run / "transcript.jsonl"
+    if not transcript.exists():
+        return False
+    for line in transcript.read_text().splitlines():
+        try:
+            event = json.loads(line)
+        except ValueError:
+            continue
+        message = event.get("message")
+        content = message.get("content") if isinstance(message, dict) else None
+        for block in content if isinstance(content, list) else []:
+            is_skill = isinstance(block, dict) and block.get("type") == "tool_use" and block.get("name") == "Skill"
+            if is_skill and "explain-code" in str(block.get("input", {}).get("skill", "")):
+                return True
+    return False
+
+
 def grade(run: Path, case: dict, target: Path, render: bool, scratch: Path) -> dict:
     answer = run / "answer.md"
     text = answer.read_text() if answer.exists() else ""
@@ -167,14 +186,26 @@ def main() -> int:
                 meta = json.loads((run / "meta.json").read_text())
                 graded = grade(run, by_name[meta["case"]], target, not args.no_render, Path(tmp))
                 (run / "grading.json").write_text(json.dumps(graded, indent=2) + "\n")
-                rows.append({**meta, "passed": graded["passed"], "total": graded["total"]})
+                rows.append(
+                    {
+                        **meta,
+                        "passed": graded["passed"],
+                        "total": graded["total"],
+                        "skill_ran": skill_ran(run),
+                        "checks": graded["checks"],
+                    }
+                )
         finally:
             subprocess.run(["git", "-C", str(REPO), "worktree", "remove", "--force", str(target)], check=False)
 
-    lines = ["| case | config | run | passed | cost | seconds | skills loaded |", "|---|---|---|---|---|---|---|"]
+    lines = [
+        "| case | config | run | passed | explain-code ran | cost | seconds | skills available |",
+        "|---|---|---|---|---|---|---|---|",
+    ]
     for r in sorted(rows, key=lambda r: (r["case"], r["config"], r["run"])):
         lines.append(
             f"| {r['case']} | {r['config']} | {r['run']} | {r['passed']}/{r['total']} | "
+            f"{'yes' if r['skill_ran'] else 'no'} | "
             f"${r['cost_usd']} | {r['seconds']} | {', '.join(r['skills_loaded']) or '-'} |"
         )
     totals = {}
@@ -183,6 +214,18 @@ def main() -> int:
         t[0] += r["passed"]
         t[1] += r["total"]
     lines += ["", *(f"- **{c}**: {p}/{t} checks ({p / t:.0%})" for c, (p, t) in sorted(totals.items()))]
+    # Per check: where a gap between the configurations comes from.
+    by_check: dict[str, dict[str, list[int]]] = {}
+    for r in rows:
+        for c in r["checks"]:
+            cell = by_check.setdefault(c["text"], {}).setdefault(r["config"], [0, 0])
+            cell[0] += c["passed"]
+            cell[1] += 1
+    configs = sorted(totals)
+    lines += ["", "| check | " + " | ".join(configs) + " |", "|---|" + "---|" * len(configs)]
+    for text, cells in sorted(by_check.items()):
+        shown = [f"{cells[c][0]}/{cells[c][1]}" if c in cells else "-" for c in configs]
+        lines.append(f"| {text} | " + " | ".join(shown) + " |")
     (args.iteration / "summary.md").write_text("\n".join(lines) + "\n")
     (args.iteration / "summary.json").write_text(json.dumps({"rows": rows, "totals": totals}, indent=2) + "\n")
     print("\n".join(lines))

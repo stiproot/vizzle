@@ -115,7 +115,10 @@ nothing draws or compares; a `consts` entry is the one way to reach it,
 because listing a name is the author choosing it. A `const` entry's realization
 edge reads the declared type from the same place. A module whose public surface
 is only such assignments has no box, and its entry still resolves through
-`consts`. The toolkit also printed a string constant's value; vizzle does not.
+`consts`. A value set in an `else`, `elif`, `except` or `finally` branch (the
+`except ImportError: tomllib = None` idiom) is kept aside the same way, whatever
+its case, since those branches have never fed the box. The toolkit also printed a
+string constant's value; vizzle does not.
 
 ### 4.1 Decision: curated mode ignores the density heuristics
 

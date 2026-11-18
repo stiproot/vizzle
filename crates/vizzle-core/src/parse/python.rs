@@ -84,6 +84,35 @@ fn collect(
             "if_statement" | "try_statement" | "block" => {
                 collect(child, src, module, outer, graph, surface)
             }
+            // The other branches have never fed the box or the class list, and
+            // changing that would change every diagram that has one. A value set
+            // there (`except ImportError: tomllib = None`) is still one a manifest
+            // may name, so these branches feed `values`, whatever the name's case.
+            "else_clause" | "elif_clause" | "except_clause" | "finally_clause" => {
+                collect_branch_values(child, src, surface.values)
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Every public plain-name assignment in a branch `collect` does not walk for
+/// the box, nested branches included, as values a manifest's `consts` may name.
+fn collect_branch_values(node: Node, src: &str, values: &mut Vec<Member>) {
+    let mut cursor = node.walk();
+    for child in node.named_children(&mut cursor) {
+        match child.kind() {
+            "expression_statement" => {
+                let mut members = Vec::new();
+                let mut surface = ModuleSurface {
+                    members: &mut members,
+                    values,
+                };
+                extract_module_const(child, src, &mut surface);
+                values.append(&mut members);
+            }
+            "block" | "if_statement" | "try_statement" | "else_clause" | "elif_clause"
+            | "except_clause" | "finally_clause" => collect_branch_values(child, src, values),
             _ => {}
         }
     }
@@ -669,6 +698,26 @@ class Point:
         assert!(
             !diff.diff_mode(),
             "a value nothing draws cannot change a diagram"
+        );
+    }
+
+    #[test]
+    fn a_value_set_in_another_branch_is_kept_aside_for_a_manifest() {
+        let src = "try:\n    import tomllib\nexcept ImportError:\n    tomllib = None\n    FALLBACK = 1\nelse:\n    in_else = 1\nfinally:\n    fin = 2\nif X:\n    a = 1\nelif Y:\n    b = 2\nelse:\n    if Z:\n        nested = 3\n";
+        let graph = parse("pkg.app", src).unwrap();
+        let mut values: Vec<&str> = graph.module_values["pkg.app"]
+            .iter()
+            .map(|m| m.name.as_str())
+            .collect();
+        values.sort();
+        assert_eq!(
+            values,
+            ["FALLBACK", "a", "b", "fin", "in_else", "nested", "tomllib"]
+        );
+        assert!(
+            graph.classes.iter().all(|c| !c.is_module_box()),
+            "no branch value joins the box: {:?}",
+            graph.classes
         );
     }
 }

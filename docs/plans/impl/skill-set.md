@@ -140,10 +140,10 @@ operator reviews and merges. Then a release (minor) and the h PR of §7.
 | # | Met by |
 |---|---|
 | 1 | `plugins/vizzle/skills/{vizzle-diagrams,explain-code,design-diagrams}/` and `commands/{explain,map}.md`. Each description names its own questions and points at the other two for theirs |
-| 2 | `packages/vizzle-cli/tests/test_plugin.py`, in CI's existing pytest step: every `vizzle <command>` and flag in a skill or command file is checked against the Click command tree, and a flag named on its own must exist on some command. Mutation-checked: a flag on the wrong command, a made-up flag and an off-palette colour each fail it |
+| 2 | `packages/vizzle-cli/tests/test_plugin.py`, in CI's existing pytest step: every `vizzle <command>` and flag in a skill or command file is checked against the Click command tree, and a flag named on its own must exist on some command. It also checks `click.Choice` values and reads indented and `~~~` fences, `\` continuations and `==` pins; a regression test feeds it nine lies, each of which must fail |
 | 3 | The same test fails on any line in the plugin naming code-comprehension, comprehend-code, generated-diagrams or c4-mermaid |
 | 4 | The same test: every colour in the prose must be `vizzle palette -f json`'s, except the one counter-example `design-diagrams` shows on purpose (listed, with its reason). `design-diagrams` maps the old delta convention onto it (D3) |
-| 5 | `evals/explain-code/` (D5): baseline 86% with the skill against 60% without, 24 runs; two skill defects found and fixed on the way; open items in its README |
+| 5 | `evals/explain-code/` (D5): baseline 86% with the skill against 60% without, 24 runs. The gap is the answer's form (a mermaid diagram of the right kind, from vizzle, the four-part brief); the content checks pass equally in both, so whether the form helps a reader is still to be judged. Two skill defects found and fixed on the way; open items in its README |
 | 6 | `bump-version.sh` moves both manifests; `check` fails when either drifts (shown by hand) |
 | 7 | `plugins/vizzle/.codex-plugin/plugin.json` + `.agents/plugins/marketplace.json` (D8), held by the same test; skill frontmatter is exactly `name` + `description` |
 
