@@ -1533,3 +1533,18 @@ def test_serve_reloads_on_a_rust_edit() -> None:
 
     assert is_watched_source("src/lib.rs")
     assert not is_watched_source("src/lib.rs.bk")
+
+
+def test_a_rust_class_diff_names_types_as_vizzle_class_does(rust_repo: Path, tmp_path: Path) -> None:
+    # A Rust type is keyed by its crate, which only Cargo.toml knows. A diff
+    # parsed without it keyed types by file path, so no name in a diff matched
+    # one from `vizzle class` (and a --highlight or overlay name missed).
+    out = tmp_path / "d.json"
+    result = CliRunner().invoke(main, ["diff", str(rust_repo), "-f", "json", "-o", str(out)])
+    assert result.exit_code == 0, result.output
+    diffed = {c["qualified"] for c in json.loads(out.read_text())["classes"]}
+
+    result = CliRunner().invoke(main, ["class", str(rust_repo), "-f", "json"])
+    assert result.exit_code == 0, result.output
+    drawn = {c["qualified"] for c in json.loads(result.output)["classes"]}
+    assert diffed == drawn == {"demo::Graph"}, (diffed, drawn)

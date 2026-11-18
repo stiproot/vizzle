@@ -157,6 +157,8 @@ fn class_diagram_from_files(
     base_files,
     head_files,
     *,
+    base_manifests = vec![],
+    head_manifests = vec![],
     include = vec![],
     exclude = vec![],
     tests = false,
@@ -172,6 +174,8 @@ fn class_diagram_from_files(
 fn class_diagram_diff(
     base_files: Vec<(String, String)>,
     head_files: Vec<(String, String)>,
+    base_manifests: Vec<(String, String)>,
+    head_manifests: Vec<(String, String)>,
     include: Vec<String>,
     exclude: Vec<String>,
     tests: bool,
@@ -192,8 +196,19 @@ fn class_diagram_diff(
         title,
     )?;
     let select = selection(include, exclude, tests, langs, vec![]);
-    let diagram =
-        vc::diff_diagram(&base_files, &head_files, &select, &render).map_err(to_py_err)?;
+    let diagram = vc::diff_diagram(
+        vc::Revision {
+            files: &base_files,
+            manifests: &base_manifests,
+        },
+        vc::Revision {
+            files: &head_files,
+            manifests: &head_manifests,
+        },
+        &select,
+        &render,
+    )
+    .map_err(to_py_err)?;
     Ok(diff_pair(diagram))
 }
 
@@ -506,17 +521,31 @@ fn graph_json_from_dir(
 
 /// Export a change-annotated class graph from base/head revisions as JSON.
 #[pyfunction]
-#[pyo3(signature = (base_files, head_files, *, include = vec![], exclude = vec![], tests = false, langs = vec![]))]
+#[pyo3(signature = (base_files, head_files, *, base_manifests = vec![], head_manifests = vec![], include = vec![], exclude = vec![], tests = false, langs = vec![]))]
+#[allow(clippy::too_many_arguments)]
 fn graph_json_diff(
     base_files: Vec<(String, String)>,
     head_files: Vec<(String, String)>,
+    base_manifests: Vec<(String, String)>,
+    head_manifests: Vec<(String, String)>,
     include: Vec<String>,
     exclude: Vec<String>,
     tests: bool,
     langs: Vec<String>,
 ) -> PyResult<String> {
     let select = selection(include, exclude, tests, langs, vec![]);
-    vc::json_diff(&base_files, &head_files, &select).map_err(to_py_err)
+    vc::json_diff(
+        vc::Revision {
+            files: &base_files,
+            manifests: &base_manifests,
+        },
+        vc::Revision {
+            files: &head_files,
+            manifests: &head_manifests,
+        },
+        &select,
+    )
+    .map_err(to_py_err)
 }
 
 /// Merge an overlay of planned parts into a component graph's JSON:

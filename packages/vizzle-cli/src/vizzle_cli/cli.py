@@ -1174,6 +1174,27 @@ def _collect_diff_files(path: Path, base: str, head: str | None) -> tuple[list[t
     return base_files, head_files
 
 
+def _diff_manifests(
+    path: Path, base: str, head: str | None, base_files: list, head_files: list
+) -> dict[str, list[tuple[str, str]]]:
+    """The package manifests at each revision, for a class diff that touches Rust.
+
+    A Rust type is keyed `crate::module::Type` and the crate name lives in
+    `Cargo.toml`; without it a diff keys types by file path and names nothing
+    the way `vizzle class` does. Python and TypeScript need no manifest, so a
+    diff without Rust files skips the extra reads.
+    """
+    if not any(p.endswith(".rs") for p, _ in [*base_files, *head_files]):
+        return {}
+    root = _repo_root(path)
+    try:
+        _, base_manifests = _collect_component_revision(root, base)
+        _, head_manifests = _collect_component_revision(root, head)
+    except git.GitError as err:
+        raise click.ClickException(str(err)) from err
+    return {"base_manifests": base_manifests, "head_manifests": head_manifests}
+
+
 def _fork_point(path: Path, base: str, head: str | None) -> str:
     """Resolve `base` to where `head` (or the checked-out commit) forked from it.
 
@@ -1388,6 +1409,7 @@ def diff_diagram(
             f"no changed Python, TypeScript or Rust files between {base} and {head or 'the working tree'}"
         )
     base_files, head_files = _without_tests(base_files, tests), _without_tests(head_files, tests)
+    manifests = _diff_manifests(path, base, head, base_files, head_files)
 
     grouping = _grouping(group_by, group)
     if grouping == "component":
@@ -1398,7 +1420,7 @@ def diff_diagram(
         )
     resolved_format = _resolve_format(fmt, output)
     if resolved_format in ("html", "json"):
-        graph_json = _core.graph_json_diff(base_files, head_files, **selection)
+        graph_json = _core.graph_json_diff(base_files, head_files, **manifests, **selection)
         content = (
             graph_json
             if resolved_format == "json"
@@ -1424,6 +1446,7 @@ def diff_diagram(
     diagram, verdict_json, _ = _core.class_diagram_diff(
         base_files,
         head_files,
+        **manifests,
         **selection,
         **_render_kwargs(members, modules, grouping, externals, direction, resolved_title),
     )
@@ -1526,9 +1549,11 @@ def serve_command(
                 page_title = title or f"{path.resolve().name} — component diagram (live)"
             return build_component_html(graph_json, title=page_title, include_externals=externals)
         if diff_mode:
-            base_files, head_files = _collect_diff_files(path, _fork_point(path, base, head), head)
+            fork = _fork_point(path, base, head)
+            base_files, head_files = _collect_diff_files(path, fork, head)
             base_files, head_files = _without_tests(base_files, tests), _without_tests(head_files, tests)
-            graph_json = _core.graph_json_diff(base_files, head_files, **selection)
+            manifests = _diff_manifests(path, fork, head, base_files, head_files)
+            graph_json = _core.graph_json_diff(base_files, head_files, **manifests, **selection)
             page_title = title or f"changes vs {base} (live)"
         else:
             graph_json = _core.graph_json_from_dir(str(path), **selection)
