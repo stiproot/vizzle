@@ -1385,7 +1385,7 @@ def diff_diagram(
     base_files, head_files = _collect_diff_files(path, base, head)
     if not base_files and not head_files:
         raise click.ClickException(
-            f"no changed Python/TypeScript files between {base} and {head or 'the working tree'}"
+            f"no changed Python, TypeScript or Rust files between {base} and {head or 'the working tree'}"
         )
     base_files, head_files = _without_tests(base_files, tests), _without_tests(head_files, tests)
 

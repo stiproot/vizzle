@@ -1501,3 +1501,35 @@ def test_draw_takes_a_class_graph_as_html_only(workspace: Path, tmp_path: Path) 
     refused = _invoke(["draw", "-", "-f", "mermaid"], stdin=graph)
     assert refused.exit_code != 0
     assert "html only" in refused.output
+
+
+@pytest.fixture()
+def rust_repo(tmp_path: Path) -> Path:
+    git(tmp_path, "init")
+    (tmp_path / "Cargo.toml").write_text('[package]\nname = "demo"\n')
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "lib.rs").write_text("pub struct Graph {\n    pub a: u32,\n}\n")
+    git(tmp_path, "add", ".")
+    git(tmp_path, "commit", "-m", "base")
+    (tmp_path / "src" / "lib.rs").write_text("pub struct Graph {\n    pub a: u32,\n    pub b: u32,\n}\n")
+    return tmp_path
+
+
+@pytest.mark.parametrize("kind", ["class", "component"])
+def test_diff_sees_a_rust_change(rust_repo: Path, tmp_path: Path, kind: str) -> None:
+    # The CLI's list of source suffixes predated Rust support, so a Rust-only
+    # change read as "no changed files" although `class` and `component` parse it.
+    stats = tmp_path / f"{kind}-stats.json"
+    out = tmp_path / f"{kind}.mmd"
+    result = CliRunner().invoke(main, ["diff", str(rust_repo), "--type", kind, "--stats", str(stats), "-o", str(out)])
+    assert result.exit_code == 0, result.output
+    verdict = json.loads(stats.read_text())
+    assert verdict["changed"] is True, verdict
+    assert verdict["changes"]["modified"] == 1, verdict
+
+
+def test_serve_reloads_on_a_rust_edit() -> None:
+    from vizzle_cli.server import is_watched_source
+
+    assert is_watched_source("src/lib.rs")
+    assert not is_watched_source("src/lib.rs.bk")
