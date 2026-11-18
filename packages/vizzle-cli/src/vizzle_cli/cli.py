@@ -1171,7 +1171,32 @@ def _collect_diff_files(path: Path, base: str, head: str | None) -> tuple[list[t
             contents = git.file_at_ref(root, head, change.path) if head else git.file_in_worktree(root, change.path)
             if contents is not None:
                 head_files.append((change.path, contents))
+    _add_go_package_siblings(root, base, head, base_files, head_files)
     return base_files, head_files
+
+
+def _add_go_package_siblings(
+    root: Path, base: str, head: str | None, base_files: list[tuple[str, str]], head_files: list[tuple[str, str]]
+) -> None:
+    """Give a changed Go file the rest of its package, on both revisions.
+
+    A Go type's methods live in any file of its package, so a changed `get.go`
+    parsed alone has methods for a type declared in an unchanged `store.go`, and
+    nothing to attach them to (docs/languages/go.md §4.1). The unchanged
+    siblings read the same on both sides, so they add context, not changes.
+    """
+    dirs = {path.rpartition("/")[0] for path, _ in [*base_files, *head_files] if path.endswith(".go")}
+    if not dirs:
+        return
+
+    def siblings(paths: list[str], have: list[tuple[str, str]]) -> list[str]:
+        known = {path for path, _ in have}
+        return [p for p in paths if p.endswith(".go") and p.rpartition("/")[0] in dirs and p not in known]
+
+    base_files.extend(git.files_at_ref(root, base, siblings(git.tree_paths(root, base), base_files)))
+    head_paths = git.worktree_paths(root) if head is None else git.tree_paths(root, head)
+    extra = siblings(head_paths, head_files)
+    head_files.extend(git.files_in_worktree(root, extra) if head is None else git.files_at_ref(root, head, extra))
 
 
 def _diff_manifests(

@@ -37,8 +37,8 @@ what the reader needs to see, not by what is easiest to produce. A component
 diagram is the wrong answer to "what happens when I run sync", however cheap
 it is.
 
-Before relying on vizzle, check it can see the repo (Python, TypeScript and
-Rust only; `vizzle-diagrams` has the one-line check). For a repo it cannot
+Before relying on vizzle, check it can see the repo (Python, TypeScript, Rust
+and Go; `vizzle-diagrams` has the one-line check). For a repo it cannot
 parse, draw the structural view by hand as a `flowchart` and say so.
 
 ## 2. Get the diagram

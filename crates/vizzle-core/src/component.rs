@@ -873,7 +873,7 @@ impl GoPackages {
                 let below =
                     under(&dir, module_dir).unwrap_or(if dir == *module_dir { "" } else { &dir });
                 let name = if below.is_empty() {
-                    last_segment(module_path).to_owned()
+                    parse::go::package_label(module_path)
                 } else {
                     below.to_owned()
                 };

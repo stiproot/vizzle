@@ -29,18 +29,19 @@ graph and needs no parsing step. This is the opposite of the usual instinct.
 
 ## First: can vizzle see this repo?
 
-**vizzle parses Python, TypeScript, and Rust.** This is the one thing that will
+**vizzle parses Python, TypeScript, Rust and Go.** This is the one thing that will
 waste your time if you skip it.
 
 Components are found from manifests (`package.json`, `pyproject.toml`,
-`Cargo.toml`, `go.mod`), but **a component containing no `.py`/`.ts`/`.rs` files is
-dropped**. So a Go repository produces an empty or near-empty diagram
-even though its manifests were found — that is by design, not a failure.
+`Cargo.toml`), but **a component containing no file vizzle parses is dropped**.
+So a Java or C# repository produces an empty or near-empty diagram even though
+its manifests were found — that is by design, not a failure. In Go a component
+is a **package** (a directory), not a `go.mod`; see *Reading the output*.
 
 Check before running:
 
 ```sh
-git ls-files | grep -cE '\.(py|ts|tsx|mts|cts|rs)$'
+git ls-files | grep -cE '\.(py|ts|tsx|mts|cts|rs|go)$'
 ```
 
 If that count is zero or tiny, read files instead. Do not report an empty
@@ -196,6 +197,16 @@ change".
 **Component diagrams** are a Mermaid `flowchart`. `«component»` boxes are
 modules; `subgraph` blocks group siblings by parent directory; dashed arrows are
 dependencies pointing from importer to imported.
+
+**Go** reads a little differently. Each package (directory) is a box, named by its
+path below its module (`lease`, `cli/render`), inside one block per `go.mod`;
+`«main»` marks a `package main`, the entry points. Edges come from exact import
+paths, so a Go edge is never a guess, and the standard library is never drawn,
+even with `--externals`. `--split` is not needed. In a class diagram, a Go type
+carries the methods from every file of its package, embedding is drawn as
+inheritance, and `..|>` to an interface is **inferred** from method sets (Go never
+declares it); `-f json` says whether it holds for the value or only the pointer
+(`"via"`).
 
 **Class diagrams** are a Mermaid `classDiagram` with stereotypes
 (`<<interface>>`, `<<dataclass>>`, `<<type>>`, `<<union>>`, `<<module>>`),

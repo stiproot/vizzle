@@ -130,6 +130,20 @@ pub(crate) fn import_path(rel_path: &str, manifests: &[(String, String)], packag
     }
 }
 
+/// How a package is labelled: its import path's last element, or the one
+/// before it when that is a major version (`github.com/go-chi/chi/v5` is
+/// package `chi`, as Go's own convention names it).
+pub(crate) fn package_label(import_path: &str) -> String {
+    let mut parts = import_path.rsplit('/');
+    let last = parts.next().unwrap_or(import_path);
+    let is_major =
+        last.len() > 1 && last.starts_with('v') && last[1..].chars().all(|c| c.is_ascii_digit());
+    match (is_major, parts.next()) {
+        (true, Some(previous)) => previous.to_owned(),
+        _ => last.to_owned(),
+    }
+}
+
 /// The module paths a `go.mod` requires, for naming external nodes (§6 rule 3).
 pub(crate) fn requires(contents: &str) -> Vec<String> {
     let mut out = Vec::new();
@@ -239,7 +253,7 @@ pub fn parse(rel_path: &str, source: &str, manifests: &[(String, String)]) -> Re
         ..
     } = file;
     if !module_members.is_empty() {
-        let name = ip.rsplit('/').next().unwrap_or(&ip).to_owned();
+        let name = package_label(&ip);
         graph.classes.push(class(
             &ip,
             &name,
@@ -1210,6 +1224,8 @@ mod tests {
         assert_eq!(default_alias("gopkg.in/yaml.v3"), "yaml");
         assert_eq!(default_alias("github.com/x/y/v2"), "y");
         assert_eq!(default_alias("github.com/mattn/go-isatty"), "isatty");
+        assert_eq!(package_label("github.com/go-chi/chi/v5"), "chi");
+        assert_eq!(package_label("github.com/h/kernel/lease"), "lease");
         let g = graph(&[("store/store.go", "package store\ntype Store struct{}\n")]);
         let store = get(&g, "example.com/demo/store.Store");
         assert_eq!(store.module, "example.com/demo/store");

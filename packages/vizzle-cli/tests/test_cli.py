@@ -1567,3 +1567,36 @@ def test_a_rust_class_diff_names_types_as_vizzle_class_does(rust_repo: Path, tmp
     assert result.exit_code == 0, result.output
     drawn = {c["qualified"] for c in json.loads(result.output)["classes"]}
     assert diffed == drawn == {"demo::Graph"}, (diffed, drawn)
+
+
+@pytest.fixture()
+def go_repo(tmp_path: Path) -> Path:
+    git(tmp_path, "init")
+    (tmp_path / "go.mod").write_text("module example.com/demo\n\ngo 1.22\n")
+    (tmp_path / "store").mkdir()
+    (tmp_path / "store" / "store.go").write_text("package store\n\ntype Store struct {\n\tName string\n}\n")
+    (tmp_path / "store" / "get.go").write_text("package store\n\nfunc (s *Store) Get() string { return s.Name }\n")
+    (tmp_path / "store" / "store_test.go").write_text("package store\n\ntype fixture struct{}\n")
+    git(tmp_path, "add", ".")
+    git(tmp_path, "commit", "-m", "base")
+    return tmp_path
+
+
+def test_go_class_diagram_merges_a_package_and_skips_tests(go_repo: Path) -> None:
+    result = CliRunner().invoke(main, ["class", str(go_repo), "-l", "go", "-f", "json"])
+    assert result.exit_code == 0, result.output
+    classes = {c["qualified"]: c for c in json.loads(result.output)["classes"]}
+    store = classes["example.com/demo/store.Store"]
+    assert [m["name"] for m in store["members"]] == ["Name", "Get"], "Get lives in another file"
+    assert not any("fixture" in q for q in classes), "a _test.go file is a test"
+
+
+def test_go_class_diff_names_types_by_import_path(go_repo: Path, tmp_path: Path) -> None:
+    # A Go type is keyed by its import path, which starts with go.mod's module
+    # line; the diff must read go.mod to name it as `vizzle class` does.
+    (go_repo / "store" / "get.go").write_text('package store\n\nfunc (s *Store) Get() string { return "" }\n')
+    out = tmp_path / "d.json"
+    result = CliRunner().invoke(main, ["diff", str(go_repo), "-f", "json", "-o", str(out)])
+    assert result.exit_code == 0, result.output
+    changed = {c["qualified"]: c["change"] for c in json.loads(out.read_text())["classes"]}
+    assert changed == {"example.com/demo/store.Store": "modified"}, changed

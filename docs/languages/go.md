@@ -1,9 +1,10 @@
 # Go language specification
 
-Status: draft for review, 2026-11-18; revised the same day after an independent
-review, which type-checked h's kernel with `go/types` to test §5 and found the
-spec leaning on per-file, name-based machinery that is wrong for Go (§4.1,
-§5.1). §12 holds the open decisions, each with a recommendation.
+Status: v1 implemented, 2026-11-18. Reviewed before the build (an independent
+review type-checked h's kernel with `go/types` and found the first draft leaning
+on per-file, name-based machinery that is wrong for Go, §4.1 and §5.1); the
+operator merged it with D1–D9 as recommended. §13 records what the build changed
+and how each acceptance item was met.
 
 This document fixes the Go-to-vizzle model before an implementation exists, as
 [`rust.md`](rust.md) did for Rust. It extends the language-neutral class and
@@ -65,7 +66,8 @@ package outside any `go.mod` uses its directory path as its import path.
   (`github.com/h/kernel/lease.Lease`).
 - `module` (in the model and in `-f json`) is the import path.
 - The package's `<<module>>` box is keyed by the import path and **named by the
-  last path element** (`lease`). The shared `push_module_box` names a box by the
+  last path element** (`lease`), or the one before it when that is a major
+  version: `github.com/go-chi/chi/v5` is package `chi`, as Go names it. The shared `push_module_box` names a box by the
   last dotted segment (`parse/mod.rs`), which would make
   `github.com/h/kernel/lease` read `com/h/kernel/lease`; Go gets its own rule.
 - If one directory's selected non-test files still declare two package names
@@ -171,6 +173,13 @@ normalization, keyed by import path:
    dropped by de-duplication.
 
 The pass is Go's; other languages keep today's merge.
+
+**The class diff reads whole packages.** A class diff parses only the files
+that changed, and a changed `get.go` parsed alone has methods for a type
+declared in an unchanged `store.go`, so the merge has nothing to attach them to.
+For Go, the CLI adds every other `.go` file of each changed package, on both
+revisions (`cli.py` `_add_go_package_siblings`); unchanged siblings read the
+same on both sides, so they add context, not changes.
 
 ## 5. Relations
 
@@ -293,13 +302,15 @@ This amends component.md §3.1 for Go only:
   path. The existing map (`module_owner`) keys on a file's dotted module path,
   so Go needs its own lookup, or every Go class lands in no component and
   `--classes` and the zoom show nothing.
-- **Grouping:** a `subgraph` per module, then by parent directory within it, as
-  component.md §2.3 and §3.2 group by directory.
+- **Grouping:** a `subgraph` per module, labelled by the module's directory.
+  Groups render one level deep, so packages are not nested further by parent
+  directory; their names (`cli/render`) carry the path. A module at the
+  repository root has no block, as any root-level component has none.
 - **`package main`** gets the stereotype `«main»` in place of `«component»`.
 - **Edges:** `A → B` when a selected file of package `A` imports package `B`
   (§6 rule 1); weight is the number of distinct importing files.
-- **`--split`** does nothing for Go packages (with a note on stderr): it exists
-  to recover the package structure Go already declares.
+- **`--split`** does nothing for Go packages: it exists to recover the package
+  structure Go already declares.
 - **`--around` and `--highlight`** take the component's display name, as
   today.
 
@@ -316,14 +327,21 @@ file, `symbol` a type in its package. Because Go types belong to packages, an
 entry resolves `symbol` in the package of `file`, after the merge (§4.1), so
 methods from other files of the package appear. `kind: "module"` names a file
 and lists `functions`, and `consts` for any package-level const or var by name.
-`scope.lang` accepts `go`.
+A name listed explicitly reaches an unexported member too: the module box hides
+an unchanged private one from an exhaustive diagram, but listing it is the
+author choosing it (for every language, as D9 of the skill-set spec made it for
+Python constants). `scope.lang` accepts `go`.
 
 ## 9. Diff identity and fingerprints
 
 A type is keyed by its qualified name (§2). A method is keyed by its name
 within its receiver's box (Go has no overloading); fields by name.
 Fingerprints include the normalized signature and the body hash, so a
-body-only change marks a method modified. Moving a method between files of a
+body-only change marks a method modified. **Go hashes a member's text with
+whitespace runs collapsed**: spacing inside a declaration is gofmt's, and adding
+one long field realigns the type column of every field in its struct. Hashed as
+written, h's `cli.World` diff marked four untouched fields modified; Python
+keeps hashing as written, where whitespace is meaningful. Moving a method between files of a
 package, or switching its receiver between `T` and `*T`, changes neither key
 nor fingerprint. A package rename or move is remove plus add. Twins merge as
 §4.1 says.
@@ -361,7 +379,8 @@ Measured on h main `1866f3594`, `kernel/`, module `github.com/h/kernel`:
 - 50 interfaces;
 - 369 package-level non-test struct types, plus 7 function-local;
 - 869 methods and 1,100 functions;
-- 1 alias, 3 typed `iota` enumerations, 1 generated file;
+- 1 alias, 5 enumerations by §3.1's rule (3 typed `iota` blocks and 2 typed
+  string blocks, `api.Registry` and `proc.OnOwnerLost`), 1 generated file;
 - 0 `var _ I =` assertions;
 - 19 distinct internal import paths, used by 65 non-test files;
 - 57 true implementations by `go/types` on darwin, 54 of them pointer-only.
@@ -386,8 +405,8 @@ The criteria:
      reader load on both sides is visible before merge.
 5. No member edge points into the tree from a standard-library or external type:
    `cm/github.go`'s `*http.Client` field draws no edge to `api.Client`.
-6. The three typed `iota` types draw as `<<enumeration>>` with their constants,
-   and `cm/schedule.go`'s untyped block does not.
+6. The five typed blocks draw as `<<enumeration>>` with their constants, and
+   `cm/schedule.go`'s untyped `iota` block does not.
 7. The `proc` twins each draw once.
 8. `vizzle diff kernel --base <a kernel commit> --type component` names
    packages, and a body-only change in one method draws that method `✱`.
@@ -420,3 +439,31 @@ and the levels table in `explain-code`), and `test_plugin.py` still passes.
 | D7 | Build constraints | **Not evaluated, except `//go:build ignore`; twins merge** (§4.1) | Evaluating needs a target platform; merging keeps one row and still sees a change to either file. `ignore` means "not in this package" on every platform |
 | D8 | Generated files | **Included** | They are the real API of many Go packages; `-E` removes them |
 | D9 | What does an inferred edge mean, given 54 of h's 57 implementations are pointer-only? | **"`T` or `*T` implements `I`"**, with `via` in JSON (§5.2) | `T`'s own method set would draw almost nothing; the box is the type either way |
+
+## 13. Built: what changed, and how acceptance was met (2026-11-18)
+
+**Changed by the build** (each recorded in its section above): Go member hashes
+ignore layout (§9); the class diff reads whole packages (§4.1); a major-version
+module path labels its package by the element before (§2); module blocks are one
+level (§7); `--split` prints no note (§7); explicit curated names reach
+unexported members (§8); the enumeration count is 5 (§11.1). The CLI's `-l`
+choices now come from the core (`Language::ALL`) instead of a second list, as
+`rust.md` §1 had asked.
+
+| # | Result on h's kernel at `1866f3594` |
+|---|---|
+| 1 | 26 package components, 7 `«main»`; **36 edges, each confirmed against the import statements of the source, none missing, none extra**; run from the parent, one `kernel` block |
+| 2 | `lease` holds its one type; `cm.WatchController` carries 23 methods, the 10 of `watch_scan.go` and the 13 of `watch_after.go` |
+| 3 | 26 module boxes, none named `com/…` |
+| 4 | **Inferred implements match `go/types` 57 of 57, and `via` agrees 57 of 57.** One extra, `proc.cgroups ..|> proc.containment`, is declared in `containment_linux.go`, which the darwin type check could not see and vizzle parses by design (D7). Busiest interface `cm.Kind` (7), busiest type `*cm.Registries` (17), as measured |
+| 5 | `cm.GitHubAPI`'s `*http.Client` field draws no edge to `api.Client` |
+| 6 | 5 enumerations; the untyped `iota` block is none |
+| 7 | the `proc` twins merge to one row each (a unit test proves either file's change shows) |
+| 8 | a component diff over the last three kernel commits marks `cli ✱`, the new `cli/liveness ✚` and its edge; the class diff marks only `cli.World`'s six new fields and new methods |
+| 9 | `*_test.go` is a default test glob |
+
+**`go-chi/chi` v5.2.1** (root `go.mod`, module `github.com/go-chi/chi/v5`): two
+components, `chi` and `middleware`, one edge; no standard-library node with
+`--externals`; 13 implements edges, of which the edges to `http.Flusher`,
+`http.Hijacker`, `http.Pusher` and `io.ReaderFrom` are chi's own explicit
+`var _ I = &T{}` assertions, drawn as §5.1 says.
