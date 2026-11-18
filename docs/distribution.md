@@ -413,6 +413,16 @@ cross-compiled on Apple Silicon, which the macOS toolchain handles natively, at
 the cost of being the one wheel nothing can execute. Every build job now carries
 `timeout-minutes` so the next runner retirement fails loudly instead of hanging.
 
+**A retired Apple Silicon image fails, but still ships nothing** (`v0.14.0`,
+2026-11-18). When GitHub retired `macos-14`, both macOS wheel jobs failed in 0s
+with `The configuration 'macos-14-arm64-us-default' is not supported`, and the
+publish job, which needs every wheel, was skipped: a tag with nothing on PyPI.
+The macOS legs now run on `macos-latest`, which follows GitHub's current Apple
+Silicon image instead of a label with a retirement date. A change to the release
+matrix is proved by dispatching `release.yml` on the branch: the publish job is
+gated on a `v*` tag, so the dispatch builds and smoke-tests every wheel and
+publishes nothing.
+
 **Writing a diagram used the platform's default encoding.** `_emit` called
 `Path.write_text` with no encoding, and diagrams carry `«guillemets»` and the
 `✚ ✖ ✱` glyphs. On Windows that is cp1252 and every write raised
