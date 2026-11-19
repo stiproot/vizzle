@@ -977,34 +977,23 @@ HYBRID_PASSES = "vizzle-passes.json"
 _DRAW_ONLY = ("group", "weights", "classes", "externals", "overlay_path", "direction", "title", "fmt", "output")
 
 
-def _hybrid_passes(spec_dir: Path) -> dict[str, list[str]]:
-    """The pass table: `{name: args}`, empty when the directory has none."""
+def _hybrid_table(spec_dir: Path) -> tuple[str | None, dict[str, list[str]]]:
+    """The pass table's text and passes, `(None, {})` when the directory has none.
+
+    The core reads the table (`hybrid_pass_table`); this only finds the file and
+    prints the notes the core returns.
+    """
     path = spec_dir / HYBRID_PASSES
     if not path.exists():
-        return {}
+        return None, {}
+    text = _read_input(path, "pass table")
     try:
-        table = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as err:
-        raise _CouldNotRun(f"cannot read {path}: {err}") from err
-    if not isinstance(table, dict) or not isinstance(table.get("passes", {}), dict):
-        raise _CouldNotRun(f'{path}: expected {{"passes": {{name: {{"args": [...]}}}}}}')
-    unknown = sorted(set(table) - {"$comment", "passes", "vizzle"})
-    if unknown:
-        raise _CouldNotRun(f"{path}: unknown field {unknown[0]!r}")
-    if "vizzle" in table:
-        click.echo(
-            f"note: {path} pins vizzle {table['vizzle']}; the pin is ignored (the passes run in this vizzle) "
-            "and will be refused in a later minor — drop it",
-            err=True,
-        )
-    passes: dict[str, list[str]] = {}
-    for name, entry in table.get("passes", {}).items():
-        args = entry.get("args") if isinstance(entry, dict) else None
-        extra = sorted(set(entry) - {"$comment", "args"}) if isinstance(entry, dict) else []
-        if not isinstance(args, list) or not all(isinstance(a, str) for a in args) or extra:
-            raise _CouldNotRun(f'{path}: pass {name!r} must be {{"args": [strings]}}')
-        passes[name] = args
-    return passes
+        passes, notes = _core.hybrid_pass_table(text)
+    except ValueError as err:
+        raise _CouldNotRun(f"{path}: {err}") from err
+    for note in notes:
+        click.echo(f"note: {path} {note}", err=True)
+    return text, passes
 
 
 def _run_hybrid_pass(root: Path, name: str, args: list[str]) -> str:
@@ -1012,11 +1001,11 @@ def _run_hybrid_pass(root: Path, name: str, args: list[str]) -> str:
     try:
         ctx = component_diagram.make_context("component", [str(root), *args])
     except click.ClickException as err:
-        raise _CouldNotRun(f"pass {name!r}: {err.format_message()}") from err
+        raise _CouldNotRun(f'pass "{name}": {err.format_message()}') from err
     params = ctx.params
     for option in _DRAW_ONLY:
         if ctx.get_parameter_source(option) != click.core.ParameterSource.DEFAULT:
-            raise _CouldNotRun(f"pass {name!r}: {option} shapes how a graph is drawn, not its modules; drop it")
+            raise _CouldNotRun(f'pass "{name}": {option} shapes how a graph is drawn, not its modules; drop it')
     try:
         return _core.component_json_from_dir(
             str(root),
@@ -1026,7 +1015,7 @@ def _run_hybrid_pass(root: Path, name: str, args: list[str]) -> str:
             **_lens_kwargs(params["highlight"], params["around"], params["depth"]),
         )
     except ValueError as err:
-        raise _CouldNotRun(f"pass {name!r}: {err}") from err
+        raise _CouldNotRun(f'pass "{name}": {err}') from err
 
 
 def _hybrid_specs(spec_dir: Path, names: tuple[str, ...]) -> list[str]:
@@ -1086,7 +1075,7 @@ def hybrid_command(names: tuple[str, ...], spec_dir: Path | None, root: Path, ch
     stale SVG; exit 2 when it could not run. Spec: docs/diagram-types/hybrid.md.
     """
     spec_dir = spec_dir if spec_dir is not None else root / HYBRID_DIR
-    passes = _hybrid_passes(spec_dir)
+    table_text, passes = _hybrid_table(spec_dir)
     diagrams = _hybrid_specs(spec_dir, names)
     png = png and not check
     chrome = render_mod.find_chrome() if png else None
@@ -1099,17 +1088,15 @@ def hybrid_command(names: tuple[str, ...], spec_dir: Path | None, root: Path, ch
         spec_path = spec_dir / f"{name}.json"
         text = _read_input(spec_path, "spec")
         try:
-            wanted = json.loads(text).get("vizzle", [])
-        except (json.JSONDecodeError, AttributeError) as err:
-            raise _CouldNotRun(f"{spec_path} is not a JSON object: {err}") from err
-        for pass_name in wanted if isinstance(wanted, list) else []:
-            if pass_name not in passes:
-                raise _CouldNotRun(f"[{name}] names vizzle pass {pass_name!r}, which {HYBRID_PASSES} does not define")
+            wanted = _core.hybrid_spec_passes(text, table_text)
+        except ValueError as err:
+            raise _CouldNotRun(f"[{name}] {err}") from err
+        for pass_name in wanted:
             if pass_name not in graphs:
                 graphs[pass_name] = _run_hybrid_pass(root, pass_name, passes[pass_name])
         try:
             svg, findings, width, height = _core.hybrid_svg(
-                text, {p: graphs[p] for p in wanted if p in graphs}, exists, _shown(spec_path, root)
+                text, {p: graphs[p] for p in wanted}, exists, _shown(spec_path, root)
             )
         except ValueError as err:
             raise _CouldNotRun(f"[{name}] {err}") from err

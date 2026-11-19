@@ -72,6 +72,10 @@ A pass runs **in-process**, parsed by `component`'s own option parser and read a
 `--split`, `--highlight`, `--around`, `--depth`); a drawing option (`--weights`, `--group`, `-o`, …) is refused,
 since the picture would silently ignore it. A directory of concept specs needs no pass table.
 
+The core reads the table (`hybrid::pass_table`) and the passes a spec names (`hybrid::spec_passes`); the CLI only
+finds the files and hands each pass's arguments to `component`'s parser. Besides the shape above, a field the table
+does not know is refused, and so is a pass name given twice (JSON would otherwise keep the last one silently).
+
 h's table carried `"vizzle": "<version>"`; that key is accepted and ignored with a note (the version is now the
 vizzle running the command) and will be refused in a later minor.
 

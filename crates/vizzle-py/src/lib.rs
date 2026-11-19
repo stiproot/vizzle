@@ -578,6 +578,26 @@ fn component_diagram_from_json(
     vc::component_diagram_from_json(graph, &render).map_err(to_py_err)
 }
 
+/// A pass table as Python sees it: `({name: args}, notes)`.
+type PassTablePy = (std::collections::BTreeMap<String, Vec<String>>, Vec<String>);
+
+/// Read a hybrid pass table's text: `({name: args}, notes)`. Raises on a
+/// table that cannot be read.
+#[pyfunction]
+fn hybrid_pass_table(text: &str) -> PyResult<PassTablePy> {
+    let table = vc::hybrid_pass_table(text).map_err(to_py_err)?;
+    Ok((table.passes, table.notes))
+}
+
+/// The passes a hybrid spec needs, in its order, checked against the pass
+/// table's text (`None` = no table). Raises on a spec or table that cannot be
+/// read, or a pass the table does not define.
+#[pyfunction]
+#[pyo3(signature = (spec_text, table_text=None))]
+fn hybrid_spec_passes(spec_text: &str, table_text: Option<&str>) -> PyResult<Vec<String>> {
+    vc::hybrid_spec_passes(spec_text, table_text).map_err(to_py_err)
+}
+
 /// Build one hybrid picture: `(svg | None, findings, width, height)`.
 /// `exists(path)` is called for every path the spec cites; a call that raises
 /// counts as "not in the tree", so the path is reported, never skipped.
@@ -620,6 +640,8 @@ fn vizzle_core_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(overlay_json, m)?)?;
     m.add_function(wrap_pyfunction!(component_diagram_from_json, m)?)?;
     m.add_function(wrap_pyfunction!(hybrid_svg, m)?)?;
+    m.add_function(wrap_pyfunction!(hybrid_pass_table, m)?)?;
+    m.add_function(wrap_pyfunction!(hybrid_spec_passes, m)?)?;
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
     Ok(())
 }
