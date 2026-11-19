@@ -523,6 +523,22 @@ fn component_diff_graph(
     })
 }
 
+/// Read a hybrid pass table (`vizzle-passes.json`'s text): each pass's
+/// `component` arguments and the notes to print.
+pub fn hybrid_pass_table(json: &str) -> Result<hybrid::PassTable> {
+    hybrid::pass_table(json)
+}
+
+/// The passes a hybrid spec needs, checked against the pass table's text
+/// (`None` when the directory has no table: a concept spec still reads).
+pub fn hybrid_spec_passes(spec_json: &str, table_json: Option<&str>) -> Result<Vec<String>> {
+    let table = match table_json {
+        Some(json) => hybrid::pass_table(json)?,
+        None => hybrid::PassTable::default(),
+    };
+    hybrid::spec_passes(spec_json, &table)
+}
+
 /// Build one hybrid picture (`docs/diagram-types/hybrid.md`). `passes` maps
 /// each pass name to its component graph JSON (`component_json_from_dir`
 /// output); `exists` answers whether a repo-relative path is in the tree.

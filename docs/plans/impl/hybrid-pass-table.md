@@ -1,6 +1,12 @@
 # The hybrid pass table moves into the core
 
-**Status:** proposed, 2026-11-19. Revised after an independent review (§8). Awaiting the operator's review of §5.
+**Status:** built, 2026-11-19. The operator merged the plan with D1–D5 as recommended; §9 records how each acceptance
+item was met.
+**Archived:** 2026-11-19
+
+Lifted to:
+- `docs/diagram-types/hybrid.md` §2.1 — the core reads the table; a repeated pass name is refused.
+- `crates/vizzle-core/src/hybrid/passes.rs` — the table's rules, with their reasons in the doc comments.
 **Established:** 2026-11-19
 **Follows:** `docs/plans/impl/hybrid.md` B15 (kept for later when `vizzle hybrid` shipped in 0.15.0).
 
@@ -102,7 +108,7 @@ for note in notes:
     click.echo(f"note: {table_path} {note}", err=True)
 ...
 try:
-    wanted = _core.hybrid_spec_passes(text, table_text)   # replaces json.loads(text).get("vizzle", [])
+    wanted = _core.hybrid_spec_passes(text, table_text)  # replaces json.loads(text).get("vizzle", [])
 except ValueError as err:
     raise _CouldNotRun(f"[{name}] {err}") from err
 ```
@@ -163,3 +169,27 @@ string pin bare; a spec with no `vizzle` is refused, not empty; the whole spec i
 the undefined-pass string is `build`'s, since the core does not know the file name; D4's visitor is a copy of
 `ordered_map`, not a reuse, and is marked as the one new behaviour; Python needs literal `"` for the quoting; A1's
 grep is now bounded to the hybrid section.
+
+## 9. Results
+
+| # | How it was met |
+|---|---|
+| A1 | `_hybrid_passes` is gone (`_hybrid_table` only finds the file and prints the core's notes). The bounded grep between the `# ─── hybrid` banner and `def _repo_root` finds nothing (rc 1); no reference to `_hybrid_passes` remains |
+| A2 | 12 tests in `passes.rs`, covering each rule listed. Seven mutations (no object check, no duplicate check, unknown fields allowed in an entry, in the table, the pin printed quoted, no undefined-pass check, the spec order lost) each fail a test |
+| A3 | `test_a_bad_pass_table_cannot_run`: the five strings updated to the §4 wording, plus a not-an-object case; a new `test_a_pass_defined_twice_cannot_run`; the pin test unchanged |
+| A4 | CI's own commands, each with its own rc 0: `cargo fmt --all -- --check`, `cargo test -p vizzle-core` (189), clippy over the workspace with `-D warnings`, `pytest packages/vizzle-cli/tests` (165), `ruff format --check .`, `ruff check .`, `vizzle doc --check`, `vizzle hybrid --check --dir examples/hybrid`, `bump-version.sh check` |
+| A5 | All eight of h's pictures rebuilt with the local build on h main `ecaef65a7`: `git diff` in that checkout is empty, so they are byte-identical, GENERATED line included (both at 0.17.0) |
+| A6 | B15 in `docs/plans/impl/hybrid.md` says done; §2.1 of the format doc has the sentence; this plan moved to `impl/` |
+
+Found while building:
+
+- **serde's derived struct accepts a JSON array.** `[]` read as an empty table, field by field. The old CLI refused
+  anything but an object, so the core now checks for `{` on the text first.
+- **Going through `serde_json::Value` loses duplicates.** Its map keeps the last key, so a first draft that parsed into
+  `Value` (to check for an object) silently undid D4, and reading an entry through `Value` let a repeated `args`
+  through. Both are read straight from the text now, and the D4 and repeated-field tests caught both.
+- **D3's reason was stale.** h main's table no longer carries the pin (its comment now says the version is the one
+  running the command); the plan read an old checkout. Nothing changes here, but refusing the pin in a later minor
+  no longer breaks h. §7's note about h's table is likewise already done in h.
+- **`ruff format` formats Python inside markdown.** The merged plan had two spaces before a comment in a code block,
+  which failed the lint on main; fixed here.

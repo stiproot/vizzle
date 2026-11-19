@@ -33,7 +33,7 @@ use self::passes::ModuleGraph;
 use self::svg::{emit, legend_svg};
 use crate::palette::HYBRID_MUTED;
 
-pub use self::passes::module_graph;
+pub use self::passes::{module_graph, pass_table, spec_passes, PassTable};
 
 /// What a build produced: the SVG, or the findings that stopped it.
 #[derive(Debug, Clone, Default)]
@@ -58,7 +58,7 @@ pub fn build(
 ) -> Result<Built> {
     let spec = spec::parse(spec_json)?;
     if let Some(missing) = spec.vizzle.iter().find(|p| !graphs.contains_key(*p)) {
-        anyhow::bail!("spec names vizzle pass {missing:?}, which the pass table does not define");
+        anyhow::bail!("{}", passes::undefined_pass(missing));
     }
     let rec = reconcile::reconcile(&spec, graphs, exists);
     if !rec.errors.is_empty() {

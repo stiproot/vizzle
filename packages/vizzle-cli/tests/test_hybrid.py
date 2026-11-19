@@ -173,11 +173,12 @@ def test_a_misspelt_field_cannot_run(ws: Path) -> None:
 @pytest.mark.parametrize(
     ("table", "message"),
     [
-        ({"passes": {}}, "names vizzle pass 'ws', which vizzle-passes.json does not define"),
-        ({"passes": {"ws": {"args": ["--weights"]}}}, "pass 'ws': weights shapes how a graph is drawn"),
-        ({"passes": {"ws": {"args": ["--no-such-flag"]}}}, "pass 'ws': No such option"),
-        ({"passes": {"ws": {"argz": []}}}, "pass 'ws' must be"),
-        ({"passez": {}}, "unknown field 'passez'"),
+        ({"passes": {}}, '[runtime] spec names vizzle pass "ws", which the pass table does not define'),
+        ({"passes": {"ws": {"args": ["--weights"]}}}, 'pass "ws": weights shapes how a graph is drawn'),
+        ({"passes": {"ws": {"args": ["--no-such-flag"]}}}, 'pass "ws": No such option'),
+        ({"passes": {"ws": {"argz": []}}}, 'pass "ws" must be {"args": [strings]}'),
+        ({"passez": {}}, "unknown field `passez`"),
+        (["ws"], "not a pass table: expected an object"),
     ],
 )
 def test_a_bad_pass_table_cannot_run(ws: Path, table: dict, message: str) -> None:
@@ -185,6 +186,14 @@ def test_a_bad_pass_table_cannot_run(ws: Path, table: dict, message: str) -> Non
     result = hybrid(ws, "runtime")
     assert result.exit_code == 2, result.output
     assert message in result.output
+
+
+def test_a_pass_defined_twice_cannot_run(ws: Path) -> None:
+    path = ws / "docs/diagrams/hybrid/vizzle-passes.json"
+    path.write_text('{"passes": {"ws": {"args": []}, "ws": {"args": ["-I", "apps/**"]}}}', encoding="utf-8")
+    result = hybrid(ws, "runtime")
+    assert result.exit_code == 2, result.output
+    assert 'pass "ws" is defined twice' in result.output
 
 
 def test_the_old_version_pin_is_ignored_with_a_note(ws: Path) -> None:
