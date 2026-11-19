@@ -230,6 +230,18 @@ mod tests {
     }
 
     #[test]
+    fn leading_whitespace_is_fine_and_a_byte_order_mark_is_refused() {
+        assert_eq!(pass_table(" \n\t{}").unwrap(), PassTable::default());
+        // Refused before the move too (a JSON decode error); kept refused.
+        assert!(refusal("\u{feff}{}").contains("expected an object"));
+    }
+
+    #[test]
+    fn a_null_pin_is_no_pin() {
+        assert!(pass_table(r#"{"vizzle": null}"#).unwrap().notes.is_empty());
+    }
+
+    #[test]
     fn refuses_passes_that_is_not_an_object() {
         assert!(refusal(r#"{"passes": []}"#).contains("expected an object of pass name"));
     }

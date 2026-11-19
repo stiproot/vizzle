@@ -175,7 +175,7 @@ grep is now bounded to the hybrid section.
 | # | How it was met |
 |---|---|
 | A1 | `_hybrid_passes` is gone (`_hybrid_table` only finds the file and prints the core's notes). The bounded grep between the `# ─── hybrid` banner and `def _repo_root` finds nothing (rc 1); no reference to `_hybrid_passes` remains |
-| A2 | 12 tests in `passes.rs`, covering each rule listed. Seven mutations (no object check, no duplicate check, unknown fields allowed in an entry, in the table, the pin printed quoted, no undefined-pass check, the spec order lost) each fail a test |
+| A2 | 14 tests in `passes.rs`, covering each rule listed. Seven mutations (no object check, no duplicate check, unknown fields allowed in an entry, in the table, the pin printed quoted, no undefined-pass check, the spec order lost) each fail a test |
 | A3 | `test_a_bad_pass_table_cannot_run`: the five strings updated to the §4 wording, plus a not-an-object case; a new `test_a_pass_defined_twice_cannot_run`; the pin test unchanged |
 | A4 | CI's own commands, each with its own rc 0: `cargo fmt --all -- --check`, `cargo test -p vizzle-core` (189), clippy over the workspace with `-D warnings`, `pytest packages/vizzle-cli/tests` (165), `ruff format --check .`, `ruff check .`, `vizzle doc --check`, `vizzle hybrid --check --dir examples/hybrid`, `bump-version.sh check` |
 | A5 | All eight of h's pictures rebuilt with the local build on h main `ecaef65a7`: `git diff` in that checkout is empty, so they are byte-identical, GENERATED line included (both at 0.17.0) |
@@ -191,5 +191,9 @@ Found while building:
 - **D3's reason was stale.** h main's table no longer carries the pin (its comment now says the version is the one
   running the command); the plan read an old checkout. Nothing changes here, but refusing the pin in a later minor
   no longer breaks h. §7's note about h's table is likewise already done in h.
+- **From the independent review (APPROVE, three nits, all taken):** `"vizzle": null` used to print `pins vizzle
+  None` (the old code tested for the key) and is now no pin, silently; a table starting with a byte-order mark was
+  refused before (a JSON decode error) and still is, now as "expected an object". Both are pinned by tests, and two
+  CLI cases now assert the path prefix, not only the message.
 - **`ruff format` formats Python inside markdown.** The merged plan had two spaces before a comment in a code block,
   which failed the lint on main; fixed here.

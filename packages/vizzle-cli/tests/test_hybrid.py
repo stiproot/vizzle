@@ -177,8 +177,8 @@ def test_a_misspelt_field_cannot_run(ws: Path) -> None:
         ({"passes": {"ws": {"args": ["--weights"]}}}, 'pass "ws": weights shapes how a graph is drawn'),
         ({"passes": {"ws": {"args": ["--no-such-flag"]}}}, 'pass "ws": No such option'),
         ({"passes": {"ws": {"argz": []}}}, 'pass "ws" must be {"args": [strings]}'),
-        ({"passez": {}}, "unknown field `passez`"),
-        (["ws"], "not a pass table: expected an object"),
+        ({"passez": {}}, "vizzle-passes.json: not a pass table: unknown field `passez`"),
+        (["ws"], "vizzle-passes.json: not a pass table: expected an object"),
     ],
 )
 def test_a_bad_pass_table_cannot_run(ws: Path, table: dict, message: str) -> None:
