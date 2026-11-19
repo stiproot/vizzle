@@ -146,7 +146,7 @@ Nothing a correct setup would notice. h's eight pictures stay byte-identical (§
 | A3 | `test_hybrid.py` passes with only these edits: the five strings in `test_a_bad_pass_table_cannot_run` updated to the §4 wording, and one new case for D4. `test_the_old_version_pin_is_ignored_with_a_note` passes unchanged |
 | A4 | `cargo test`, `cargo clippy -- -D warnings`, `cargo fmt --check`, `uv run pytest`, `uv run ruff check`, the plugin skill check: each printed with its own `rc=` |
 | A5 | h's hybrid pictures: `vizzle hybrid --check --root <h main checkout>` with the local build reports all eight `✓` (the GENERATED line names the local version; compare with the version line masked, as for the 0.15.0 port) |
-| A6 | `docs/plans/impl/hybrid.md` B15 says it was done here; `docs/diagram-types/hybrid.md` §2.1 says the core reads the table and refuses a repeated pass name (no other change to the format); this spec's status is set to built, with a results section |
+| A6 | `docs/plans/impl/hybrid.md` B15 says it was done here; `docs/diagram-types/hybrid.md` §2.1 says the core reads the table and refuses a repeated pass name (no other change to the format); this plan's status is set to built, with a results section, any lasting context is lifted, and it moves to `docs/plans/impl/` (`CLAUDE.md` § Plans) |
 
 ## 7. Out of scope
 
