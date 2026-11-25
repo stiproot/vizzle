@@ -1,0 +1,76 @@
+classDiagram
+    namespace packages_vizzle_cli_src_vizzle_cli_cli {
+        class packages_vizzle_cli_src_vizzle_cli_cli__CoreErrorsAreUserErrors["_CoreErrorsAreUserErrors"] {
+            +invoke(ctx: click.Context)
+        }
+        class packages_vizzle_cli_src_vizzle_cli_cli__CouldNotRun["_CouldNotRun"] {
+            +exit_code
+        }
+    }
+    namespace packages_vizzle_cli_src_vizzle_cli_git {
+        class packages_vizzle_cli_src_vizzle_cli_git_ChangedFile["ChangedFile"] {
+            <<dataclass>>
+            +status : str
+            +path : str
+            +old_path : str | None
+        }
+        class packages_vizzle_cli_src_vizzle_cli_git_GitError["GitError"]
+    }
+    namespace packages_vizzle_cli_src_vizzle_cli_managed {
+        class packages_vizzle_cli_src_vizzle_cli_managed_ManagedDoc["ManagedDoc"] {
+            <<dataclass>>
+            +path : Path
+            +text : str
+            +manifest : str
+            +with_diagram(diagram: str) str
+            +manifest_end : int
+        }
+        class packages_vizzle_cli_src_vizzle_cli_managed_ManagedDocError["ManagedDocError"]
+        class packages_vizzle_cli_src_vizzle_cli_managed_Scope["Scope"] {
+            <<dataclass>>
+            +path : str
+            +lang : str | None
+            +group : str
+            +members : bool
+            +direction : str | None
+            +include : tuple~str, ...~
+            +exclude : tuple~str, ...~
+        }
+    }
+    namespace packages_vizzle_cli_src_vizzle_cli_render {
+        class packages_vizzle_cli_src_vizzle_cli_render_RenderError["RenderError"]
+    }
+    namespace packages_vizzle_cli_src_vizzle_cli_server {
+        class packages_vizzle_cli_src_vizzle_cli_server_ReloadHub["ReloadHub"] {
+            #_cond
+            #_generation
+            +generation : int
+            +notify() None
+            +wait_for_change(seen_generation: int, timeout: float) int
+        }
+    }
+    packages_vizzle_cli_src_vizzle_cli_cli__CoreErrorsAreUserErrors --|> ext_Group
+    packages_vizzle_cli_src_vizzle_cli_cli__CouldNotRun --|> ext_ClickException
+    packages_vizzle_cli_src_vizzle_cli_git_GitError --|> ext_RuntimeError
+    packages_vizzle_cli_src_vizzle_cli_managed_ManagedDocError --|> ext_Exception
+    packages_vizzle_cli_src_vizzle_cli_render_RenderError --|> ext_Exception
+    class ext_ClickException["ClickException"]
+    <<external>> ext_ClickException
+    class ext_Exception["Exception"]
+    <<external>> ext_Exception
+    class ext_Group["Group"]
+    <<external>> ext_Group
+    class ext_RuntimeError["RuntimeError"]
+    <<external>> ext_RuntimeError
+    style packages_vizzle_cli_src_vizzle_cli_cli__CoreErrorsAreUserErrors fill:#f2f4f7,stroke:#b6bec8,color:#8b949e
+    style packages_vizzle_cli_src_vizzle_cli_cli__CouldNotRun fill:#f2f4f7,stroke:#b6bec8,color:#8b949e
+    style packages_vizzle_cli_src_vizzle_cli_git_ChangedFile fill:#f2f4f7,stroke:#b6bec8,color:#8b949e
+    style packages_vizzle_cli_src_vizzle_cli_git_GitError fill:#f2f4f7,stroke:#b6bec8,color:#8b949e
+    style packages_vizzle_cli_src_vizzle_cli_managed_ManagedDoc fill:#f2f4f7,stroke:#b6bec8,color:#8b949e
+    style packages_vizzle_cli_src_vizzle_cli_managed_ManagedDocError fill:#f2f4f7,stroke:#b6bec8,color:#8b949e
+    style packages_vizzle_cli_src_vizzle_cli_managed_Scope fill:#f2f4f7,stroke:#b6bec8,color:#8b949e
+    style packages_vizzle_cli_src_vizzle_cli_render_RenderError fill:#ddf4ff,stroke:#0969da,stroke-width:3px,color:#0969da
+    style packages_vizzle_cli_src_vizzle_cli_server_ReloadHub fill:#f2f4f7,stroke:#b6bec8,color:#8b949e
+%% vizzle: highlight: 1 of 9 classes
+%% vizzle: 9 classes, 5 relations
+

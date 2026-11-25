@@ -234,25 +234,24 @@ pub fn render(graph: &CodeGraph, opts: &RenderOptions) -> String {
         let _ = writeln!(out, "    <<external>> {ext_id}");
     }
 
-    // Change styling (GitHub-diff palette). Note: mermaid 11 only applies
-    // classDef styles in classDiagrams when the classDef statements appear
-    // AFTER the cssClass attachments, so these are emitted last.
-    if diff_mode {
-        for change in [ChangeKind::Added, ChangeKind::Removed, ChangeKind::Modified] {
-            let members: Vec<&str> = graph
-                .classes
-                .iter()
-                .filter(|c| c.change == change)
-                .map(|c| ids[c.qualified.as_str()].as_str())
-                .collect();
-            if let (false, Some(css)) = (members.is_empty(), palette::mermaid_class(change)) {
-                let _ = writeln!(out, "    cssClass \"{}\" {css}", members.join(","));
-            }
+    // Colours: one `style` line per coloured class, after everything it names.
+    // Not `classDef` + `cssClass`/`:::`: Mermaid accepts `classDef` in a
+    // classDiagram only from 11.4.1 and rejects the whole diagram before that,
+    // while `style` renders from 10.7.0. One line per class also leaves nothing
+    // to Mermaid's class merge order: with a lens on, the lens colour replaces
+    // the change colour (the label keeps the change glyph), which is what the
+    // classDef form drew. Externals are never coloured.
+    for class in &graph.classes {
+        let style = match &opts.highlight {
+            Some(lit) => Some(palette::lens_style(lit.contains(&class.qualified))),
+            None if diff_mode => palette::class_style(class.change),
+            None => None,
+        };
+        if let Some(style) = style {
+            let _ = writeln!(out, "    style {} {style}", ids[class.qualified.as_str()]);
         }
-        out.push_str(&palette::mermaid_classdefs());
     }
     if let Some(lit) = &opts.highlight {
-        out.push_str(&palette::mermaid_lens_classdefs());
         let _ = writeln!(
             out,
             "%% vizzle: highlight: {} of {} classes",
@@ -292,14 +291,6 @@ fn write_class(
         label.push_str(class.change.glyph());
     }
 
-    // The lens rides the class line itself (`:::name`): measured to render
-    // where a detached `cssClass` line did not for one consumer, and it
-    // cannot be separated from the line it styles.
-    let lens = match &opts.highlight {
-        Some(lit) if lit.contains(&class.qualified) => format!(":::{}", palette::MERMAID_HIGHLIGHT),
-        Some(_) => format!(":::{}", palette::MERMAID_CONTEXT),
-        None => String::new(),
-    };
     // Mermaid draws one stereotype line per class, so the file shares it with
     // the UML stereotype when the class has one. A module box is already
     // titled by its file, and keeps `<<module>>` alone.
@@ -312,11 +303,11 @@ fn write_class(
     let has_body =
         annotation.is_some() || (opts.show_members && class.drawn_members().next().is_some());
     if !has_body {
-        let _ = writeln!(out, "{indent}class {id}[\"{label}\"]{lens}");
+        let _ = writeln!(out, "{indent}class {id}[\"{label}\"]");
         return;
     }
 
-    let _ = writeln!(out, "{indent}class {id}[\"{label}\"]{lens} {{");
+    let _ = writeln!(out, "{indent}class {id}[\"{label}\"] {{");
     if let Some(annotation) = &annotation {
         let _ = writeln!(out, "{indent}    <<{annotation}>>");
     }
@@ -634,8 +625,98 @@ mod tests {
         let head = parse_file("m.py", "class A:\n    pass\nclass B:\n    pass\n").unwrap();
         let merged = crate::diff::diff_graphs(&base, &head);
         let out = render(&merged, &RenderOptions::default());
-        assert!(out.contains("classDef diffAdded"));
-        assert!(out.contains("cssClass \"m_B\" diffAdded"));
+        assert!(out.contains(&format!(
+            "    style m_B {}\n",
+            palette::class_style(ChangeKind::Added).unwrap()
+        )));
+        assert!(!out.contains("style m_A "), "unchanged gets no line: {out}");
+        assert_class_diagram_floor(&out);
+    }
+
+    /// The Mermaid 10.7 floor: no `classDef`/`cssClass`/`:::` in a class
+    /// diagram, at most one `style` line per id, none for an external.
+    fn assert_class_diagram_floor(out: &str) {
+        for old in ["classDef", "cssClass", ":::"] {
+            assert!(!out.contains(old), "{old} in a class diagram:\n{out}");
+        }
+        let mut seen = std::collections::HashSet::new();
+        for line in out
+            .lines()
+            .filter_map(|l| l.trim_start().strip_prefix("style "))
+        {
+            let id = line.split_whitespace().next().unwrap();
+            assert!(
+                seen.insert(id.to_owned()),
+                "two style lines for {id}:\n{out}"
+            );
+            assert!(!id.starts_with("ext_"), "external {id} coloured:\n{out}");
+        }
+    }
+
+    fn lens_diff_graph() -> (CodeGraph, std::collections::BTreeSet<String>) {
+        let base = parse_file("m.py", "class A:\n    pass\nclass D:\n    x: int\n").unwrap();
+        let head = parse_file(
+            "m.py",
+            "from os import PathLike\nclass A:\n    pass\nclass B(PathLike):\n    pass\nclass C(A):\n    pass\n",
+        )
+        .unwrap();
+        let merged = crate::diff::diff_graphs(&base, &head);
+        let lit = ["m.B".to_owned(), "m.A".to_owned()].into_iter().collect();
+        (merged, lit)
+    }
+
+    #[test]
+    fn the_lens_colours_every_class_with_style_lines() {
+        let graph = two_class_graph();
+        let first = graph.classes[0].qualified.clone();
+        let out = render(
+            &graph,
+            &RenderOptions {
+                highlight: Some([first].into_iter().collect()),
+                ..Default::default()
+            },
+        );
+        assert_eq!(out.matches(&palette::lens_style(true)).count(), 1, "{out}");
+        assert_eq!(out.matches(&palette::lens_style(false)).count(), 1, "{out}");
+        assert_class_diagram_floor(&out);
+    }
+
+    #[test]
+    fn with_a_diff_and_a_lens_the_lens_colour_wins() {
+        let (graph, lit) = lens_diff_graph();
+        let out = render(
+            &graph,
+            &RenderOptions {
+                highlight: Some(lit),
+                include_externals: true,
+                grouping: Grouping::Module,
+                ..Default::default()
+            },
+        );
+        let lit_style = palette::lens_style(true);
+        let ctx = palette::lens_style(false);
+        assert!(
+            out.contains(&format!("    style m_B {lit_style}\n")),
+            "added + lit: {out}"
+        );
+        assert!(
+            out.contains(&format!("    style m_A {lit_style}\n")),
+            "{out}"
+        );
+        assert!(
+            out.contains(&format!("    style m_C {ctx}\n")),
+            "added, not lit: {out}"
+        );
+        assert!(
+            out.contains(&format!("    style m_D {ctx}\n")),
+            "removed, not lit: {out}"
+        );
+        assert!(
+            out.contains("B ✚"),
+            "the label keeps the change glyph: {out}"
+        );
+        assert!(out.contains("ext_"), "the fixture has an external: {out}");
+        assert_class_diagram_floor(&out);
     }
 
     #[test]

@@ -1,9 +1,17 @@
 # Class diagrams colour with `style` lines, so they render on Mermaid 10.7+
 
-**Status:** proposed, 2026-11-20. Reviewed (§8). Waiting for the operator to merge with D1–D5 as recommended, or to change them.
+**Status:** built, 2026-11-25, in the same PR as the plan (the operator asked for the build on the plan's branch rather
+than a merge first). D1–D5 as recommended; §9 records how each acceptance item was met.
+**Archived:** 2026-11-25
+
+Lifted to:
+- `docs/diagram-types/class.md` §6 — the `style` rule, the version table, the 10.7.0 floor.
+- `crates/vizzle-core/src/mermaid.rs` — the emitter comment and `assert_class_diagram_floor`.
+- `scripts/check-mermaid-floor.sh` + `tests/fixtures/mermaid-floor/` — the manual render check.
 **Established:** 2026-11-20
 **Evidence:** an investigation outside this repo (a consumer reported "vizzle class zoom fails in an older Mermaid").
-Its fixture, a 3-namespace class zoom from a real diff, is copied into this plan's tests (§6, A3).
+Its fixture, a 3-namespace class zoom from a real diff, came from a private codebase, so the tests use a zoom of this
+repo's own history instead (same shape: namespaces, generics, every change kind).
 
 ## 1. Why
 
@@ -148,6 +156,25 @@ An independent reviewer read the plan against the code (2026-11-20). Taken:
 - `mermaid_classdefs` is shared with flowcharts, so its output must not change (§2, A8).
 - A3 names its fixtures, A4 names its probe, A6 has a threshold, D5 lists the release steps.
 
+A second independent review read the built change (2026-11-25). Taken: the floor script's EXIT trap named a `local`
+variable, so under `set -u` a green run exited 1 and left its temp dir (fixed: the path is expanded when the trap is
+set); the fill probe matched ids as substrings and its docstring path only worked from the fixtures directory (fixed:
+exact match, repo-relative example). Not taken: a class whose sanitized id is a Mermaid keyword (`style`, `class`)
+would also break the existing `class` line, so it predates this change. Confirmed by the reviewer: the style loop uses
+the same pruned graph and id map as the class lines, the flowchart `classDef` text is byte-identical to before, and no
+class-diagram path still emits the old syntax.
+
 ## 9. Results
 
-*(filled when built)*
+Built 2026-11-25 on the plan's branch.
+
+| # | Result |
+|---|---|
+| A1 | `cargo test -p vizzle-core`: 194 passed. New: `renders_diff_styling` (rewritten), `the_lens_colours_every_class_with_style_lines`, `with_a_diff_and_a_lens_the_lens_colour_wins` (a removed class, an added lit class, an external), `style_lines_carry_the_classdef_properties`; all go through `assert_class_diagram_floor` |
+| A2 | On this repo: the zoom (17 classes), `class --highlight` (40) and `diff --type class` (15): 0 lines matching `classDef\|cssClass\|:::`, one `style` line per coloured class |
+| A3 | `scripts/check-mermaid-floor.sh`: on mermaid-cli 10.9.1 the zoom, lens and diff-lens fixtures render and the old-form control fails; on 12.0.0 all four render. 8/8 as expected (the first npx install of 12.0.0 took several minutes) |
+| A4 | `fill-probe.py` on six zoom classes: the old (`classDef`) and new (`style`) output draw identical fills on 11.4.1 and 11.17.2 (`#fff1c2` modified, `#dafbe1` added); the new output draws the same on 10.7.0 |
+| A5 | `vizzle palette` prints the class-diagram `style` properties and the flowchart `classDef`s; `-f json` adds `classStyles`. `test_cli.py` checks each `classStyles` entry is its `classDef` minus the prefix |
+| A6 | Zoom of `e052d27~90..`: 48,076 characters, `oversized: false`. Of `e052d27~120..`: 51,019, `oversized: true`, matching `len > 50_000` both times. **Cost, measured:** that second zoom has 109 `style` lines (11,319 characters, 102 average); its old form would have been about 43,800, so the change alone pushed it over the limit. About 66 characters more per coloured class. `oversized` reports it, and pr-diagram already reads `zoom_oversized` |
+| A7 | fmt, clippy (`-D warnings`), core tests, pytest (165 passed), ruff format and check, `vizzle doc --check`, `vizzle hybrid --check`, `bump-version.sh check`: all pass |
+| A8 | `vizzle component .` and `--highlight vizzle-core`: byte-identical before and after. The component diff differs only in its title (the base was named differently) |

@@ -6,10 +6,10 @@
 //! incident used to append its own `classDef`/`cssClass` layer to the
 //! generated mermaid, which meant knowing vizzle's internal ids, hoping the
 //! text stayed appendable, and re-inventing a palette vizzle already owns.
-//! Measured 2026-09-22 with mermaid-cli 11.17: both `cssClass "id" name` and
-//! the inline `class id[...]:::name` form render, with and without
-//! namespaces; the inline form is used here because it cannot be separated
-//! from the line it styles.
+//! The class diagram carries the lens as one `style <id> …` line per class
+//! (`mermaid.rs`), not `:::name` + `classDef`: Mermaid accepts `classDef` in a
+//! `classDiagram` only from 11.4.1, and `style` renders from 10.7.0. The
+//! component flowchart keeps `:::name`, which every Mermaid accepts.
 
 use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
 

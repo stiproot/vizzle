@@ -1,0 +1,19 @@
+classDiagram
+    namespace m {
+        class m_A["A"]
+        class m_B["B ✚"]
+        class m_C["C ✚"]
+        class m_D["D ✖"] {
+            +x : int ✖
+        }
+    }
+    m_B --|> ext_PathLike
+    m_C --|> m_A
+    class ext_PathLike["PathLike"]
+    <<external>> ext_PathLike
+    style m_A fill:#ddf4ff,stroke:#0969da,stroke-width:3px,color:#0969da
+    style m_B fill:#ddf4ff,stroke:#0969da,stroke-width:3px,color:#0969da
+    style m_C fill:#f2f4f7,stroke:#b6bec8,color:#8b949e
+    style m_D fill:#f2f4f7,stroke:#b6bec8,color:#8b949e
+%% vizzle: highlight: 2 of 4 classes
+%% vizzle: 4 classes, 2 relations

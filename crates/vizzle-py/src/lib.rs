@@ -491,10 +491,17 @@ fn sequence_tints() -> Vec<(String, String, String)> {
         .collect()
 }
 
-/// The diff `classDef` block, for a hand-drawn class diagram that should match vizzle's.
+/// The diff `classDef` block, for a hand-drawn flowchart that should match vizzle's.
 #[pyfunction]
 fn diff_classdefs() -> String {
     vc::palette::mermaid_classdefs()
+}
+
+/// The diff colours as `(class name, style properties)`, for a hand-drawn
+/// class diagram's `style <id> <properties>` lines.
+#[pyfunction]
+fn diff_class_styles() -> Vec<(String, String)> {
+    vc::palette::class_styles()
 }
 
 /// Export the class graph under `root` as JSON (for external renderers).
@@ -635,6 +642,7 @@ fn vizzle_core_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(default_test_globs, m)?)?;
     m.add_function(wrap_pyfunction!(languages, m)?)?;
     m.add_function(wrap_pyfunction!(diff_classdefs, m)?)?;
+    m.add_function(wrap_pyfunction!(diff_class_styles, m)?)?;
     m.add_function(wrap_pyfunction!(graph_json_from_dir, m)?)?;
     m.add_function(wrap_pyfunction!(graph_json_diff, m)?)?;
     m.add_function(wrap_pyfunction!(overlay_json, m)?)?;

@@ -40,6 +40,7 @@ site/src/generated/
 *.mmd.svg
 *.mmd.png
 !examples/*.mmd
+!tests/fixtures/mermaid-floor/*.mmd
 # Diagrams written into the repo root (the natural cwd for `vizzle -o out.html`).
 # Root-anchored, so committed pages under examples/ and the HTML templates
 # under packages/ are unaffected.

@@ -60,11 +60,30 @@ pub const CONTEXT: LensColors = LensColors {
 pub const MERMAID_HIGHLIGHT: &str = "highlight";
 pub const MERMAID_CONTEXT: &str = "context";
 
-/// The `classDef` lines for the lens, emitted last like the diff block.
+/// The lens's mermaid style properties (`fill:…,stroke:…`): `lit` for the
+/// subject, otherwise the context grey. Shared by the flowchart `classDef`s
+/// and the class diagram's per-class `style` lines.
+pub fn lens_style(lit: bool) -> String {
+    if lit {
+        format!(
+            "fill:{},stroke:{},stroke-width:3px,color:{}",
+            HIGHLIGHT.fill, HIGHLIGHT.stroke, HIGHLIGHT.color
+        )
+    } else {
+        format!(
+            "fill:{},stroke:{},color:{}",
+            CONTEXT.fill, CONTEXT.stroke, CONTEXT.color
+        )
+    }
+}
+
+/// The `classDef` lines for the lens in a flowchart, emitted last like the
+/// diff block. Class diagrams use [`lens_style`] on `style` lines instead.
 pub fn mermaid_lens_classdefs() -> String {
     format!(
-        "    classDef {MERMAID_HIGHLIGHT} fill:{},stroke:{},stroke-width:3px,color:{}\n    classDef {MERMAID_CONTEXT} fill:{},stroke:{},color:{}\n",
-        HIGHLIGHT.fill, HIGHLIGHT.stroke, HIGHLIGHT.color, CONTEXT.fill, CONTEXT.stroke, CONTEXT.color
+        "    classDef {MERMAID_HIGHLIGHT} {}\n    classDef {MERMAID_CONTEXT} {}\n",
+        lens_style(true),
+        lens_style(false)
     )
 }
 
@@ -240,20 +259,41 @@ pub fn css_boundary_variables() -> String {
     )
 }
 
-/// The `classDef` block every mermaid diagram emits in diff mode.
+/// A change's mermaid style properties (`fill:…,stroke:…`), `None` for an
+/// unchanged element. Shared by the flowchart `classDef`s and the class
+/// diagram's per-class `style` lines.
+pub fn class_style(change: ChangeKind) -> Option<String> {
+    colors_for(change).map(change_style)
+}
+
+fn change_style(c: &ChangeColors) -> String {
+    format!(
+        "fill:{},stroke:{},stroke-width:2px,color:{}{}",
+        c.fill, c.stroke, c.stroke, c.mermaid_extra
+    )
+}
+
+/// The diff `classDef` block a flowchart emits in diff mode, last.
 ///
-/// Mermaid 11 quirk: in `classDiagram` these only take effect when they appear
-/// *after* the `cssClass` attachments, so callers emit this last.
+/// Class diagrams do not use it: Mermaid accepts `classDef` in a
+/// `classDiagram` only from 11.4.1, so they colour each class with a `style`
+/// line from [`class_style`], which renders from 10.7.0.
 pub fn mermaid_classdefs() -> String {
     CHANGE_COLORS
         .iter()
         .map(|c| {
             let class = format!("diff{}{}", c.name[..1].to_uppercase(), &c.name[1..]);
-            format!(
-                "    classDef {class} fill:{},stroke:{},stroke-width:2px,color:{}{}\n",
-                c.fill, c.stroke, c.stroke, c.mermaid_extra
-            )
+            format!("    classDef {class} {}\n", change_style(c))
         })
+        .collect()
+}
+
+/// The diff colours as `(class name, style properties)`, for a hand-drawn
+/// class diagram's `style <id> <properties>` lines.
+pub fn class_styles() -> Vec<(String, String)> {
+    [ChangeKind::Added, ChangeKind::Removed, ChangeKind::Modified]
+        .into_iter()
+        .filter_map(|k| Some((mermaid_class(k)?, class_style(k)?)))
         .collect()
 }
 
@@ -296,6 +336,31 @@ mod tests {
             Some("diffModified")
         );
         assert_eq!(mermaid_class(ChangeKind::Unchanged), None);
+    }
+
+    #[test]
+    fn style_lines_carry_the_classdef_properties() {
+        // The flowchart classDefs and the class diagram's style lines are one
+        // table; a classDef line is exactly `classDef <name> <style>`.
+        let defs = mermaid_classdefs() + &mermaid_lens_classdefs();
+        for (name, style) in class_styles() {
+            assert!(
+                defs.contains(&format!("    classDef {name} {style}\n")),
+                "{name}"
+            );
+        }
+        assert!(defs.contains(&format!(
+            "classDef {MERMAID_HIGHLIGHT} {}\n",
+            lens_style(true)
+        )));
+        assert!(defs.contains(&format!(
+            "classDef {MERMAID_CONTEXT} {}\n",
+            lens_style(false)
+        )));
+        assert_eq!(class_style(ChangeKind::Unchanged), None);
+        assert!(class_style(ChangeKind::Removed)
+            .unwrap()
+            .ends_with("stroke-dasharray:6 4"));
     }
 
     #[test]
