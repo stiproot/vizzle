@@ -1,7 +1,7 @@
 {
   "name": "vizzle",
   "description": "Read a codebase as a diagram instead of file by file, answer questions about code with one diagram at the right level, design changes over the real code, and publish diagrams for people. Diagrams that the code can supply come from vizzle, so they stay true when the code moves.",
-  "version": "0.18.0",
+  "version": "0.19.0",
   "author": { "name": "stiproot" },
   "skills": "./skills/"
 }
