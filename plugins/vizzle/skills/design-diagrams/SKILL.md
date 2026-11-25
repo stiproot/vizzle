@@ -129,9 +129,11 @@ stereotypes. Provides is a realization (`..|>`), requires is a dependency
 
 - **classDiagram member lines keep parentheses balanced per line.** An unbalanced
   `(` crashes mermaid's member parser.
-- **A `:::` class goes on the declaration** (`class Store:::diffAdded {`). A
-  separate `class Store:::diffAdded` line after a declaration with a body is
-  silently ignored.
+- **Colour a classDiagram with `style` lines, never `classDef`.** One
+  `style Store <properties>` line per class, after the classes, with the
+  properties from `vizzle palette`. Mermaid rejects a `classDef` inside a
+  classDiagram before 11.4.1 and loses the whole diagram; `style` renders from
+  10.7.0, which older previews and wikis still ship.
 - **No commas in `loop`, `alt` or `opt` labels, and no semicolons anywhere in
   message text.** A `;` ends the statement and the rest of the line parses as a
   new one.
@@ -151,7 +153,7 @@ takes its colours from the same place. Never invent a green: two greens on one
 page read as two meanings.
 
 ```sh
-uvx vizzle palette            # the rect tints + the diff classDefs; -f json for scripts
+uvx vizzle palette            # the rect tints, the class-diagram styles, the flowchart classDefs; -f json for scripts
 ```
 
 ```text
@@ -173,15 +175,15 @@ The tints are translucent on purpose. A sequence diagram's message text sits
 directly on the `rect` fill and `rect` cannot set a text colour, so an opaque
 pale fill such as `rect rgb(255, 235, 233)` turns white dark-mode text
 unreadable. Never use an opaque `rgb(...)` there. The class-diagram
-`classDef`s set their own text colour, which is why they can be opaque.
+`style` properties set their own text colour, which is why they can be opaque.
 
 What each colour means, in every diagram you draw:
 
 | Meaning | classDiagram | sequenceDiagram |
 | --- | --- | --- |
-| New, or the fixed path | `:::diffAdded` | the `after` tint |
-| Changed in shape or behaviour | `:::diffModified` | a `[CHANGED]` prefix on the message |
-| Removed, failing, or the alternative the design rejects | `:::diffRemoved` | the `before` tint |
+| New, or the fixed path | `style <Name>` with the `diffAdded` properties | the `after` tint |
+| Changed in shape or behaviour | `style <Name>` with the `diffModified` properties | a `[CHANGED]` prefix on the message |
+| Removed, failing, or the alternative the design rejects | `style <Name>` with the `diffRemoved` properties | the `before` tint |
 | The current state, neither old nor new | default (no class) | the `now` tint |
 
 Untouched elements stay default, and a Note says the untinted machinery did

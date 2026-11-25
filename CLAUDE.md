@@ -67,8 +67,9 @@ Facts that must live in exactly one place:
 - **Change-status strings** (`added`/`removed`/`modified`/`unchanged`):
   `export::change_str`. Every renderer keys its palette on these.
 - **Change glyphs** (`✚ ✖ ✱`): `ChangeKind::glyph`.
-- **The diff palette**: `palette.rs`. It generates the Mermaid `classDef`
-  block *and* the CSS custom properties the HTML views read, because when
+- **The diff palette**: `palette.rs`. It generates the Mermaid style
+  properties (class diagrams' `style` lines, flowcharts' `classDef` block)
+  *and* the CSS custom properties the HTML views read, because when
   those were maintained separately they drifted and the same diagram rendered
   in two different greens. Colors only one renderer cares about (the HTML
   context grey) stay in `viz-core.css`.

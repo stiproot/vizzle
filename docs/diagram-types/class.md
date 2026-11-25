@@ -309,9 +309,27 @@ diamonds genuinely earn their place.
 **Mermaid** (`classDiagram`): boxes with a stereotype line and member rows,
 `--group-by module|component` gathering classes into `namespace` blocks (one
 per file, or one per detected component; `--group` survives as a deprecated
-alias for `--group-by module`). Mermaid 11 quirk, learned the hard way:
-`classDef` statements only apply when they appear *after* the `cssClass`
-attachments, so the renderer emits them last.
+alias for `--group-by module`).
+
+**Colours are `style` lines, one per coloured class, after every class and
+relation** (`style <id> fill:…,stroke:…`, properties from `palette.rs`). Not
+`classDef` + `cssClass`/`:::`: Mermaid accepts `classDef` in a `classDiagram`
+only from 11.4.1 and rejects the whole diagram before that. Measured
+2026-11-20 on every release from 10.2 to 12.2
+(`docs/plans/impl/class-style-statements.md`):
+
+| Mermaid | `classDef` form (before 0.19) | `style` form |
+|---|---|---|
+| ≤ 10.1 | fails at `namespace` | fails at `namespace` |
+| 10.2 – 10.6 | fails | fails |
+| 10.7 – 11.3 | fails | renders |
+| 11.4.1 + | renders | renders, same drawn colours |
+
+So vizzle's class diagrams need **Mermaid 10.7.0** or later.
+`scripts/check-mermaid-floor.sh` renders the fixtures in
+`tests/fixtures/mermaid-floor/` on mermaid-cli 10.9.1 and 12.0.0; the core test
+`assert_class_diagram_floor` keeps `classDef`, `cssClass` and `:::` out of class
+diagrams in CI. Externals are never coloured.
 
 **Decision: neither grouping is the default.** Component grouping reuses the
 component detector's module→component map rather than re-deriving ownership.
@@ -385,20 +403,19 @@ appendable, and re-inventing a palette vizzle owns. So the lens is vizzle's:
 - **An unknown name is an error** that names what exists (`no class matches
   \`Nope\`; available: Alone, Base, Leaf, Mid`), so a typo is caught rather
   than drawn as an empty lens.
-- **Both formats.** Mermaid carries the lens on the class line itself
-  (`class id["…"]:::highlight` / `:::context`, then `classDef highlight` and
-  `classDef context` from `palette.rs`); the JSON export gains
+- **Both formats.** Mermaid carries the lens as one `style` line per class
+  (the highlight or context properties from `palette.rs`, §6); with a diff, the
+  lens colour replaces the change colour and the label keeps its change glyph.
+  The JSON export gains
   `"highlight": bool` per class and `stats.highlight`, and the HTML page lights
   and dims with the same palette and adds a legend line.
 - **Component diagrams take the same options** (`component.md` §7), matching
   a component's display name or path, walking dependency edges for `--around`.
 
-The inline `:::` form was chosen over a detached `cssClass` line because it
-cannot be separated from the line it styles. Measured 2026-09-22 with
-mermaid-cli 11.17.0: both forms render, with and without namespaces and with
-member bodies, so the diff output's `cssClass` lines stay as they are (they
-are proven live on GitHub); the consumer report that `cssClass` did not apply
-was not reproducible here and is noted, not acted on.
+Until 0.19 the lens rode the class line (`:::highlight`) with `classDef`s, and
+the diff used `cssClass` lines. Both need Mermaid 11.4.1 in a class diagram, so
+both became `style` lines (§6). The component flowchart keeps `:::`, which every
+Mermaid accepts.
 
 Not a diff: `--highlight`/`--around` are for `class` and `component`;
 `diff` has `--focus` (component.md §6.3) for the same job with the change as

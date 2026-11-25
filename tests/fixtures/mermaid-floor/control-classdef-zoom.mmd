@@ -1,0 +1,148 @@
+---
+title: "changes vs HEAD~8 — inside the changed components"
+---
+classDiagram
+    direction LR
+    namespace vizzle {
+        class packages_vizzle_cli_src_vizzle_cli_cli["cli.py ✱"] {
+            <<module>>
+            #_add_go_package_siblings(root, base, head, base_files, head_files) None ✚
+            #_diff_manifests(path, base, head, base_files, head_files) dict~str, list~tuple~str, str~~~ ✱
+            #_hybrid_table(spec_dir) tuple~str | None, dict~str, list~str~~~ ✚
+            #_run_hybrid_pass(root, name, args) str ✱
+            #_with_go_packages(path, base, head, base_files, head_files, tests) tuple~list, list~ ✚
+            +diff_diagram(path, base, head, diagram_type, weights, classes, split, focus, zoom_path, stats_path, include, exclude, lang, tests, members, modules, group_by, group, externals, direction, title, fmt, output) None ✱
+            +hybrid_command(names, spec_dir, root, check, png) None ✱
+            +serve_command(path, diagram_type, diff_mode, base, head, include, exclude, lang, tests, members, modules, externals, classes, title, host, port, open_browser) None ✱
+            #_hybrid_passes(spec_dir) dict~str, list~str~~ ✖
+            … 11 unchanged members
+        }
+        class packages_vizzle_cli_src_vizzle_cli_git["git.py ✱"] {
+            <<module>>
+            +SUPPORTED_SUFFIXES ✱
+            … 13 unchanged members
+        }
+    }
+    namespace vizzle_core {
+        class vizzle_core__SelectOptions["SelectOptions ✱"] {
+            <<lib.rs>>
+            -languages(self) Result~Vec~model::Language~~ ✱
+            … 8 unchanged members
+        }
+        class vizzle_core__component__Component["Component ✱"] {
+            <<component.rs>>
+            +main : bool ✚
+            … 12 unchanged members
+        }
+        class vizzle_core__component__GoPackages["GoPackages ✚"] {
+            <<component.rs>>
+            -assign(self, path, contents, manifests, components, owned) Option~usize~ ✚
+            -by_dir : HashMap~String, usize~ ✚
+            -by_import_path : HashMap~String, usize~ ✚
+            -remap(self, remap) ✚
+            -resolve(self, import, manifests) Resolved ✚
+            -unclash_names(self, components) ✚
+        }
+        class vizzle_core__hybrid__passes__PassTable["PassTable ✚"] {
+            <<passes.rs>>
+            +notes : Vec~String~ ✚
+            +passes : BTreeMap~String, Vec~String~~ ✚
+        }
+        class vizzle_core__hybrid__passes__WireEntry["WireEntry ✚"] {
+            <<passes.rs>>
+            -_comment : Option~Value~ ✚
+            -args : Vec~String~ ✚
+        }
+        class vizzle_core__hybrid__passes__WireTable["WireTable ✚"] {
+            <<passes.rs>>
+            -_comment : Option~Value~ ✚
+            -passes : BTreeMap~String, Vec~String~~ ✚
+            -vizzle : Option~Value~ ✚
+        }
+        class vizzle_core__import__WireComponent["WireComponent ✱"] {
+            <<import.rs>>
+            -main : bool ✚
+            … 10 unchanged members
+        }
+        class vizzle_core__model__CodeGraph["CodeGraph ✱"] {
+            <<model.rs>>
+            +go_signatures : BTreeMap~String, String~ ✚
+            +merge(self, other) ✱
+            … 7 unchanged members
+        }
+        class vizzle_core__model__Language["Language ✱"] {
+            <<enumeration · model.rs>>
+            +Go ✚
+            +from_path(path)$ Option~Self~ ✱
+            +name(self) &str ✱
+            … 4 unchanged members
+        }
+        class vizzle_core__model__Relation["Relation ✱"] {
+            <<model.rs>>
+            +via : Option~&str~ ✚
+            … 3 unchanged members
+        }
+        class vizzle_core__parse__go__File["File ✚"] {
+            <<go.rs>>
+            -assertion(self, spec) ✚
+            -base_type(self, node) Option~String~ ✚
+            -consts(self, decl) ✚
+            -expression_type(self, node) Option~String~ ✚
+            -function(self, decl) ✚
+            -graph : CodeGraph ✚
+            -imports : HashMap~String, Option~String~~ ✚
+            -interfaceself, ty, qualified Option~&str~, Vec~Member~, Vec~Relatio… ✚
+            -ip : String ✚
+            -method(self, decl) ✚
+            -module_members : Vec~Member~ ✚
+            -normalized(self, node) String ✚
+            -parameters(self, list) (String, Vec~String~, Vec~String~) ✚
+            -qualify_local(self, name) Option~String~ ✚
+            -qualify_selector(self, node) Option~String~ ✚
+            -read_imports(self, root) ✚
+            -refs(self, node, out) ✚
+            -refs_of(self, node) Vec~String~ ✚
+            -shown(self, node) String ✚
+            -signature_member(self, node, owner, pointer) Option~Member~ ✚
+            -src : &str ✚
+            -struct_fields(self, ty, qualified) (Vec~Member~, Vec~Relation~) ✚
+            -text(self, node) String ✚
+            -type_alias(self, spec) ✚
+            -type_declaration(self, decl) ✚
+            -type_params : HashSet~String~ ✚
+            -type_spec(self, spec) ✚
+            -vars(self, decl) ✚
+            -with_type_params(self, params, body) T ✚
+        }
+        class vizzle_core__parse__go__Required["Required ✚"] {
+            <<go.rs>>
+            -declared_in : String ✚
+            -name : String ✚
+            -signature : String ✚
+        }
+        class vizzle_core__resolve__ResolvedRelation["ResolvedRelation ✱"] {
+            <<resolve.rs>>
+            +via : Option~&str~ ✚
+            … 3 unchanged members
+        }
+        class vizzle_core__walk__Selector["Selector ✱"] {
+            <<walk.rs>>
+            +accepts(self, rel) bool ✱
+            … 8 unchanged members
+        }
+    }
+    namespace vizzle_py {
+        class vizzle_py__PassTablePy["PassTablePy ✚"] {
+            <<type · lib.rs>>
+            +type : std::collections::BTreeMap~String, Vec… ✚
+        }
+    }
+    vizzle_core__component__GoPackages ..> vizzle_core__component__Component
+    vizzle_core__parse__go__File --> vizzle_core__model__CodeGraph
+    vizzle_core__walk__Selector --> vizzle_core__model__Language
+    cssClass "vizzle_core__component__GoPackages,vizzle_core__hybrid__passes__PassTable,vizzle_core__hybrid__passes__WireEntry,vizzle_core__hybrid__passes__WireTable,vizzle_core__parse__go__File,vizzle_core__parse__go__Required,vizzle_py__PassTablePy" diffAdded
+    cssClass "vizzle_core__SelectOptions,vizzle_core__component__Component,vizzle_core__import__WireComponent,vizzle_core__model__CodeGraph,vizzle_core__model__Language,vizzle_core__model__Relation,vizzle_core__resolve__ResolvedRelation,vizzle_core__walk__Selector,packages_vizzle_cli_src_vizzle_cli_cli,packages_vizzle_cli_src_vizzle_cli_git" diffModified
+    classDef diffAdded fill:#dafbe1,stroke:#1a7f37,stroke-width:2px,color:#1a7f37
+    classDef diffRemoved fill:#ffebe9,stroke:#cf222e,stroke-width:2px,color:#cf222e,stroke-dasharray:6 4
+    classDef diffModified fill:#fff1c2,stroke:#bf8700,stroke-width:2px,color:#bf8700
+%% vizzle: 17 classes, 3 relations

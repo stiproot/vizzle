@@ -654,19 +654,26 @@ def palette_command(fmt: str) -> None:
     """Print the colours to use in a diagram you draw yourself.
 
     Sequence-diagram block tints (`rect <tint>` … `end`) for a before/after
-    diagram, and the diff `classDef` block vizzle's own class diagrams use, so a
-    hand-drawn diagram reads the same as a generated one. The tints are
-    translucent so the text on them stays readable in light and dark themes.
+    diagram, the diff colours as `style` properties for a class diagram, and
+    the diff `classDef` block for a flowchart, so a hand-drawn diagram reads
+    the same as a generated one. The tints are translucent so the text on them
+    stays readable in light and dark themes. Class diagrams take `style` lines
+    because Mermaid accepts `classDef` there only from 11.4.1.
     """
     tints = [{"name": n, "meaning": m, "rect": f"rect {rgba}"} for n, m, rgba in _core.sequence_tints()]
     classdefs = _core.diff_classdefs()
+    styles = _core.diff_class_styles()
     if fmt == "json":
-        click.echo(json.dumps({"sequence": tints, "classDefs": classdefs.strip().splitlines()}, indent=2))
+        payload = {"sequence": tints, "classStyles": dict(styles), "classDefs": classdefs.strip().splitlines()}
+        click.echo(json.dumps(payload, indent=2))
         return
     click.echo("sequenceDiagram tints — wrap a segment in one, close it with `end`:")
     for tint in tints:
         click.echo(f"  {tint['name']:<7} {tint['rect']:<34} {tint['meaning']}")
-    click.echo("\nclassDiagram diff classes — attach with `class <Name>:::diffAdded`, and put these lines last:")
+    click.echo("\nclassDiagram diff colours — one `style <Name> <properties>` line per class, after the classes:")
+    for name, style in styles:
+        click.echo(f"  {name:<13} {style}")
+    click.echo("\nflowchart diff classes — attach with `<id>:::diffAdded`, and put these lines last:")
     click.echo(classdefs.rstrip())
 
 

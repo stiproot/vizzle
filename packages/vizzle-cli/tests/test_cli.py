@@ -67,10 +67,12 @@ def test_class_diagram(repo: Path) -> None:
 def test_diff_diagram(repo: Path) -> None:
     result = CliRunner().invoke(main, ["diff", str(repo)])
     assert result.exit_code == 0, result.output
-    assert 'cssClass "app_Fresh" diffAdded' in result.output
-    assert 'cssClass "app_Old" diffRemoved' in result.output
-    # classDef statements must trail the attachments (mermaid 11 quirk).
-    assert result.output.rindex("classDef") > result.output.rindex("cssClass")
+    assert "style app_Fresh fill:#dafbe1,stroke:#1a7f37" in result.output
+    assert "style app_Old fill:#ffebe9,stroke:#cf222e" in result.output
+    # No classDef/cssClass: Mermaid rejects classDef in a classDiagram before 11.4.1.
+    assert "classDef" not in result.output and "cssClass" not in result.output
+    # A style line names an id, so it comes after the class it styles.
+    assert result.output.index("style app_Fresh") > result.output.index('class app_Fresh["')
 
 
 def test_class_diagram_html(repo: Path, tmp_path: Path) -> None:
@@ -546,6 +548,10 @@ def test_palette_tints_are_the_diff_strokes_the_class_diagrams_use():
         stroke = re.search(rf"classDef {klass} .*?stroke:#(\w{{6}})", classdefs).group(1)
         rgb = ", ".join(str(int(stroke[i : i + 2], 16)) for i in (0, 2, 4))
         assert tints[name] == f"rect rgba({rgb}, 0.15)", tints[name]
+    # The class-diagram style properties are the classDef ones, without the classDef.
+    for klass, style in palette["classStyles"].items():
+        assert f"classDef {klass} {style}" in classdefs, klass
+    assert set(palette["classStyles"]) == {"diffAdded", "diffRemoved", "diffModified"}
     # Translucent, never opaque: an opaque pale fill made dark-mode text unreadable.
     assert all(rect.startswith("rect rgba(") for rect in tints.values())
 
@@ -1122,6 +1128,8 @@ def test_component_diff_zoom_draws_changed_classes_with_changed_members_only(mon
     assert zoom.startswith("classDiagram") or "\nclassDiagram" in zoom, zoom
     assert "namespace api {" in zoom
     assert "+d() ✚" in zoom
+    # Coloured with style lines, so it renders on Mermaid 10.7+ (classDef needs 11.4.1).
+    assert "\n    style " in zoom and "classDef" not in zoom and "cssClass" not in zoom, zoom
     assert "… 3 unchanged members" in zoom
     # Db and Untouched did not change in this revision; store is not a changed component.
     assert "Untouched" not in zoom and "namespace store" not in zoom, zoom
@@ -1201,12 +1209,11 @@ def chain(tmp_path: Path) -> Path:
 def test_class_highlight_lights_the_named_classes_and_dims_the_rest(chain: Path) -> None:
     result = CliRunner().invoke(main, ["class", str(chain), "--highlight", "Mid,Leaf"])
     assert result.exit_code == 0, result.output
-    assert 'class pkg_mod_Mid["pkg.mod.Mid"]:::highlight' in result.output
-    assert 'class pkg_mod_Leaf["pkg.mod.Leaf"]:::highlight' in result.output
-    assert 'class pkg_mod_Alone["pkg.mod.Alone"]:::context' in result.output
-    assert ":::context" in result.output.split('class pkg_mod_Base["pkg.mod.Base"]')[1].split("\n")[0]
-    assert "classDef highlight fill:#ddf4ff" in result.output
-    assert "classDef context fill:#f2f4f7" in result.output
+    assert "style pkg_mod_Mid fill:#ddf4ff" in result.output
+    assert "style pkg_mod_Leaf fill:#ddf4ff" in result.output
+    assert "style pkg_mod_Alone fill:#f2f4f7" in result.output
+    assert "style pkg_mod_Base fill:#f2f4f7" in result.output
+    assert ":::" not in result.output and "classDef" not in result.output
     assert "%% vizzle: highlight: 2 of 4 classes" in result.output
 
 
@@ -1221,8 +1228,8 @@ def test_class_around_keeps_the_neighbourhood_and_lights_the_centre(chain: Path)
     result = CliRunner().invoke(main, ["class", str(chain), "--around", "Mid", "--depth", "1"])
     assert result.exit_code == 0, result.output
     assert "pkg_mod_Alone" not in result.output, "Alone has no relation to Mid"
-    assert 'class pkg_mod_Mid["pkg.mod.Mid"]:::highlight' in result.output
-    assert 'class pkg_mod_Base["pkg.mod.Base"]:::context' in result.output
+    assert "style pkg_mod_Mid fill:#ddf4ff" in result.output
+    assert "style pkg_mod_Base fill:#f2f4f7" in result.output
     assert "%% vizzle: 3 classes" in result.output
 
 

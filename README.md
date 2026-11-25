@@ -262,9 +262,10 @@ the Rust core. The core parses each side into a class graph, diffs the graphs
 renders a single diagram where every class and member carries its change
 status.
 
-> Mermaid 11 quirk, learned the hard way: in `classDiagram`, `classDef`
-> statements only take effect when they appear *after* the `cssClass`
-> attachments. The renderer emits them last.
+> Class diagrams are coloured with one `style <id> …` line per class, not
+> `classDef`: Mermaid accepts `classDef` in a `classDiagram` only from 11.4.1
+> and rejects the whole diagram before that, while `style` renders from 10.7.0.
+> `scripts/check-mermaid-floor.sh` renders the fixtures on both ends.
 
 ## Development
 
