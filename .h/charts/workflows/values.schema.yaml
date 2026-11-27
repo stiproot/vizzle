@@ -1,0 +1,10 @@
+# What this chart's values.yaml may set — checked before a template composes, so a mistyped key
+# is refused by name. h's stock chart declares its own keys (agentId, runActivity, verify, …);
+# declare here only the blocks THIS chart adds. A mapping that lists `properties` is closed; the
+# keywords are type, properties, items, enum, minimum, minLength, description.
+type: object
+properties:
+  agentId: { type: string }
+  runActivity: { type: string }
+  # One block per template this chart adds; it adds none yet (the stock templates' keys
+  # — verify, worktree, implement — are declared by h's stock chart).
